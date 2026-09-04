@@ -49,7 +49,7 @@ const vectorLiteral = toVectorLiteral(queryEmbedding);
 // Router de nodos (hallazgo 2026-08-31, ver PLAN-nodos.md): si la pregunta
 // nombra literalmente un nodo por su nombre o alias (ej. "estado del
 // proyecto Atlas"), trae TODOS sus hechos vigentes en vez de confiar en que
-// RRF/rerank adivinen la relación — no la adivinan cuando ningún hecho
+// RRF/rerank adivinen la relación: no la adivinan cuando ningún hecho
 // individual repite el nombre del proyecto/nodo, solo hablan de su
 // contenido (atlas-2026 nunca dice "Atlas", solo habla de Jane
 // Doe/la universidad socia). Para preguntas que cruzan varios nodos o no nombran ninguno,
@@ -120,7 +120,7 @@ async function rerankTop(candidates, toDoc, topN) {
 }
 
 const pages = await rerankTop(pageCandidates, (p) => `${p.title}\n${p.content}`.slice(0, 4000), 5);
-// Incluye el/los nodo(s) en el texto que ve el reranker — sin esto, un
+// Incluye el/los nodo(s) en el texto que ve el reranker: sin esto, un
 // hecho cuyo contenido nunca menciona el nombre del proyecto/nodo (ej.
 // atlas-2026, cuyos hechos hablan de "Jane Doe"/"la universidad socia" y
 // nunca dicen "Atlas") queda mal puntuado frente a una pregunta que sí lo

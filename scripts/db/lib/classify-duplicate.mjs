@@ -7,7 +7,7 @@
 // coexiste sin que alguien la haya visto"): por debajo del umbral de
 // confianza, o si Ollama Cloud falla por cualquier motivo, cae al
 // comportamiento de bloqueo manual de siempre. Nunca trata un error de red
-// o una respuesta inválida como "distinct" — fallar hacia el lado seguro es
+// o una respuesta inválida como "distinct": fallar hacia el lado seguro es
 // bloquear, no insertar.
 import { readFileSync } from 'node:fs';
 
@@ -58,7 +58,7 @@ otro sujeto). Si no estás seguro, baja la confidence en vez de adivinar.`;
  * @param {{id: number, claim: string, similarity: number}[]} candidates
  * @returns {Promise<{verdict: 'distinct'|'supersedes', supersedesIds: number[], confidence: number, reasoning: string} | null>}
  *   null si el clasificador está deshabilitado, o si falla por cualquier motivo
- *   (red, timeout, JSON inválido, ids inventados) — el llamador debe tratar
+ *   (red, timeout, JSON inválido, ids inventados), el llamador debe tratar
  *   null exactamente igual que si nunca se hubiera intentado clasificar.
  */
 export async function classifyDuplicate(newClaim, candidates) {
@@ -81,12 +81,12 @@ export async function classifyDuplicate(newClaim, candidates) {
       signal: AbortSignal.timeout(20_000),
     });
   } catch (err) {
-    console.error(`  (clasificador Ollama Cloud no disponible: ${err.message} — cae a bloqueo manual)`);
+    console.error(`  (clasificador Ollama Cloud no disponible: ${err.message}, cae a bloqueo manual)`);
     return null;
   }
 
   if (!res.ok) {
-    console.error(`  (clasificador Ollama Cloud falló: ${res.status} — cae a bloqueo manual)`);
+    console.error(`  (clasificador Ollama Cloud falló: ${res.status}, cae a bloqueo manual)`);
     return null;
   }
 
@@ -98,11 +98,11 @@ export async function classifyDuplicate(newClaim, candidates) {
     const cleaned = response.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
     parsed = JSON.parse(cleaned);
   } catch (err) {
-    console.error(`  (respuesta del clasificador no es JSON válido: ${err.message} — cae a bloqueo manual)`);
+    console.error(`  (respuesta del clasificador no es JSON válido: ${err.message}, cae a bloqueo manual)`);
     return null;
   }
 
-  // pg devuelve columnas bigint (facts.id) como string, no number — hay que
+  // pg devuelve columnas bigint (facts.id) como string, no number: hay que
   // normalizar antes de comparar contra los ids numéricos que devuelve el JSON.
   const validIds = new Set(candidates.map((c) => Number(c.id)));
   const supersedesIds = Array.isArray(parsed.supersedes_ids)
@@ -117,7 +117,7 @@ export async function classifyDuplicate(newClaim, candidates) {
     confidence > 1 ||
     (parsed.verdict === 'supersedes' && supersedesIds.length === 0)
   ) {
-    console.error(`  (respuesta del clasificador con forma inesperada: ${JSON.stringify(parsed)} — cae a bloqueo manual)`);
+    console.error(`  (respuesta del clasificador con forma inesperada: ${JSON.stringify(parsed)}, cae a bloqueo manual)`);
     return null;
   }
 

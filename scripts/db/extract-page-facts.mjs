@@ -27,7 +27,7 @@
 //
 // --page acepta DOS formas (2026-08-31, generalización pedida por el usuario):
 //   - un slug ya existente en la tabla `pages` (comportamiento original), o
-//   - la ruta a cualquier archivo .md en disco, esté o no en `pages` —
+//   - la ruta a cualquier archivo .md en disco, esté o no en `pages`;
 //     permite extraer hechos de una nota nueva, todavía sin cargar/commitear,
 //     o de un .md fuera del vault indexado (ej. D:\Notes\otra-carpeta\...). Se
 //     prueba primero como slug; si no existe, se trata como ruta de archivo.
@@ -105,7 +105,7 @@ const env = loadEnv();
 
 const apiKeyVar = provider === 'gemini' ? 'GEMINI_API_KEY' : 'OLLAMA_API_KEY';
 if (!env[apiKeyVar] && !args['dump-prompt']) {
-  console.error(`Falta ${apiKeyVar} en .env — no se puede llamar a ${provider}.`);
+  console.error(`Falta ${apiKeyVar} en .env, no se puede llamar a ${provider}.`);
   process.exit(1);
 }
 
@@ -241,7 +241,7 @@ function formatNodeSuggestions(rows) {
   return rows.map((r) => `${r.node_name} (${r.similarity.toFixed(2)})`).join(', ');
 }
 
-console.error(`Página: ${page.slug} (${page.type}) — "${page.title}"`);
+console.error(`Página: ${page.slug} (${page.type}), "${page.title}"`);
 console.error(`Nodo sugerido por defecto: "${defaultNode}"${liveNode && liveNode !== defaultNode ? ` (fusionado, vigente: "${liveNode}")` : liveNode ? ' (ya existe)' : ' (no existe todavía, se creará si se aprueba algún hecho)'}`);
 console.error(`Contexto negativo: ${existingFacts.length} hecho(s) ya vigente(s) para este nodo/slug.`);
 const candidatesForStatus = provider === 'gemini' ? geminiCandidates : ollamaCandidates;
@@ -382,7 +382,7 @@ async function callGemini() {
         : status === 'PERMISSION_DENIED' || status === 'UNAUTHENTICATED'
           ? ' [PROBLEMA DE ACCESO/API KEY]'
           : status === 'NOT_FOUND'
-            ? ` [MODELO "${model}" NO EXISTE — prueba --model otro-id]`
+            ? ` [MODELO "${model}" NO EXISTE, prueba --model otro-id]`
             : '';
     console.error(`Gemini respondió ${res.status} (${status})${hint}: ${message}`);
     process.exitCode = 1;

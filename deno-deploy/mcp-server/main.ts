@@ -2,7 +2,7 @@
 // supabase/functions/mcp-server/ porque el conector de Claude.ai hace
 // descubrimiento OAuth (GET /.well-known/oauth-protected-resource) antes de
 // llamar al servidor, y esa ruta cae en la raiz del dominio, no en
-// /functions/v1/<nombre>/ — en Supabase esa raiz la controla su propio
+// /functions/v1/<nombre>/: en Supabase esa raiz la controla su propio
 // gateway (401 generico, no llega a nuestro codigo). Aqui controlamos toda
 // la raiz del dominio, asi que esa ruta simplemente no matchea ninguna
 // route y cae en un 404 normal nuestro, que un cliente MCP interpreta como
@@ -208,7 +208,7 @@ otro sujeto). Si no estas seguro, baja la confidence en vez de adivinar.`;
 }
 
 // Etapa 2 (PLAN-nodos.md, 2026-08-29): desambiguación de nodos. Mismo patrón
-// que classifyDuplicate — Ollama Cloud, gpt-oss:20b-cloud, fail-closed en
+// que classifyDuplicate: Ollama Cloud, gpt-oss:20b-cloud, fail-closed en
 // cualquier fallo (red, cuota, JSON inválido, nodo "existing" inventado que
 // no está entre los candidatos). Ver scripts/db/lib/classify-node.mjs para
 // el diseño completo; esta es la misma lógica portada a Deno.
@@ -224,7 +224,7 @@ async function classifyNode(
 
   const candidateList = candidates
     .map((c) => {
-      const aliasLine = c.aliases?.length ? ` — alias: ${c.aliases.join(', ')}` : '';
+      const aliasLine = c.aliases?.length ? `, alias: ${c.aliases.join(', ')}` : '';
       return `  "${c.node_name}"${aliasLine} (similitud ${c.similarity.toFixed(2)}), ejemplos:\n${c.examples.map((ex) => `      - "${ex}"`).join('\n')}`;
     })
     .join('\n');
@@ -243,12 +243,12 @@ Responde SOLO con JSON, sin texto adicional, con esta forma exacta:
 {"verdict": "existing" | "new", "node": "nombre exacto de uno de los nodos de arriba si verdict es existing, o un nombre propuesto en kebab-case si verdict es new", "confidence": número entre 0 y 1, "reasoning": "una oración breve en español"}
 
 "existing" solo si el hecho nuevo es genuinamente sobre el mismo asunto que ese nodo \
-(mismo proyecto/persona/curso/colaboración, no solo un tema parecido en abstracto — \
+(mismo proyecto/persona/curso/colaboración, no solo un tema parecido en abstracto, \
 ej. dos cursos distintos que comparten infraestructura de GitHub NO son el mismo nodo). \
 "new" si ningún nodo de la lista es realmente el mismo asunto. \
 PRIORIDAD: si el hecho nuevo menciona literalmente (aunque sea parcialmente, ignorando \
 mayúsculas/tildes) el nombre o un alias de alguno de los nodos, esa coincidencia léxica \
-pesa más que el parecido temático de los ejemplos — el nombre explícito es una señal \
+pesa más que el parecido temático de los ejemplos, el nombre explícito es una señal \
 más fuerte y más confiable que la similitud de contenido, úsala para desempatar. \
 Si no estás seguro, baja la confidence en vez de adivinar.`;
 
@@ -467,7 +467,7 @@ mcp.tool('remember', {
 
     // Etapa 2 (PLAN-nodos.md, 2026-08-29): desambiguación automática. Corre
     // SIEMPRE, incluso con node explícito (Etapa 0), pero solo bloquea
-    // cuando node no vino — con node explícito es solo un aviso en el texto
+    // cuando node no vino: con node explícito es solo un aviso en el texto
     // de respuesta, nunca sobreescribe la elección del llamador.
     const { data: nodeCandidateRows } = await supabase.rpc('nodes_similar', {
       query_embedding: embedding,
@@ -517,12 +517,12 @@ mcp.tool('remember', {
       nodeAdvisory =
         `(aviso: la desambiguación (confianza ${nodeVerdict.confidence.toFixed(2)}) sugiere ` +
         `${nodeVerdict.verdict === 'new' ? `un nodo nuevo distinto: "${nodeVerdict.node}"` : `el nodo existente "${nodeVerdict.node}"`}` +
-        ` en vez de ${requestedNodes.map((n) => `"${n}"`).join(', ')} — se respeta tu elección explícita.)`;
+        ` en vez de ${requestedNodes.map((n) => `"${n}"`).join(', ')}, se respeta tu elección explícita.)`;
     }
 
     // Resuelve node: cada nombre debe existir en `nodes` (fail-closed contra
     // typos que crearian un nodo fantasma), salvo createNode explicito. Si un
-    // nodo fue fusionado a otro (merged_into), sigue la cadena al vigente —
+    // nodo fue fusionado a otro (merged_into), sigue la cadena al vigente,
     // mismo criterio que remember.mjs/remember-batch.mjs.
     const resolvedNodes: string[] = [];
     for (const name of requestedNodes) {
@@ -603,11 +603,11 @@ const app = new Hono();
 // /mcp porque manda Content-Type: application/json, y eso nunca calificó
 // como "simple request" en la spec de CORS. Sin esto el navegador aborta la
 // petición entera (net::ERR_FAILED) sin que el request llegue a nuestro
-// código — no es un 401, es un fallo de red anterior a cualquier respuesta.
+// código: no es un 401, es un fallo de red anterior a cualquier respuesta.
 // Nunca hizo falta hasta ahora porque los únicos clientes eran procesos
 // Node.js/CLI (sesiones de Code, mcp-remote vía npx), donde CORS no aplica.
 // origin: '*' es seguro aquí porque la autenticacion es por query
-// param/header (?key= o Bearer), nunca por cookies/credentials — no hay
+// param/header (?key= o Bearer), nunca por cookies/credentials: no hay
 // nada que un origin ajeno pueda robar via CORS.
 app.use(
   '/mcp',
@@ -643,7 +643,7 @@ app.get('/.well-known/oauth-authorization-server', (c) => {
   });
 });
 
-// Registro dinamico de clientes (RFC 7591) — publico a proposito: registrarse
+// Registro dinamico de clientes (RFC 7591): publico a proposito: registrarse
 // no otorga nada por si solo, solo un client_id. El paso que realmente
 // protege es /authorize (pide la clave de acceso).
 app.post('/register', async (c) => {
@@ -667,7 +667,7 @@ function renderAuthorizeForm(hidden: Record<string, string>, error: string | nul
   const hiddenInputs = Object.entries(hidden)
     .map(([k, v]) => `<input type="hidden" name="${k}" value="${escapeHtml(v)}">`)
     .join('\n');
-  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Segundo cerebro — autorizar</title>
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Segundo cerebro, autorizar</title>
 <style>
 body{font-family:system-ui,sans-serif;background:#0f1115;color:#e6e8eb;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
 form{background:#171a21;border:1px solid #2a2f3a;border-radius:8px;padding:28px;width:320px}
@@ -802,7 +802,7 @@ app.all('/mcp', async (c) => {
     if (!entry.value) return unauthorized(c);
     return await httpHandler(c.req.raw);
   }
-  // Compatibilidad con el conector ya configurado (x-mcp-key / ?key=) — no se
+  // Compatibilidad con el conector ya configurado (x-mcp-key / ?key=): no se
   // retira, solo deja de ser la unica forma de conectar.
   const key = c.req.header('x-mcp-key') ?? c.req.query('key');
   if (key !== MCP_ACCESS_KEY) return unauthorized(c);

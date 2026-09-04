@@ -8,7 +8,7 @@
 // entre el mismo par, máximo una arista por par conceptual salvo que sean
 // genuinamente ortogonales). Grounding: exige `#ID [fecha] texto limpio` de
 // cada hecho citado; list-edge-candidates-deep.mjs además verifica cada
-// relación devuelta contra el texto real antes de mostrarla — el llamador
+// relación devuelta contra el texto real antes de mostrarla: el llamador
 // nunca confía en la respuesta cruda del modelo.
 //
 // Provider (2026-09-02, hallazgo en vivo): el usuario validó este prompt con
@@ -16,10 +16,10 @@
 // sesión: gpt-oss:20b-cloud, con el prompt idéntico, sigue produciendo el
 // patrón espurio "ambos hechos mencionan al usuario" que el prompt no cubre
 // explícitamente (sus Reglas A/B/C podan redundancia entre candidatos ya
-// propuestos, no rechazan ese patrón en primer lugar) — Gemini sí lo evita
+// propuestos, no rechazan ese patrón en primer lugar): Gemini sí lo evita
 // en la práctica. Por eso el default es gemini aquí, no ollama como el
 // resto de los clasificadores baratos del sistema (classify-duplicate.mjs,
-// classify-node.mjs) — este es el único caso donde el modelo más grande
+// classify-node.mjs): este es el único caso donde el modelo más grande
 // demostró una diferencia real de calidad, no solo teórica.
 import { readFileSync } from 'node:fs';
 import { generateWithGeminiFallback } from './gemini-fallback.mjs';
@@ -226,7 +226,7 @@ async function callGemini(prompt) {
  * @param {string} [model] override del modelo (solo aplica a provider 'ollama' -- gemini
  *   siempre usa su lista de respaldo, ver callGemini). Ej. "gemma4:31b-cloud".
  * @returns {Promise<{relation: string, evidence: string, fact_a: string, fact_b: string}[] | null>}
- *   null si el clasificador está deshabilitado o falla por cualquier motivo — el
+ *   null si el clasificador está deshabilitado o falla por cualquier motivo, el
  *   llamador nunca debe tratar null como "sin relaciones", sino como "no se pudo
  *   evaluar este par, reintentar después". fact_a/fact_b normalizados aquí desde
  *   "fact node A"/"fact node B" (nombres del esquema v2.0) para que el llamador

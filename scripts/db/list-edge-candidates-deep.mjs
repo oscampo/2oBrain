@@ -3,19 +3,19 @@
 // versión barata (que solo encuentra relaciones ya escritas juntas en un
 // mismo hecho), esta le da al LLM el texto COMPLETO de los hechos vigentes
 // de dos nodos y le pide que encuentre relaciones que nunca comparten texto
-// literal. Nunca crea nada solo — node-link.mjs sigue siendo quien conecta.
+// literal. Nunca crea nada solo: node-link.mjs sigue siendo quien conecta.
 //
 // Costo controlado (2026-09-02, ver discusión en segundo-cerebro): sin
 // memoria, cada corrida repetiría TODOS los pares desde cero y el costo
 // crecería cuadráticamente con el número de nodos. node_pair_checks recuerda
 // qué pares ya se evaluaron (y con cuántos hechos tenía cada lado en ese
-// momento) — una corrida normal solo procesa pares nuevos o donde algún lado
+// momento): una corrida normal solo procesa pares nuevos o donde algún lado
 // creció desde el último check. Los nodos marcados is_meta (el propio
 // sistema hablando de sí mismo) se excluyen siempre: verificado en vivo que
 // "se relacionan" tautológicamente con todo.
 //
 // Grounding: ver lib/classify-relation.mjs para el diseño validado (copiar
-// el hecho completo, no un fragmento) — este script además verifica cada
+// el hecho completo, no un fragmento): este script además verifica cada
 // relación devuelta contra el texto real antes de mostrarla; ninguna
 // relación no verificable llega a la salida.
 //
@@ -91,7 +91,7 @@ function normalize(s) {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// Extrae el #id inicial de un texto tipo "#123 [2026-01-01] claim..." — el
+// Extrae el #id inicial de un texto tipo "#123 [2026-01-01] claim...": el
 // modelo debe devolver exactamente este formato (mismo que timeline.mjs).
 function extractId(text) {
   const m = String(text).match(/^#(\d+)/);
@@ -99,7 +99,7 @@ function extractId(text) {
 }
 
 // Verifica que el "hecho completo" que devolvió el modelo de verdad
-// corresponda a un hecho real de ese nodo — no solo que el id exista, sino
+// corresponda a un hecho real de ese nodo: no solo que el id exista, sino
 // que el texto citado contenga el claim real (tolerante a espacios/acentos,
 // pero no a contenido inventado).
 function validateSide(text, rowsById) {
@@ -117,9 +117,9 @@ async function comparePair(nodeA, nodeB) {
   const [rowsA, rowsB] = await Promise.all([fetchFacts(nodeA), fetchFacts(nodeB)]);
   if (rowsA.length === 0 || rowsB.length === 0) return { edges: [], countA: rowsA.length, countB: rowsB.length };
 
-  // facts.id es bigint — node-pg lo devuelve como string, no number. Sin
+  // facts.id es bigint: node-pg lo devuelve como string, no number. Sin
   // Number() aquí, Map.get(184) (extractId devuelve number) nunca coincide
-  // con la clave "184" (string) — bug real encontrado probando este mismo
+  // con la clave "184" (string): bug real encontrado probando este mismo
   // script: descartaba relaciones correctas creyendo que el id no existía.
   const byIdA = new Map(rowsA.map((r) => [Number(r.id), r]));
   const byIdB = new Map(rowsB.map((r) => [Number(r.id), r]));
@@ -172,7 +172,7 @@ if (args['node-a'] && args['node-b']) {
       console.log('Sin relaciones validables entre estos dos nodos.');
     } else {
       for (const e of result.edges) {
-        console.log(`\n"${args['node-a']}" <-> "${args['node-b']}" — relación propuesta: ${e.relation}`);
+        console.log(`\n"${args['node-a']}" <-> "${args['node-b']}", relación propuesta: ${e.relation}`);
         console.log(`  ${e.evidence}`);
         console.log(`  A: ${e.fact_a}`);
         console.log(`  B: ${e.fact_b}`);
@@ -282,7 +282,7 @@ if (pending.length === 0) {
     if (result === null) { failed++; continue; }
     for (const e of result.edges) {
       totalEdges++;
-      console.log(`\n"${a}" <-> "${b}" — relación propuesta: ${e.relation}`);
+      console.log(`\n"${a}" <-> "${b}", relación propuesta: ${e.relation}`);
       console.log(`  ${e.evidence}`);
       console.log(`  A: ${e.fact_a}`);
       console.log(`  B: ${e.fact_b}`);
@@ -292,7 +292,7 @@ if (pending.length === 0) {
   }
 
   console.log(`\n--- ${totalEdges} relación(es) validada(s) contra texto real, de ${batch.length} par(es) de este lote (${failed} fallido(s), quedan pendientes) ---`);
-  console.log('Revisión humana obligatoria — ninguna conexión se crea sola.');
+  console.log('Revisión humana obligatoria, ninguna conexión se crea sola.');
 }
 
 await client.end();

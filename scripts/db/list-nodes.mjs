@@ -1,4 +1,4 @@
-// Lista los nodos vigentes (no fusionados a otro) — para saber qué pasarle a
+// Lista los nodos vigentes (no fusionados a otro): para saber qué pasarle a
 // timeline.mjs/remember.mjs --node sin tener que memorizarlos de antemano, y
 // como primera línea de defensa manual contra crear un nodo casi-duplicado
 // mientras la desambiguación automática (Etapa 2 de PLAN-nodos.md) no existe.

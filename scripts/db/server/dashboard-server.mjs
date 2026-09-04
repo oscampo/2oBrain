@@ -3,12 +3,12 @@
 // vez de la terminal. Decisión y alcance: hecho #251/#252.
 //
 // Solo localhost. SUPABASE_DB_URL y las demás keys viven en .env y nunca
-// deben llegar al navegador — este servidor es el único que las lee (los
+// deben llegar al navegador: este servidor es el único que las lee (los
 // scripts hijos las leen ellos mismos de .env, igual que si se corrieran a
 // mano), el HTML del dashboard nunca las ve.
 //
 // Cada script sigue siendo un CLI standalone normal (nada de esto lo
-// refactoriza) — este servidor solo los invoca como subproceso y devuelve
+// refactoriza): este servidor solo los invoca como subproceso y devuelve
 // su salida. Salida de la mayoría de los scripts es texto plano formateado
 // para terminal, no JSON estructurado; se devuelve tal cual por ahora
 // (primer corte), sin inventar un formato JSON que ningún script produce.
@@ -68,7 +68,7 @@ function respond(c, result) {
 const app = new Hono();
 
 // Solo un archivo estático (todo el JS/CSS va inline en el HTML, sin build
-// step) — se sirve leyéndolo directo en vez de configurar serveStatic para
+// step): se sirve leyéndolo directo en vez de configurar serveStatic para
 // una sola ruta.
 app.get('/', (c) => c.html(readFileSync(INDEX_HTML_PATH, 'utf8')));
 
@@ -96,7 +96,7 @@ app.post('/api/synthesize', async (c) => {
 });
 
 // Lista de slugs de páginas para poblar el autocompletado del campo
-// "Página" en Timeline — sin esto hay que memorizar el slug exacto.
+// "Página" en Timeline: sin esto hay que memorizar el slug exacto.
 app.get('/api/pages', (c) => {
   const result = runScript('list-pages.mjs', ['--json']);
   if (!result.ok) return c.json({ ok: false, error: result.stderr || 'list-pages.mjs falló' }, 422);
@@ -108,7 +108,7 @@ app.get('/api/pages', (c) => {
 });
 
 // Lista de nodos vigentes para poblar el autocompletado de Timeline y
-// Guardar hecho — mismo motivo que /api/pages, pero para fact_nodes.
+// Guardar hecho: mismo motivo que /api/pages, pero para fact_nodes.
 app.get('/api/nodes', (c) => {
   const result = runScript('list-nodes.mjs', ['--json']);
   if (!result.ok) return c.json({ ok: false, error: result.stderr || 'list-nodes.mjs falló' }, 422);
@@ -169,7 +169,7 @@ app.get('/vendor/d3.v7.min.js', (c) => {
 });
 
 // Etapa 5 (PLAN-nodos.md): "estado actual del nodo X" generado al momento de
-// la consulta desde sus hechos vigentes reales — node-status.mjs ya hace
+// la consulta desde sus hechos vigentes reales: node-status.mjs ya hace
 // todo el trabajo (trae los hechos, llama a synthesizeNodeStatus), esto solo
 // lo expone como subproceso igual que el resto.
 app.get('/api/node-status', (c) => {
@@ -209,7 +209,7 @@ app.post('/api/remember-batch', async (c) => {
 
 // Variante en streaming del endpoint de arriba: remember-batch.mjs ya
 // imprimía "[i/n] claim" por hecho a stderr según avanzaba, pero
-// spawnSync solo entrega esa salida completa al final — el usuario veía
+// spawnSync solo entrega esa salida completa al final: el usuario veía
 // el botón "Ingiriendo…" sin ninguna señal de avance real durante todo el
 // lote. Este endpoint corre el mismo script con spawn (no spawnSync) y
 // reenvía cada chunk de stdout/stderr al cliente apenas llega, en el mismo
@@ -242,7 +242,7 @@ app.post('/api/forget', async (c) => {
 });
 
 // Vista previa de hecho(s) por id, usada por "Retractar" antes de dejar
-// confirmar — sin esto, retractar era escribir un id a ciegas y confiar en
+// confirmar: sin esto, retractar era escribir un id a ciegas y confiar en
 // que era el correcto. No modifica nada (get-facts.mjs es de solo lectura).
 app.get('/api/facts', (c) => {
   const id = c.req.query('id');
@@ -252,7 +252,7 @@ app.get('/api/facts', (c) => {
 
 // Lee/edita la lista de modelos de respaldo (config/gemini-models.json o
 // config/ollama-models.json) que usan extract-facts.mjs y
-// extract-page-facts.mjs — un único origen de verdad, editable a mano o
+// extract-page-facts.mjs: un único origen de verdad, editable a mano o
 // desde el dashboard (antes solo se podía leer, hoy también escribir).
 app.get('/api/model-config', (c) => {
   const provider = c.req.query('provider');
@@ -283,7 +283,7 @@ app.post('/api/model-config', async (c) => {
   }
 });
 
-// Etapa 2 (PLAN-nodos.md): higiene de nodos — candidatos a fusión (revisión
+// Etapa 2 (PLAN-nodos.md): higiene de nodos: candidatos a fusión (revisión
 // humana obligatoria, ninguno se fusiona solo) y la fusión misma.
 app.get('/api/merge-candidates', (c) => respond(c, runScript('list-merge-candidates.mjs', [])));
 
@@ -328,7 +328,7 @@ app.post('/api/node-unlink', async (c) => {
 
 // Backfill guiado de alias (Etapa 6, hecho #497): list-alias-candidates.mjs
 // solo propone (determinístico + extracción verificada contra el texto real
-// de los hechos del nodo), set-node-aliases.mjs es el único que escribe —
+// de los hechos del nodo), set-node-aliases.mjs es el único que escribe,
 // mismo patrón "revisión humana obligatoria" que Fusionar nodos.
 app.get('/api/alias-candidates', (c) => {
   const node = c.req.query('node');
@@ -346,7 +346,7 @@ app.post('/api/set-node-aliases', async (c) => {
 });
 
 // Reasigna UN hecho a otro nodo sin tocar el resto del nodo (distinto de
-// Fusionar nodos, que mueve todos los hechos) — usado cuando
+// Fusionar nodos, que mueve todos los hechos): usado cuando
 // classify-node.mjs se equivocó o el hecho se guardó con --node a mano sin
 // pensarlo (ver hecho #498, caso real del hecho #412).
 app.post('/api/recategorize-fact', async (c) => {
@@ -361,13 +361,13 @@ app.post('/api/recategorize-fact', async (c) => {
 // terminal real (para poder usar --review), el frontend solo arma el
 // comando (ver sección "Extraer de sesión" en public/index.html). Decisión
 // del usuario tras encontrar que la selección de sesión desde el navegador era
-// más fricción de la que valía — "extraer de sesión" ya es posible desde
+// más fricción de la que valía: "extraer de sesión" ya es posible desde
 // Chat/Cowork (MyMCP + skill), Code, o el .mjs a mano.
 
 // extract-page-facts.mjs sí tiene endpoint (2026-08-31), a diferencia de
 // extract-facts.mjs de arriba: --json no pregunta nada por stdin (a
 // diferencia de --review), entrega los candidatos con sus nodos parecidos
-// ya calculados en un solo JSON — la revisión aprobar/editar/saltar la hace
+// ya calculados en un solo JSON: la revisión aprobar/editar/saltar la hace
 // el frontend con sus propios controles, no una terminal. La inserción
 // sigue yendo por /api/remember-batch, sin código nuevo de escritura acá.
 app.get('/api/extract-page-facts', (c) => {
@@ -397,7 +397,7 @@ const server = serve({ fetch: app.fetch, port: PORT, hostname: '127.0.0.1' }, (i
 // de un stack trace crudo.
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.log(`Ya hay un servidor escuchando en el puerto ${PORT} — probablemente la tarea de arranque ya lo dejó corriendo. Nada que hacer, abre http://127.0.0.1:${PORT} en el navegador.`);
+    console.log(`Ya hay un servidor escuchando en el puerto ${PORT}, probablemente la tarea de arranque ya lo dejó corriendo. Nada que hacer, abre http://127.0.0.1:${PORT} en el navegador.`);
     process.exit(0);
   }
   throw err;

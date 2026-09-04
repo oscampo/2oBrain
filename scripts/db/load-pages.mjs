@@ -2,7 +2,7 @@
 // extracción de facts ni embeddings todavía (eso es Fase 2/3).
 //
 // 2026-08-22: antes de esto, cada corrida leía y mandaba un UPSERT a
-// Postgres por los 30 archivos, aunque 29 no hubieran cambiado — barato
+// Postgres por los 30 archivos, aunque 29 no hubieran cambiado: barato
 // (consultas locales, no API externa), pero descuidado como principio. Un
 // hash local por archivo (state/load-pages-cache.local.json, gitignored,
 // no es fuente de verdad, solo un caché de optimización) deja saltarse por

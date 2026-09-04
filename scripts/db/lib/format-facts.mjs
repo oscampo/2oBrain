@@ -1,5 +1,5 @@
 // Mismo formato de texto que timeline.mjs para una lista de hechos (filas de
-// facts_timeline()) — extraído a helper porque list-edge-candidates-deep.mjs
+// facts_timeline()): extraído a helper porque list-edge-candidates-deep.mjs
 // necesita generar el mismo texto exacto que ya se probó que el clasificador
 // lee bien (ver lib/classify-relation.mjs).
 export function formatFactsBlock(rows) {

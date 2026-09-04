@@ -1,7 +1,7 @@
 // Genera embeddings con Voyage AI (voyage-4-lite, 1024 dims, multilingüe)
 // solo para páginas nuevas o con contenido cambiado desde el último embed
 // (embedded_at is null or embedded_at < updated_at). Antes re-embebía las
-// 30 páginas en cada corrida sin importar si algo cambió — con Ollama
+// 30 páginas en cada corrida sin importar si algo cambió: con Ollama
 // local eso era gratis, con Voyage es texto real mandado a una API de pago
 // sin necesidad. input_type 'document' porque esto es contenido
 // almacenado, no una consulta de búsqueda (ver lib/embed.mjs).

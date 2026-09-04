@@ -3,7 +3,7 @@
 // mantenida a mano que se congela el día que se escribe (ver la motivación
 // completa del rediseño en PLAN-nodos.md). Trae TODOS los hechos vigentes
 // del nodo (match_count alto, no los 20 de timeline.mjs) y le pide a un LLM
-// que resuma en prosa — mismo principio de fuente obligatoria que el resto
+// que resuma en prosa: mismo principio de fuente obligatoria que el resto
 // del sistema: el prompt (ver lib/synthesize.mjs) prohíbe completar con
 // conocimiento general.
 // Uso: node node-status.mjs <nombre-de-nodo> [--provider ollama|gemini] [--model ...]

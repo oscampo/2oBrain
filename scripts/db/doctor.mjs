@@ -51,7 +51,7 @@ function report(label, rows, describe) {
 
 // RLS regresando a estar apagado (incidente real, hecho #108/#109): sin esto,
 // cualquier tabla queda legible/escribible por cualquiera con la publishable
-// key. Extendido a las tablas del rediseño node (2026-08-29/2026-09-02) —
+// key. Extendido a las tablas del rediseño node (2026-08-29/2026-09-02),
 // schema.sql las habilita todas, pero este chequeo se había quedado en el
 // par original (pages/facts) y nunca se actualizó al agregar nodes/
 // node_edges/node_pair_checks/fact_nodes.
