@@ -21,6 +21,13 @@ clic en tal botón" cuando exista una herramienta que lo haga por ti, si no
 la tienes, entonces sí, guíalo paso a paso, pero verifícalo después en vez
 de asumir que lo hizo bien.
 
+Si estás leyendo este archivo sin haber clonado el repo todavía (ej. lo
+leíste en remoto de la URL que te pasaron, antes de tener una carpeta
+local), clónalo tú primero -- `git clone
+https://github.com/oscampo/2oBrain.git`, instalando `git` primero si hace
+falta, mismo criterio de la Fase 1 -- y sigue desde ahí. Todo lo que sigue
+en este archivo asume que ya estás dentro de la carpeta clonada.
+
 ## Fase 0: Detección de estado
 
 Antes de saludar, revisa si esto ya está instalado:
