@@ -10,6 +10,18 @@ Not a note-taking app. Not a wiki. Every fact has a date and a source,
 always — no fact is "recalled" from an LLM's memory, only ever retrieved
 from what was actually written down.
 
+## Access it from anywhere
+
+The database is the single source of truth, not any one app or machine.
+Once a hosted MCP server is deployed (Fase 7 of the install), the same
+`search`/`remember` reach whatever client you're in — Claude Code, Claude
+Chat, Claude Cowork, a generic MCP-speaking CLI, desktop or mobile — with
+no separate sync step and no client-specific setup beyond connecting to
+the one URL. This isn't aspirational: the same design was verified live
+across all four of those surfaces (Code, Chat, Cowork, a generic CLI) and
+from a phone, before this scaffold existed. No client gets a special path
+or a degraded one; the MCP server is the same thin layer for all of them.
+
 ## Architecture
 
 - **`scripts/db/`** — the engine. CLI scripts, one job each: `remember.mjs`
