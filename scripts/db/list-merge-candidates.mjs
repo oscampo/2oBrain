@@ -1,7 +1,7 @@
 // Herramienta de revisión, no de automatización: compara por embedding los
 // nombres (+ alias) de los nodos vigentes entre sí y superficie los pares
 // por encima de un umbral para que un humano decida si vale la pena
-// fusionarlos con merge-nodes.mjs. Nunca fusiona nada solo — a diferencia
+// fusionarlos con merge-nodes.mjs. Nunca fusiona nada solo: a diferencia
 // de nodes_similar() (que compara contra hechos existentes para clasificar
 // UN hecho nuevo), esto compara nodos contra nodos, sin tocar `facts`.
 // Sin columna nodes.embedding que mantener (mismo criterio "cero
@@ -103,6 +103,6 @@ if (pairs.length === 0) {
       `  (${p.similarity.toFixed(3)}) "${p.a.name}" (${p.a.fact_count} hechos) <-> "${p.b.name}" (${p.b.fact_count} hechos)`,
     );
   }
-  console.log('\nRevisión humana obligatoria — ninguno se fusiona solo. Si aplica:');
+  console.log('\nRevisión humana obligatoria, ninguno se fusiona solo. Si aplica:');
   console.log('  node merge-nodes.mjs --from <nombre-a-retirar> --to <nombre-vigente> --reason "..."');
 }

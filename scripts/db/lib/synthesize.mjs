@@ -51,7 +51,7 @@ Responde en español, en prosa, conciso.`;
 
 // Etapa 5 (PLAN-nodos.md, 2026-08-30): a diferencia de buildPrompt (responde
 // una pregunta puntual sobre resultados ya filtrados por relevancia), esto
-// resume TODOS los hechos vigentes de un nodo — el objetivo es reemplazar el
+// resume TODOS los hechos vigentes de un nodo: el objetivo es reemplazar el
 // rol de una página narrativa mantenida a mano ("estado actual del proyecto
 // X"), generada al momento de la consulta desde hechos reales, nunca
 // congelada. Mismo principio de fuente obligatoria: solo usa lo que está en
@@ -65,7 +65,7 @@ esos hechos. Si hay información contradictoria o un vacío evidente \
 dilo explícitamente en vez de resolverlo por tu cuenta. Cita el número de \
 hecho #N de cada afirmación tal como aparece en la lista. Cuando señales \
 algo pendiente o sin resolver, cita también la fecha del hecho que lo dejó \
-pendiente (formato "pendiente desde YYYY-MM-DD, #N"), no solo el número —
+pendiente (formato "pendiente desde YYYY-MM-DD, #N"), no solo el número,
 la fecha es lo que le dice al lector qué tan viejo es el pendiente.
 
 Nodo: "${node}"
@@ -74,7 +74,7 @@ Hechos vigentes de este nodo, en orden cronológico:
 ${rawFacts}
 
 Responde en español, en prosa, organizada por tema si hay varios, conciso \
-pero completa — el objetivo es que esto reemplace tener que leer una página \
+pero completa, el objetivo es que esto reemplace tener que leer una página \
 narrativa mantenida a mano.`;
 }
 
@@ -95,11 +95,11 @@ async function generate(prompt, provider, model) {
     throw new Error(`Proveedor de síntesis desconocido: "${provider}". Válidos: ${SYNTHESIS_PROVIDERS.join(', ')}.`);
   }
   const apiKeyVar = provider === 'gemini' ? 'GEMINI_API_KEY' : 'OLLAMA_API_KEY';
-  if (!env[apiKeyVar]) throw new Error(`Falta ${apiKeyVar} en .env — no se puede sintetizar con ${provider}.`);
+  if (!env[apiKeyVar]) throw new Error(`Falta ${apiKeyVar} en .env, no se puede sintetizar con ${provider}.`);
 
   if (provider === 'gemini') {
     // Sin `model` explícito, prueba en orden config/gemini-models.json (el
-    // mismo mecanismo de extract-facts.mjs) — reintenta el siguiente modelo
+    // mismo mecanismo de extract-facts.mjs): reintenta el siguiente modelo
     // solo en fallos transitorios (503/UNAVAILABLE, timeout/red).
     return generateWithGeminiFallback(env.GEMINI_API_KEY, prompt, { model });
   }

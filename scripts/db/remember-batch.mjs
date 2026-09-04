@@ -11,13 +11,13 @@
 //   cat hechos.json | node remember-batch.mjs [--confirm-date]
 //
 // --confirm-date: obligatorio si algún hecho del lote tiene --date distinto
-// de hoy (America/Bogota) — una sola confirmación cubre todo el lote, no una
+// de hoy (America/Bogota): una sola confirmación cubre todo el lote, no una
 // por hecho (mismo criterio que remember.mjs, hecho #528, a nivel de lote).
 //
 // Rediseño 2026-08-29: slug -> node (string o array de strings, fact_nodes
 // many-to-many). Mismo criterio fail-closed que remember.mjs: un nodo debe
 // existir de antemano salvo que el hecho traiga createNode: true.
-// Etapa 2 (2026-08-30): node ya es opcional por hecho — si se omite, se
+// Etapa 2 (2026-08-30): node ya es opcional por hecho: si se omite, se
 // desambigua por búsqueda vectorial (nodes_similar()) + clasificador
 // (lib/classify-node.mjs), igual que remember.mjs. Sin humano presente para
 // resolver un bloqueo, un hecho ambiguo se salta (nodeAmbiguous) y el lote
@@ -89,7 +89,7 @@ if (!Array.isArray(facts) || facts.length === 0) {
 }
 
 // Mismo chequeo que remember.mjs (2026-09-03, hecho #528), a nivel de lote:
-// una sola confirmación cubre todo el archivo, en vez de una por hecho — no
+// una sola confirmación cubre todo el archivo, en vez de una por hecho: no
 // tiene sentido pedir --confirm-date repetido cuando ES el timeline entero
 // el que es histórico (caso real: timeline de "explorando-cuerpo-construir-
 // suenos" armado en retrospectiva en una sola sesión). Se revisa ANTES de
@@ -209,7 +209,7 @@ for (let i = 0; i < facts.length; i++) {
   }
 
   // Etapa 2 (PLAN-nodos.md, 2026-08-29): desambiguación automática, mismo
-  // criterio que remember.mjs pero sin humano presente para el bloqueo — un
+  // criterio que remember.mjs pero sin humano presente para el bloqueo: un
   // hecho ambiguo se salta y se reporta al final, nunca detiene el lote.
   const { rows: nodeCandidateRows } = await client.query(`select * from nodes_similar($1, 5)`, [vectorLiteral]);
   const nodeCandidates = nodeCandidateRows.map((r) => ({
@@ -243,7 +243,7 @@ for (let i = 0; i < facts.length; i++) {
     console.error(
       `  (aviso: desambiguación (confianza ${nodeVerdict.confidence.toFixed(2)}) sugiere ` +
         `${nodeVerdict.verdict === 'new' ? `un nodo nuevo distinto: "${nodeVerdict.node}"` : `el nodo existente "${nodeVerdict.node}"`}` +
-        ` en vez de ${requestedNodes.map((n) => `"${n}"`).join(', ')} — se respeta el nodo explícito del JSON.)`,
+        ` en vez de ${requestedNodes.map((n) => `"${n}"`).join(', ')}, se respeta el nodo explícito del JSON.)`,
     );
   }
 

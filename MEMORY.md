@@ -1,7 +1,7 @@
 # MEMORY.md
 
 Hot durable state for Claude. Loaded every session. **Never loaded in
-shared or group contexts — that is a security boundary, not a
+shared or group contexts, that is a security boundary, not a
 preference.**
 
 Keep this file under one screen (~8KB). The session-start digest reads it
@@ -13,15 +13,15 @@ one-line pointer.
 
 ## Al iniciar sesión
 
-*(Optional: note any scheduled/recurring check to run at session start —
-e.g. a due-job list, a delta check. Leave empty if none yet.)*
+See `HEARTBEAT.md` for the due-job list (deliberately kept out of this
+file: it's stable configuration, not memory that gets pruned/rewritten).
 
 ## Standing rules learned from corrections
 
 Format: one line, dated, imperative, with the bug it prevents:
 
 *(Empty at install. Add one every time a correction should generalize
-beyond the single conversation it happened in — never invent one ahead of
+beyond the single conversation it happened in, never invent one ahead of
 a real correction.)*
 
 ## What is always worth writing down
@@ -45,7 +45,7 @@ forgotten is how an agent loses trust.
 
 ## Critical events
 
-Append-only, ISO-timestamped. Never rewrite an entry — the old entry being
+Append-only, ISO-timestamped. Never rewrite an entry, the old entry being
 wrong is itself information.
 
 *(Empty.)*
@@ -56,6 +56,6 @@ Weekly (or when this file exceeds a screen): promote durable knowledge
 either as a dated fact via `remember.mjs`, or by editing/creating a page
 under `daily/guides/people/projects/wiki` and committing; demote cold
 detail to `memory/reference/`; cut what no longer earns its place.
-Promotion needs a quoted line from a daily note or conversation — if you
+Promotion needs a quoted line from a daily note or conversation, if you
 cannot quote it, it does not go in. Memory that is never pruned stops
 being read.

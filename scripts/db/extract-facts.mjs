@@ -5,7 +5,7 @@
 //   - Sin --review (default): solo IMPRIME los candidatos, no toca la base.
 //     Uso previsto: el usuario le pide esto a Claude en el chat; Claude corre el
 //     script, muestra la lista, el usuario aprueba/edita/descarta por chat, y
-//     Claude llama a remember.mjs a mano por cada hecho aprobado — igual que
+//     Claude llama a remember.mjs a mano por cada hecho aprobado: igual que
 //     se ha venido haciendo manualmente, sin necesidad de más código aquí.
 //   - Con --review: entra en un loop interactivo en la terminal (requiere
 //     TTY real, no sirve invocado como subproceso no interactivo). Por cada
@@ -13,7 +13,7 @@
 //     Los aprobados se insertan de inmediato vía remember.mjs (subproceso).
 //     Si remember.mjs no inserta (duplicado ambiguo, su propio clasificador
 //     de Ollama Cloud no tuvo confianza suficiente), esa decisión NO se le
-//     pasa al usuario aquí — es de remember.mjs, no de esta revisión. El hecho
+//     pasa al usuario aquí: es de remember.mjs, no de esta revisión. El hecho
 //     queda listado al final como pendiente de revisión manual.
 //
 // Costo: $0 en tokens de Claude (nunca llama a la API de Anthropic). Sí
@@ -22,9 +22,9 @@
 //
 // Proveedor por defecto: Gemini (sin suscripción de Ollama Cloud al momento
 // de escribir esto; gpt-oss:120b-cloud gratuito de Ollama quedó por debajo
-// de la calidad necesaria en pruebas comparativas — ver sesión 2026-08-26).
+// de la calidad necesaria en pruebas comparativas: ver sesión 2026-08-26).
 // Prompt por defecto: scripts/db/prompts/gemini-extractor-system-prompt.md
-// (el que en pruebas retuvo más detalle específico — cifras, nombres —
+// (el que en pruebas retuvo más detalle específico: cifras, nombres, más
 // que el prompt genérico embebido de respaldo).
 //
 // Uso:
@@ -65,12 +65,12 @@ const OLLAMA_MODELS_CONFIG_FILE = join(SCRIPT_DIR, 'config', 'ollama-models.json
 const MODELS = { ollama: 'gpt-oss:120b-cloud', gemini: 'gemini-flash-latest' };
 
 // Listas de modelos a probar en orden cuando el primero falla de forma
-// recuperable (Gemini: 503 UNAVAILABLE, "modelo sobrecargado" — confirmado
+// recuperable (Gemini: 503 UNAVAILABLE, "modelo sobrecargado": confirmado
 // por el usuario 2026-08-28; Ollama Cloud: mismo criterio, 503). Viven en un
 // archivo editable cada una, no en este código: los proveedores
 // renombran/retiran modelos con frecuencia (la razón de fondo por la que el
 // default de Gemini ya usa el alias "-latest" en vez de fijar versión), y la
-// lista de respaldo tiene el mismo problema — el usuario debe poder
+// lista de respaldo tiene el mismo problema: el usuario debe poder
 // agregar/quitar modelos sin tocar JS (también editable desde el dashboard,
 // ver /api/model-config).
 function loadFallbackOrder(configFile, fallbackDefault) {
@@ -141,7 +141,7 @@ const env = loadEnv();
 
 const apiKeyVar = provider === 'gemini' ? 'GEMINI_API_KEY' : 'OLLAMA_API_KEY';
 if (!env[apiKeyVar] && !args['dump-prompt']) {
-  console.error(`Falta ${apiKeyVar} en .env — no se puede llamar a ${provider}.`);
+  console.error(`Falta ${apiKeyVar} en .env, no se puede llamar a ${provider}.`);
   process.exit(1);
 }
 
@@ -174,7 +174,7 @@ const fromIso = localToUtcIso(args.date, args.from);
 const toIso = localToUtcIso(args.date, args.to);
 
 // Ancla la raíz del proyecto a la ubicación del propio script (scripts/db/),
-// no a process.cwd() — si el usuario corre esto desde dentro de scripts/db en vez
+// no a process.cwd(): si el usuario corre esto desde dentro de scripts/db en vez
 // de la raíz del repo, cwd apunta a la carpeta equivocada y el encoding de
 // Claude Code para el directorio de sesiones no coincide con ninguna real.
 const projectRoot = join(SCRIPT_DIR, '..', '..');
@@ -347,7 +347,7 @@ async function callOllamaWithFallback(candidates) {
 
 // Status del último fallo de Gemini, para que el loop de fallback decida si
 // vale la pena probar el siguiente modelo (solo UNAVAILABLE = 503, "modelo
-// sobrecargado") o si hay que rendirse ya (cuota, permisos, red — reintentar
+// sobrecargado") o si hay que rendirse ya (cuota, permisos, red: reintentar
 // con otro modelo no cambia nada ahí).
 let lastGeminiStatus = null;
 
@@ -388,7 +388,7 @@ async function callGemini() {
         : status === 'PERMISSION_DENIED' || status === 'UNAUTHENTICATED'
           ? ' [PROBLEMA DE ACCESO/API KEY]'
           : status === 'NOT_FOUND'
-            ? ` [MODELO "${model}" NO EXISTE — Google puede haberlo renombrado/retirado, prueba --model otro-id]`
+            ? ` [MODELO "${model}" NO EXISTE, Google puede haberlo renombrado/retirado, prueba --model otro-id]`
             : '';
     console.error(`Gemini respondió ${res.status} (${status})${hint}: ${message}`);
     process.exitCode = 1;
@@ -468,7 +468,7 @@ if (rawResponse == null) {
       // el usuario solo aprueba/edita/salta el texto extraído. Si remember.mjs no
       // puede insertar (duplicado ambiguo, su propio clasificador de Ollama
       // Cloud no tuvo confianza suficiente), NO se le pregunta al usuario aquí
-      // qué hacer — eso es una decisión de remember.mjs, no de esta revisión.
+      // qué hacer: eso es una decisión de remember.mjs, no de esta revisión.
       // Se registra aparte para que la resuelva a mano después, con calma.
       function insertFact(f) {
         const cliArgs = [REMEMBER_SCRIPT, '--claim', f.claim, '--date', f.date, '--kind', f.kind, '--source', source];
@@ -508,7 +508,7 @@ if (rawResponse == null) {
           if (insertFact(f)) {
             inserted++;
           } else {
-            console.log('\n(remember.mjs no insertó — queda pendiente de revisión manual, ver resumen al final)');
+            console.log('\n(remember.mjs no insertó, queda pendiente de revisión manual, ver resumen al final)');
             needsManualReview.push(f);
           }
         } else {

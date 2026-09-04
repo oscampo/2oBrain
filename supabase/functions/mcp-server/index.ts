@@ -55,7 +55,7 @@ async function rerank(query: string, documents: string[]): Promise<{ index: numb
 // Router de nodos (hallazgo 2026-08-31, ver PLAN-nodos.md): si la pregunta
 // nombra literalmente un nodo por su nombre o alias (ej. "estado del
 // proyecto COIL"), trae TODOS sus hechos vigentes en vez de confiar en que
-// RRF/rerank adivinen la relación — no la adivinan cuando ningún hecho
+// RRF/rerank adivinen la relación: no la adivinan cuando ningún hecho
 // individual repite el nombre del proyecto/nodo, solo habla de su
 // contenido. Mismo criterio y misma función SQL (node_match_facts) que
 // scripts/db/search.mjs.
@@ -90,7 +90,7 @@ function resolveLiveNode(name: string, byName: Map<string, { name: string; merge
 
 // Tiering del gate de contradicciones (ver hecho #149/#152 en segundo-cerebro):
 // primera pasada barata vía Ollama Cloud antes de bloquear. Portado desde
-// scripts/db/lib/classify-duplicate.mjs — misma lógica, mismo modelo, mismo
+// scripts/db/lib/classify-duplicate.mjs: misma lógica, mismo modelo, mismo
 // umbral. Nunca trata un error de red o una respuesta inválida como
 // "distinct": fallar hacia el lado seguro es bloquear, no insertar.
 async function classifyDuplicate(
@@ -169,7 +169,7 @@ otro sujeto). Si no estás seguro, baja la confidence en vez de adivinar.`;
 }
 
 // Etapa 2 (PLAN-nodos.md, 2026-08-29): desambiguación de nodos. Mismo patrón
-// que classifyDuplicate — Ollama Cloud, gpt-oss:20b-cloud, fail-closed en
+// que classifyDuplicate: Ollama Cloud, gpt-oss:20b-cloud, fail-closed en
 // cualquier fallo (red, cuota, JSON inválido, nodo "existing" inventado que
 // no está entre los candidatos). Ver scripts/db/lib/classify-node.mjs para
 // el diseño completo; esta es la misma lógica portada a Deno.
@@ -185,7 +185,7 @@ async function classifyNode(
 
   const candidateList = candidates
     .map((c) => {
-      const aliasLine = c.aliases?.length ? ` — alias: ${c.aliases.join(', ')}` : '';
+      const aliasLine = c.aliases?.length ? `, alias: ${c.aliases.join(', ')}` : '';
       return `  "${c.node_name}"${aliasLine} (similitud ${c.similarity.toFixed(2)}), ejemplos:\n${c.examples.map((ex) => `      - "${ex}"`).join('\n')}`;
     })
     .join('\n');
@@ -204,12 +204,12 @@ Responde SOLO con JSON, sin texto adicional, con esta forma exacta:
 {"verdict": "existing" | "new", "node": "nombre exacto de uno de los nodos de arriba si verdict es existing, o un nombre propuesto en kebab-case si verdict es new", "confidence": número entre 0 y 1, "reasoning": "una oración breve en español"}
 
 "existing" solo si el hecho nuevo es genuinamente sobre el mismo asunto que ese nodo \
-(mismo proyecto/persona/curso/colaboración, no solo un tema parecido en abstracto — \
+(mismo proyecto/persona/curso/colaboración, no solo un tema parecido en abstracto, \
 ej. dos cursos distintos que comparten infraestructura de GitHub NO son el mismo nodo). \
 "new" si ningún nodo de la lista es realmente el mismo asunto. \
 PRIORIDAD: si el hecho nuevo menciona literalmente (aunque sea parcialmente, ignorando \
 mayúsculas/tildes) el nombre o un alias de alguno de los nodos, esa coincidencia léxica \
-pesa más que el parecido temático de los ejemplos — el nombre explícito es una señal \
+pesa más que el parecido temático de los ejemplos, el nombre explícito es una señal \
 más fuerte y más confiable que la similitud de contenido, úsala para desempatar. \
 Si no estás seguro, baja la confidence en vez de adivinar.`;
 
@@ -295,7 +295,7 @@ mcp.tool('search', {
       return ranked.slice(0, topN).map((r) => ({ ...candidates[r.index], score: r.relevance_score }));
     }
 
-    // Incluye el/los nodo(s) en el texto que ve el reranker — sin esto, un
+    // Incluye el/los nodo(s) en el texto que ve el reranker: sin esto, un
     // hecho cuyo contenido nunca menciona el nombre del proyecto/nodo queda
     // mal puntuado frente a una pregunta que sí lo nombra (mismo hallazgo
     // 2026-08-31 que motivó el router de arriba).
@@ -366,7 +366,7 @@ mcp.tool('remember', {
 
     // Mismo criterio que remember.mjs/remember-batch.mjs (2026-09-03, hechos
     // #528/#530): bloquea por defecto si date no es hoy, salvo confirmDate
-    // explícito — evita el error real que motivó esto (hecho #525, grabado
+    // explícito: evita el error real que motivó esto (hecho #525, grabado
     // con fecha vieja por no verificar antes de llamar).
     const todayBogota = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
     if (args.date !== todayBogota && !args.confirmDate) {
@@ -428,7 +428,7 @@ mcp.tool('remember', {
 
     // Etapa 2 (PLAN-nodos.md, 2026-08-29): desambiguación automática. Corre
     // SIEMPRE, incluso con node explícito (Etapa 0), pero solo bloquea
-    // cuando node no vino — con node explícito es solo un aviso en el texto
+    // cuando node no vino: con node explícito es solo un aviso en el texto
     // de respuesta, nunca sobreescribe la elección del llamador.
     const { data: nodeCandidateRows } = await supabase.rpc('nodes_similar', {
       query_embedding: embedding,
@@ -478,12 +478,12 @@ mcp.tool('remember', {
       nodeAdvisory =
         `(aviso: la desambiguación (confianza ${nodeVerdict.confidence.toFixed(2)}) sugiere ` +
         `${nodeVerdict.verdict === 'new' ? `un nodo nuevo distinto: "${nodeVerdict.node}"` : `el nodo existente "${nodeVerdict.node}"`}` +
-        ` en vez de ${requestedNodes.map((n) => `"${n}"`).join(', ')} — se respeta tu elección explícita.)`;
+        ` en vez de ${requestedNodes.map((n) => `"${n}"`).join(', ')}, se respeta tu elección explícita.)`;
     }
 
     // Resuelve node: cada nombre debe existir en `nodes` (fail-closed contra
     // typos que crearían un nodo fantasma), salvo createNode explícito. Si un
-    // nodo fue fusionado a otro (merged_into), sigue la cadena al vigente —
+    // nodo fue fusionado a otro (merged_into), sigue la cadena al vigente,
     // mismo criterio que remember.mjs/remember-batch.mjs.
     const resolvedNodes: string[] = [];
     for (const name of requestedNodes) {
@@ -560,7 +560,7 @@ const app = new Hono();
 const mcpApp = new Hono();
 
 // CORS (2026-09-01, handoff de la sesión de obsidian-neural-composer): ver
-// justificación completa en deno-deploy/mcp-server/main.ts — un cliente MCP
+// justificación completa en deno-deploy/mcp-server/main.ts: un cliente MCP
 // en contexto navegador (Electron/Obsidian Desktop, o web) dispara preflight
 // OPTIONS por el Content-Type: application/json del POST; sin responderlo
 // con Access-Control-*, el navegador aborta la petición (net::ERR_FAILED)

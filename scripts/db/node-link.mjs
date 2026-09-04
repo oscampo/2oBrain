@@ -1,9 +1,9 @@
-// Crea (o lista) una relación nodo-a-nodo persistente en node_edges —
+// Crea (o lista) una relación nodo-a-nodo persistente en node_edges,
 // distinta de que un hecho puntual mencione a dos nodos a la vez (fact_nodes
 // many-to-many, ver schema.sql): esto conecta dos nodos que existen
 // independientemente ("John colabora en Atlas", "Atlas está reportado en
 // el plan 2026-2"), sin depender de que algún hecho los mencione juntos.
-// Siempre a mano, nunca inferida — mismo criterio fail-closed que
+// Siempre a mano, nunca inferida: mismo criterio fail-closed que
 // merge-nodes.mjs: una relación equivocada contamina cualquier consulta
 // futura de "qué se conecta con X".
 // Uso:

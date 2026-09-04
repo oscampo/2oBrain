@@ -1,4 +1,4 @@
-// Retracta (invalida) un hecho vigente sin reemplazarlo por uno nuevo — para
+// Retracta (invalida) un hecho vigente sin reemplazarlo por uno nuevo: para
 // cuando algo se aprobó por error o dejó de ser relevante sin que haya un
 // hecho nuevo que lo reemplace (si sí lo hay, usa remember.mjs --supersedes).
 // Por defecto nunca borra la fila: mismo principio de siempre, el historial
@@ -7,14 +7,14 @@
 //
 // --purge (2026-09-02): escape hatch deliberadamente incómodo para basura
 // real sin ningún valor histórico (pruebas de dashboard, duplicados de una
-// sesión de debugging) — nunca para una corrección real, que siempre debe
+// sesión de debugging): nunca para una corrección real, que siempre debe
 // quedar auditable. Fail-closed en dos sentidos:
-//   1. Solo borra hechos que YA estén retractados (valid_until no nulo) —
+//   1. Solo borra hechos que YA estén retractados (valid_until no nulo),
 //      nunca borra un hecho vigente en un solo paso, tiene que pasar primero
 //      por --reason. Si algún id de la lista sigue vigente, no se borra NADA
 //      (todo o nada, nunca un purge parcial silencioso).
 //   2. Un nodo solo se puede purgar si no tiene ningún hecho ligado (ni
-//      vigente ni retractado) y ningún otro nodo lo tiene como merged_into —
+//      vigente ni retractado) y ningún otro nodo lo tiene como merged_into,
 //      la propia base de datos ya lo protege (fact_nodes.node_name referencia
 //      nodes sin cascade), esto solo da un mensaje claro antes de intentarlo.
 // Uso:

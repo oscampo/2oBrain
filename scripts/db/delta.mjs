@@ -96,7 +96,7 @@ if (args.quiet) {
   if (pages.length > 0) {
     lines.push(`Páginas (${pages.length}):`);
     for (const p of pages) {
-      lines.push(`  - ${p.slug} (${p.type}) — ${p.title ?? 'sin título'}`);
+      lines.push(`  - ${p.slug} (${p.type}), ${p.title ?? 'sin título'}`);
     }
     lines.push('');
   }
@@ -120,7 +120,7 @@ if (args.quiet) {
     const rebuilt = [`Cambios desde ${since}:`, ''];
     if (pages.length > 0) {
       rebuilt.push(`Páginas (${pages.length}):`);
-      for (const p of pages) rebuilt.push(`  - ${p.slug} (${p.type}) — ${p.title ?? 'sin título'}`);
+      for (const p of pages) rebuilt.push(`  - ${p.slug} (${p.type}), ${p.title ?? 'sin título'}`);
       rebuilt.push('');
     }
     if (facts.length > 0) {

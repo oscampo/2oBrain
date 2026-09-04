@@ -1,10 +1,10 @@
 // Llamada a Gemini con reintento sobre una lista de modelos de respaldo
-// (config/gemini-models.json — mismo archivo que ya usa extract-facts.mjs,
+// (config/gemini-models.json: mismo archivo que ya usa extract-facts.mjs,
 // no se duplica la config, solo el mecanismo de reintento). Google renombra
 // o sobrecarga modelos con frecuencia (razón de fondo por la que el default
 // ya usa el alias "-latest" en vez de fijar versión); reintentar con el
 // siguiente candidato solo tiene sentido para fallos transitorios
-// (503/UNAVAILABLE, timeout, error de red) — cuota agotada o api key
+// (503/UNAVAILABLE, timeout, error de red): cuota agotada o api key
 // inválida no cambian probando otro modelo, ahí hay que rendirse de una vez.
 import { readFileSync } from 'node:fs';
 

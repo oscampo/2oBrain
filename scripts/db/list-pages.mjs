@@ -1,6 +1,6 @@
 // Lista los slugs de páginas existentes. Desde el rediseño node (2026-08-29,
 // ver PLAN-nodos.md) timeline.mjs/remember.mjs ya no toman --slug de hechos
-// (ver list-nodes.mjs para eso) — esto sigue sirviendo para inspeccionar
+// (ver list-nodes.mjs para eso): esto sigue sirviendo para inspeccionar
 // pages tal cual, y para el autocompletado de Timeline en el dashboard viejo.
 // Uso: node list-pages.mjs [--json]
 import { readFileSync } from 'node:fs';
@@ -33,7 +33,7 @@ if (asJson) {
   console.log('No hay páginas cargadas.');
 } else {
   for (const r of rows) {
-    console.log(`${r.slug} (${r.type}) — ${r.title}`);
+    console.log(`${r.slug} (${r.type}), ${r.title}`);
   }
 }
 

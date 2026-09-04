@@ -1,12 +1,12 @@
 // Fase 3: registra un hecho atómico con fecha y fuente obligatorias.
 // Fase 4: antes de insertar, busca hechos vivos parecidos por embedding.
 // Si hay candidatos por encima del umbral, se niega a insertar salvo que
-// se pase --supersedes <id>[,<id>...] o --distinct explícitamente — no hay
+// se pase --supersedes <id>[,<id>...] o --distinct explícitamente: no hay
 // ruta silenciosa para que una contradicción quede sin resolver.
 //
 // Rediseño 2026-08-29 (ver PLAN-nodos.md): --slug (page_slug, columna
 // única) reemplazado por --node (fact_nodes, many-to-many). Etapa 2
-// (2026-08-29): --node ya es opcional — sin él, se busca por embedding entre
+// (2026-08-29): --node ya es opcional: sin él, se busca por embedding entre
 // hechos existentes agrupados por nodo (nodes_similar()) y un clasificador
 // (lib/classify-node.mjs) decide el nodo, o bloquea si no hay confianza
 // suficiente (fail-closed, nunca inserta con nodo nulo o placeholder). Con
@@ -19,7 +19,7 @@
 //   node remember.mjs --claim "texto del hecho" --date 2026-08-22 --source "conversación Claude Code" [--kind fact|event|preference|commitment] [--node nodo1,nodo2] [--create-node] [--aliases "alias1,alias2"] [--confidence 0.9] [--supersedes 12,15] [--distinct] [--confirm-date]
 //
 // --confirm-date: obligatorio si --date no es la fecha real de hoy (America/
-// Bogota) — confirma que un hecho con fecha distinta es intencional
+// Bogota): confirma que un hecho con fecha distinta es intencional
 // (histórico, backfill), no un error de no verificar la fecha antes de llamar.
 //
 // Sin --node, deja que la desambiguación automática lo resuelva (bloquea si no hay confianza suficiente).
@@ -76,13 +76,13 @@ if (!/^\d{4}-\d{2}-\d{2}$/.test(args.date)) {
 
 // --date distinto de hoy es legítimo a propósito (hechos históricos,
 // backfill de extract-facts.mjs sobre una sesión pasada, timelines de
-// proyectos armados en retrospectiva) — nunca debe bloquearse por defecto
+// proyectos armados en retrospectiva): nunca debe bloquearse por defecto
 // solo por eso. Pero un aviso que solo se imprime y sigue de largo es
 // exactamente el tipo de fallo silencioso que causó el error real del
 // 2026-09-03 (hecho #525 quedó fechado 2026-09-01 por no verificar la fecha
 // antes de llamar esto): fácil de no leer entre el resto del output. Fix:
 // bloquea salvo que se pase --confirm-date explícito, mismo patrón que
-// --distinct/--create-node en este mismo script — no es fricción para el
+// --distinct/--create-node en este mismo script: no es fricción para el
 // caso histórico legítimo (un flag, no una re-ejecución completa), y hace
 // imposible que el desfase pase desapercibido en el caso accidental.
 const todayBogota = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
@@ -154,7 +154,7 @@ if (similar.length > 0 && supersedesIds.length === 0 && !args.distinct) {
 }
 
 if (similar.length > 0 && supersedesIds.length === 0 && !args.distinct) {
-  console.error(`Hay ${similar.length} hecho(s) vivo(s) parecido(s) — resuélvelo antes de insertar:\n`);
+  console.error(`Hay ${similar.length} hecho(s) vivo(s) parecido(s), resuélvelo antes de insertar:\n`);
   for (const c of similar) {
     console.error(
       `  #${c.id} [${c.date.toISOString().slice(0, 10)}] (similitud ${c.similarity.toFixed(2)}) ${truncateClaim(c.claim)}`,
@@ -187,7 +187,7 @@ if (supersedesIds.length > 0) {
 // Etapa 2 (PLAN-nodos.md, 2026-08-29): desambiguación por búsqueda vectorial
 // + clasificador. Corre SIEMPRE (Etapa 0: "siempre corre desambiguación
 // después, incluso si viene explícito"), pero solo bloquea cuando --node no
-// vino — si el humano ya eligió explícitamente, la desambiguación es un
+// vino: si el humano ya eligió explícitamente, la desambiguación es un
 // chequeo informativo (stderr), nunca sobreescribe una decisión explícita.
 const { rows: nodeCandidateRows } = await client.query(`select * from nodes_similar($1, 5)`, [vectorLiteral]);
 const nodeCandidates = nodeCandidateRows.map((r) => ({
@@ -211,7 +211,7 @@ let requestedNodes = args.node
 
 if (requestedNodes.length === 0) {
   // Sin --node explícito: la propuesta del clasificador ES la decisión, no
-  // solo una sugerencia — pero solo si pasa el umbral de confianza.
+  // solo una sugerencia: pero solo si pasa el umbral de confianza.
   if (!nodeVerdict || nodeVerdict.confidence < NODE_CONFIDENCE_THRESHOLD) {
     console.error('No se pasó --node y la desambiguación automática no alcanzó confianza suficiente.\n');
     if (nodeCandidates.length > 0) {
@@ -252,7 +252,7 @@ if (requestedNodes.length === 0) {
   console.error(
     `(aviso: la desambiguación automática (${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}) ` +
       `sugiere ${nodeVerdict.verdict === 'new' ? `un nodo nuevo distinto: "${nodeVerdict.node}"` : `el nodo existente "${nodeVerdict.node}"`}` +
-      ` en vez de ${requestedNodes.map((n) => `"${n}"`).join(', ')} — ${nodeVerdict.reasoning}. Se respeta tu elección explícita.)`,
+      ` en vez de ${requestedNodes.map((n) => `"${n}"`).join(', ')}, ${nodeVerdict.reasoning}. Se respeta tu elección explícita.)`,
   );
 }
 
@@ -295,7 +295,7 @@ if (args.aliases) {
 
 // Resuelve cada nodo: debe existir en `nodes` (fail-closed contra typos que
 // crearían un nodo fantasma), salvo --create-node explícito. Si un nodo fue
-// fusionado a otro (merged_into), sigue la cadena al vigente — nadie que
+// fusionado a otro (merged_into), sigue la cadena al vigente: nadie que
 // llame remember.mjs necesita saber que un nodo cambió de nombre.
 const resolvedNodes = [];
 for (const name of requestedNodes) {

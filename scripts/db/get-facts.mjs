@@ -1,5 +1,5 @@
 // Trae hecho(s) por id exacto, vigentes o ya retractados, sin importar
-// estado — para inspeccionar un id puntual (ej. antes de retractarlo o
+// estado: para inspeccionar un id puntual (ej. antes de retractarlo o
 // purgarlo) sin tener que buscarlo en Timeline. No modifica nada.
 // Uso: node get-facts.mjs --id 159,160
 import { readFileSync } from 'node:fs';

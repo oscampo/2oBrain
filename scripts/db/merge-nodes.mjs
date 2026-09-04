@@ -1,7 +1,7 @@
 // Fusiona un nodo en otro: nunca borra, dead-record vía `merged_into` (mismo
 // principio que `forget.mjs` con `facts.valid_until`). Reasigna las filas de
 // `fact_nodes` del nodo viejo al nuevo (evitando duplicados si un hecho ya
-// tenía ambos), y pliega el nombre del nodo viejo como alias del nuevo —
+// tenía ambos), y pliega el nombre del nodo viejo como alias del nuevo,
 // para que una mención literal del nombre viejo en un claim futuro siga
 // ayudando a la desambiguación (ver PLAN-nodos.md, Etapa 2, fix de aliases).
 // Uso:
@@ -51,7 +51,7 @@ const client = new pg.Client({
 await client.connect();
 
 // Resuelve un nombre a su nodo vigente siguiendo la cadena de merged_into,
-// con detección de ciclos — mismo patrón que remember.mjs.
+// con detección de ciclos: mismo patrón que remember.mjs.
 async function resolveLive(name) {
   let current = name;
   const seen = new Set();
@@ -81,7 +81,7 @@ if (fromRows.length === 0) {
   process.exit(1);
 }
 if (fromRows[0].merged_into) {
-  console.error(`Nodo origen "${fromNode}" ya está fusionado en "${fromRows[0].merged_into}" — no se puede volver a fusionar. Fusiona desde el nodo vigente si quieres moverlo otra vez.`);
+  console.error(`Nodo origen "${fromNode}" ya está fusionado en "${fromRows[0].merged_into}", no se puede volver a fusionar. Fusiona desde el nodo vigente si quieres moverlo otra vez.`);
   await client.end();
   process.exit(1);
 }
@@ -89,7 +89,7 @@ if (fromRows[0].merged_into) {
 const toLive = await resolveLive(args.to);
 
 if (toLive === fromNode) {
-  console.error(`"${fromNode}" ya resuelve al mismo nodo vigente ("${toLive}") — nada que fusionar.`);
+  console.error(`"${fromNode}" ya resuelve al mismo nodo vigente ("${toLive}"), nada que fusionar.`);
   await client.end();
   process.exit(1);
 }

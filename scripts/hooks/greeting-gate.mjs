@@ -1,8 +1,11 @@
 // Hook UserPromptSubmit: detecta cuando el usuario saluda como si empezara
 // el día ("buenos días", "iniciemos", "qué tenemos para hoy"...) y fuerza la
-// revisión de la sección "Al iniciar sesión" de MEMORY.md, sin depender de
-// que Claude "se acuerde" ni de que una skill enrutada por un modelo
-// reconozca la intención.
+// revisión del due-job list de HEARTBEAT.md, sin depender de que Claude "se
+// acuerde" ni de que una skill enrutada por un modelo reconozca la
+// intención. HEARTBEAT.md, no MEMORY.md, a propósito: MEMORY.md se poda y
+// reescribe activamente ("cut what no longer earns its place"), un due-job
+// list es configuración estable, no memoria fluida, mezclarlo ahí lo deja
+// en riesgo de desaparecer en una limpieza normal.
 //
 // Por qué esto y no otra cosa:
 //   1. NO es un hook SessionStart: ese solo dispara en un arranque de
@@ -54,9 +57,9 @@ process.stdin.on('end', () => {
       hookEventName: 'UserPromptSubmit',
       permissionDecision: 'allow',
       additionalContext:
-        'Esto suena a arranque del día (primer saludo de hoy). Antes de responder al mensaje, revisa la ' +
-        'sección "Al iniciar sesión" de MEMORY.md (cualquier chequeo programado que hayas anotado ahí) y ' +
-        'actúa en consecuencia -- solo entrega lo que de verdad amerite decirse, sin narrar el chequeo en sí.',
+        'Esto suena a arranque del día (primer saludo de hoy). Antes de responder al mensaje, revisa el ' +
+        'due-job list de HEARTBEAT.md (si existe y tiene jobs habilitados) y actúa según su contrato de ' +
+        'silencio -- solo entrega lo que de verdad amerite decirse, sin narrar el chequeo en sí.',
     },
   }));
   process.exit(0);

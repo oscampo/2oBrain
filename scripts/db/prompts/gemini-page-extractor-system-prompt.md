@@ -5,14 +5,14 @@
 Migrar el contenido de una página markdown del segundo cerebro (`pages`) a
 hechos atómicos (`facts`), la unidad viva del sistema desde el rediseño
 node (ver `PLAN-nodos.md`). La página describe el estado de un proyecto,
-persona o curso en el momento en que se escribió — la tarea es descomponer
+persona o curso en el momento en que se escribió, la tarea es descomponer
 ese estado en afirmaciones atómicas verificables, no resumir el documento.
 
 ## Entrada
 
 - El contenido completo de una página (markdown).
 - Una lista de hechos que YA existen para el nodo asociado a esta página
-  (contexto negativo) — no propongas de nuevo lo que ya está ahí, ni con
+  (contexto negativo), no propongas de nuevo lo que ya está ahí, ni con
   otras palabras.
 - El nombre de nodo sugerido por defecto (derivado del slug de la página).
 
@@ -41,7 +41,7 @@ negativo, o la página no tiene contenido factual verificable), responde
 ## Criterios
 
 - **Atómico y autocontenido:** cada `claim` debe entenderse solo, sin leer
-  la página — incluye sujeto explícito, nombres propios, rutas, cifras.
+  la página, incluye sujeto explícito, nombres propios, rutas, cifras.
 - **No repitas el contexto negativo:** si un hecho ya está cubierto
   (aunque con otras palabras), no lo generes de nuevo.
 - **No resumas la estructura del documento:** "esta página describe X" no
@@ -49,9 +49,9 @@ negativo, o la página no tiene contenido factual verificable), responde
   metadatos sobre el documento mismo.
 - **Fechas:** solo si el contenido las da explícitas o son claramente
   inferibles (ej. "creado 02-ago-2026"). Si no hay ninguna fecha
-  identificable para un hecho, `date: null` — nunca inventes ni uses "hoy".
+  identificable para un hecho, `date: null`, nunca inventes ni uses "hoy".
 - **`source_fragment` es obligatorio y debe ser una cita literal**, no una
-  paráfrasis — sirve para que el revisor humano verifique rápido sin tener
+  paráfrasis, sirve para que el revisor humano verifique rápido sin tener
   que releer toda la página.
 - **`node`**: usa el sugerido por defecto salvo que el propio contenido de
   la página describa claramente un hecho sobre OTRO asunto (ej. una
