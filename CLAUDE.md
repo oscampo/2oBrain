@@ -284,13 +284,47 @@ duplicados/colisión de nombre) y `scripts/db/list-supernode-candidates.mjs`
 resto del sistema de nodos; esta fase solo les da un arranque, no reemplaza
 esa protección.
 
+Antes de crear nada, revisa si `VOYAGE_API_KEY` quedó configurado en la
+Fase 3:
+
+```bash
+grep -q '^VOYAGE_API_KEY=.\+' .env && echo "VOYAGE_OK" || echo "SIN_VOYAGE"
+```
+
+**SIN_VOYAGE**: `create-node.mjs` usa Voyage AI (`embed()`) para su chequeo
+de desambiguación semántica, y esa llamada no tiene manejo de error --
+sin la llave, revienta con un error de Voyage sin explicación en vez de
+fallar con gracia. Agrega `--force` a TODOS los `create-node.mjs` de esta
+fase (salta ese chequeo en vez de intentarlo y romper) y dile al usuario
+antes de seguir: *"Como no configuraste Voyage AI, voy a crear la
+estructura de nodos igual, pero sin el chequeo automático de duplicados --
+y guardar hechos con `remember.mjs` tampoco va a funcionar todavía hasta
+que agregues esa llave (usa la misma llamada de embeddings sin ningún
+guard), así que por ahora me salto el paso de enriquecer con hechos
+reales."* Sáltate directo la segunda PREGUNTA de esta fase (la de
+enriquecer con hechos) en ese caso.
+
+**VOYAGE_OK**: sigue normal, sin `--force`.
+
+Antes de cualquier comando con `--date`, calcula la fecha real (nunca de
+memoria, mismo motivo que obliga `--confirm-date` en `remember.mjs`):
+
+```bash
+date '+%Y-%m-%d'
+```
+
+y reemplaza cada `YYYY-MM-DD` de abajo por ese valor.
+
 **PREGUNTA**:
 ```
 ¿Para qué vas a usar 2oBrain?
 [ ] Trabajo
 [ ] Vida personal
 ```
-(puede marcar una o ambas)
+(puede marcar una, ambas, o ninguna)
+
+Si no marca ninguna, no crees ningún nodo, sigue directo a la Fase 7 -- no
+es un requisito, el usuario puede pedir esta estructura después.
 
 Con la respuesta, crea tú los supernodos con `create-node.mjs`: un nodo raíz
 por cada opción marcada, y debajo un conjunto fijo de sub-supernodos. Van
@@ -302,20 +336,27 @@ después con el mismo comando:
 - **Vida personal** → `habitos`, `rutinas`, `espiritualidad`, `salud`
 
 ```bash
-node scripts/db/create-node.mjs --name trabajo
-node scripts/db/create-node.mjs --name proyectos --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name contactos --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name reuniones --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name trabajo [--force]
+node scripts/db/create-node.mjs --name proyectos --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación" [--force]
+node scripts/db/create-node.mjs --name contactos --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación" [--force]
+node scripts/db/create-node.mjs --name reuniones --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación" [--force]
 
-node scripts/db/create-node.mjs --name vida-personal
-node scripts/db/create-node.mjs --name habitos --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name rutinas --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name espiritualidad --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name salud --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name vida-personal [--force]
+node scripts/db/create-node.mjs --name habitos --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación" [--force]
+node scripts/db/create-node.mjs --name rutinas --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación" [--force]
+node scripts/db/create-node.mjs --name espiritualidad --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación" [--force]
+node scripts/db/create-node.mjs --name salud --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación" [--force]
 ```
+(`[--force]` solo si SIN_VOYAGE, ver arriba.)
 
 (Solo crea los de la rama que el usuario marcó -- si marcó únicamente
 "Trabajo", no crees `vida-personal` ni sus hijos.)
+
+Si algún comando bloquea por colisión de nombre/alias (no la salta ni
+siquiera `--force`, es una protección distinta): es señal de que la Fase 5
+ya creó un nodo con ese mismo nombre al extraer un documento/correo. Usa
+ese nodo existente en vez de forzar uno nuevo -- o si genuinamente es un
+concepto distinto, elige otro nombre para ese supernodo/sub-supernodo.
 
 Estos nodos quedan vacíos a propósito: un supernodo agrupa, no acumula
 hechos propios (verificado en la instancia de desarrollo -- el único hecho
