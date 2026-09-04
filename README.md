@@ -63,7 +63,11 @@ with nothing cloned yet. Before anything else, the agent should:
 2. Clone this repo (`git clone https://github.com/oscampo/2oBrain.git`)
    into a sensible folder, `./2oBrain/` by default unless that collides
    with something already there.
-3. Move into that folder and continue from `CLAUDE.md`, which is a guided
+3. Detach it from this repo (`git remote remove origin`), inside the new
+   folder: a clone keeps pointing at `oscampo/2oBrain` by default, and
+   your copy is meant to become fully yours, not a fork someone could
+   confuse for a place to push back to.
+4. Move into that folder and continue from `CLAUDE.md`, which is a guided
    installation script, not documentation to read passively.
 
 From there, `CLAUDE.md` takes over end to end: creating the Supabase
