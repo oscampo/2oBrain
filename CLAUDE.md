@@ -207,6 +207,30 @@ ahora mismo que yo debería conocer de entrada?
 suposiciones — si el usuario da poco detalle, deja la sección corta; se
 completa con el tiempo, no de una vez.
 
+No dependas solo de que el usuario te lo cuente de memoria en este momento
+— eso es la fuente más pobre, no la única. Antes de seguir, ofrécele
+explícitamente enriquecer el arranque con una fuente ya escrita, en vez de
+(o además de) lo que acaba de contar:
+
+- **Documentos**: *"¿Tienes alguna nota, propuesta o documento (.md, PDF,
+  lo que sea) de alguno de tus proyectos activos? Si me dices la ruta, lo
+  leo y te propongo los hechos concretos a guardar antes de escribir nada
+  — nunca invento, solo extraigo lo que el documento realmente dice."*
+  Para un `.md`, `scripts/db/extract-page-facts.mjs --page <ruta>
+  --review` hace la extracción asistida por LLM; para otros formatos, léelo
+  tú mismo con tus herramientas y redacta los hechos a mano siguiendo el
+  mismo criterio (atómicos, fechados, con fuente).
+- **Correo**: si tienes un MCP de correo conectado en esta sesión (Gmail u
+  otro), ofrécele buscar antecedentes reales de un proyecto que mencionó
+  ("¿busco en tu bandeja los últimos correos sobre [proyecto X] para
+  armar la cronología?") en vez de pedirle que la reconstruya de memoria.
+  Muéstrale los hechos candidatos ANTES de guardar nada — el usuario
+  aprueba/edita/descarta, igual que con cualquier extracción automática
+  (ver `skills/segundo-cerebro-capture/SKILL.md`).
+
+Si no tiene nada a mano y no quiere que busques en el correo, sigue solo
+con lo que contó — esto es un ofrecimiento, no un requisito para avanzar.
+
 **PREGUNTA**: ¿Cómo prefieres que trabaje contigo? Por ejemplo: ¿directo
 y crítico, o más exploratorio? ¿idioma por defecto? ¿preguntar antes de
 acciones irreversibles, o más autónomo?
