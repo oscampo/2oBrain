@@ -410,12 +410,22 @@ un requisito, sirve igual como punto de partida para cuando use
 
 ## Fase 7: Dashboard local
 
-Levántalo y ábrelo tú mismo, no le digas al usuario que lo abra:
+Levántalo y ábrelo tú mismo, no le digas al usuario que lo abra.
+`dashboard-server.mjs` es un servidor persistente, nunca vuelve solo: si
+lo corres como un comando bloqueante normal, el paso nunca termina y toda
+la instalación se cuelga ahí. Ejecútalo en segundo plano -- con la
+herramienta de tu entorno para correr comandos en background si la
+tienes (ej. `run_in_background` de Claude Code), o si no, algo
+equivalente a:
 
 ```bash
 cd scripts/db/server
-node dashboard-server.mjs
+nohup node dashboard-server.mjs > dashboard.log 2>&1 &
 ```
+
+Verifica que de verdad quedó escuchando antes de seguir (ej. `curl -s
+http://localhost:4287 > /dev/null && echo OK`, o revisa `dashboard.log`),
+nunca asumas que arrancó solo porque el comando no dio error.
 
 Si tienes un navegador controlable (Claude Code con Browser pane, o
 similar), ábrelo en `http://localhost:4287` y confirma en vivo que carga
