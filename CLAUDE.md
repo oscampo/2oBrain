@@ -9,7 +9,7 @@ primera vez que alguien abre este repo en Claude Code, tu trabajo es guiar
 la instalación completa, fase por fase, EN ORDEN, sin saltar ninguna ni
 avanzar sin confirmación explícita del usuario. Una vez instalado, este
 mismo archivo sigue siendo tu identidad operativa de todos los días (ver
-Fase 9), no lo borres ni lo reduzcas después de instalar.
+Fase 10), no lo borres ni lo reduzcas después de instalar.
 
 **Principio rector: el trabajo lo haces tú, no el usuario.** Ejecuta cada
 comando tú mismo con tus propias herramientas (Bash, MCP conectados,
@@ -241,9 +241,9 @@ explícitamente, no le fuerces a decidir algo que no le importa todavía.
 
 **PREGUNTA**: ¿Hay alguna captura automática de hechos que quieras activa
 desde ya? (el hook `Stop` de Claude Code, que revisa al cerrar cada turno
-si hay algo capturable, ver Fase 8) ¿O prefieres empezar solo con captura
+si hay algo capturable, ver Fase 9) ¿O prefieres empezar solo con captura
 manual ("guarda este hecho")?
-→ Anota la respuesta, se aplica en la Fase 8 (tú activas el hook, no el
+→ Anota la respuesta, se aplica en la Fase 9 (tú activas el hook, no el
 usuario).
 
 **PREGUNTA**: `HEARTBEAT.md` trae 5 chequeos ya construidos (ambient-delta,
@@ -274,7 +274,85 @@ referencia (no la cambies, es la que el resto del sistema espera;
 **Fase 5 completada**, muéstrale al usuario los 3 archivos resultantes
 para que confirme antes de seguir.
 
-## Fase 6: Dashboard local
+## Fase 6: Estructura inicial de nodos
+
+Un segundo cerebro vacío, sin ningún punto de partida, es más difícil de
+organizar después que uno con un andamiaje simple desde el día uno -- ver
+`scripts/db/create-node.mjs` (creación de nodos con protección contra
+duplicados/colisión de nombre) y `scripts/db/list-supernode-candidates.mjs`
+(detecta después, bajo demanda, nodos que quedaron sin agrupar) para el
+resto del sistema de nodos; esta fase solo les da un arranque, no reemplaza
+esa protección.
+
+**PREGUNTA**:
+```
+¿Para qué vas a usar 2oBrain?
+[ ] Trabajo
+[ ] Vida personal
+```
+(puede marcar una o ambas)
+
+Con la respuesta, crea tú los supernodos con `create-node.mjs`: un nodo raíz
+por cada opción marcada, y debajo un conjunto fijo de sub-supernodos. Van
+fijos a propósito, no se ofrecen como checklist aparte -- alargaría la
+entrevista sin necesidad real, y el usuario siempre puede crear otros
+después con el mismo comando:
+
+- **Trabajo** → `proyectos`, `contactos`, `reuniones`
+- **Vida personal** → `habitos`, `rutinas`, `espiritualidad`, `salud`
+
+```bash
+node scripts/db/create-node.mjs --name trabajo
+node scripts/db/create-node.mjs --name proyectos --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name contactos --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name reuniones --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+
+node scripts/db/create-node.mjs --name vida-personal
+node scripts/db/create-node.mjs --name habitos --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name rutinas --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name espiritualidad --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name salud --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+```
+
+(Solo crea los de la rama que el usuario marcó -- si marcó únicamente
+"Trabajo", no crees `vida-personal` ni sus hijos.)
+
+Estos nodos quedan vacíos a propósito: un supernodo agrupa, no acumula
+hechos propios (verificado en la instancia de desarrollo -- el único hecho
+que tenía un supernodo real ahí era autodescriptivo, "esto agrupa tal
+cosa", no contenido). El contenido real lo traen los hechos que vengan
+después.
+
+**PREGUNTA**: ofrece enriquecer la estructura ahora mismo con hechos reales,
+mismo espíritu que la Fase 5 (documentos/correo antes que memoria):
+*"¿Tienes algún proyecto de trabajo activo, o algún hábito/rutina de tu
+vida personal, que quieras que registre ya? Si tienes un MCP de correo
+conectado en esta sesión, puedo buscar antecedentes de un proyecto que
+menciones, igual que ofrecí en la Fase 5."*
+
+Si el usuario da algo (a mano, o vía correo), por cada hecho candidato:
+
+1. Decide tú, por el contexto de la pregunta que lo originó, a qué
+   sub-supernodo pertenece (`proyectos`, `habitos`, etc.) -- no hace falta
+   el clasificador automático de `remember.mjs` para esto, el contexto de
+   la entrevista ya lo resuelve (mismo criterio que usa `create-node.mjs
+   --parent`: quien construye el nodo ya sabe a qué grupo pertenece).
+2. Créalo y ligalo en un solo paso:
+   `node scripts/db/create-node.mjs --name <nombre-nodo> --parent <sub-supernodo> --date YYYY-MM-DD --reason "..."`
+3. Guarda el hecho en el nodo ya creado (sin `--create-node`, ya existe del
+   paso anterior):
+   `node scripts/db/remember.mjs --claim "..." --date YYYY-MM-DD --source "..." --node <nombre-nodo>`
+
+Muéstrale cada hecho candidato antes de guardarlo, igual que en la Fase 5 --
+nunca inventes, solo lo que la fuente real dice.
+
+Si no tiene nada a mano todavía, sigue solo con la estructura vacía -- no es
+un requisito, sirve igual como punto de partida para cuando use
+`remember.mjs` normalmente más adelante.
+
+**Fase 6 completada.**
+
+## Fase 7: Dashboard local
 
 Levántalo y ábrelo tú mismo, no le digas al usuario que lo abra:
 
@@ -288,12 +366,12 @@ similar), ábrelo en `http://localhost:4287` y confirma en vivo que carga
 el dashboard con sus secciones (Buscar/Timeline/Grafo/Doctor/etc.), no le
 pidas al usuario que lo revise él salvo que no tengas esa herramienta.
 
-## Fase 7: Servidor MCP (opcional)
+## Fase 8: Servidor MCP (opcional)
 
 **PREGUNTA**: ¿Quieres que `search`/`remember` estén disponibles para
 otros clientes MCP (Claude Desktop, Claude Chat/Cowork, cualquier app que
 hable MCP), no solo el dashboard/CLI de este repo?
-- **Si NO**: continúa a la Fase 8. Puedes volver a esto cuando quieras, no
+- **Si NO**: continúa a la Fase 9. Puedes volver a esto cuando quieras, no
   bloquea nada del resto del sistema.
 - **Si SÍ**: hay dos opciones, el usuario elige una (o ambas):
   - **Supabase Edge Function** (`supabase/functions/mcp-server/`): si
@@ -315,7 +393,7 @@ Verifica el deploy elegido con una llamada real (`curl` al endpoint
 resultante, o `tools/list` del protocolo MCP) antes de darlo por hecho,
 nunca asumas que un deploy funcionó solo porque el comando no dio error.
 
-## Fase 8: Hooks (opcional)
+## Fase 9: Hooks (opcional)
 
 Según la respuesta de la Fase 5, actívalos tú mismo, no describas los pasos
 para que el usuario los siga:
@@ -339,7 +417,7 @@ para que el usuario los siga:
 Si el usuario no quiere ninguno de los tres, sigue sin ellos, no son
 obligatorios para que el resto del sistema funcione.
 
-## Fase 9: Cierre
+## Fase 10: Cierre
 
 Muestra esto exacto:
 
