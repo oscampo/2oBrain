@@ -223,10 +223,22 @@ function show(id) {
 // Pensado para el usuario novato que no sabe qué es un proceso ni un exit
 // code: un fallo del dashboard (ej. el servidor con un execPath obsoleto
 // tras horas corriendo) se leía como "esto no sirve" sin ninguna pista de
-// qué hacer. No intenta diagnosticar la causa, da la salida de escape más
-// probable, mediada por el agente en vez de un comando de terminal crudo
-// como primera opción.
+// qué hacer. No basta con mostrarlo siempre que algo falla: la mayoría de
+// los ok:false de este archivo ya traen su propia explicación clara
+// (validación de formulario, un script que bloqueó algo a propósito con
+// su propio mensaje) -- ahí el aviso de reinicio es ruido, no ayuda. Solo
+// aplica cuando NO hay ninguna explicación real: (1) result.error viene de
+// call() cuando fetch() ni siquiera pudo conectar (servidor genuinamente
+// caído, la señal más fuerte de que hace falta reiniciar), o (2) un
+// ok:false sin ningún mensaje en stdout/stderr/texto resuelto (un script
+// que crasheó antes de poder explicarse).
 const RESTART_HINT = 'Si esto no tiene sentido o nada en el dashboard responde, el servidor puede necesitar reiniciarse, cierra esta ventana y solicita a tu LLM "reinicia el servidor del dashboard" o corre node scripts/db/server/dashboard-server.mjs en una terminal dentro de tu carpeta 2oBrain';
+
+function needsRestartHint(result, resolvedText) {
+  if (result.error) return true;
+  if (result.ok) return false;
+  return !result.stdout && !result.stderr && !resolvedText;
+}
 
 function out(container, result) {
   let pre = container.querySelector('pre.out');
@@ -236,8 +248,8 @@ function out(container, result) {
     container.appendChild(pre);
   }
   pre.className = 'out ' + (result.ok ? 'ok' : 'err');
-  pre.textContent = (result.stdout || '') + (result.stderr ? '\n[stderr]\n' + result.stderr : '') || JSON.stringify(result, null, 2);
-  if (!result.ok) pre.textContent += '\n\n' + RESTART_HINT;
+  pre.textContent = (result.stdout || '') + (result.stderr ? '\n[stderr]\n' + result.stderr : '') || (result.error || JSON.stringify(result, null, 2));
+  if (needsRestartHint(result)) pre.textContent += '\n\n' + RESTART_HINT;
 }
 
 function escapeHtml(s) {
@@ -356,14 +368,16 @@ function outMarkdown(container, result, text) {
     box.className = 'out out-md';
     container.appendChild(box);
   }
+  const resolvedText = text ?? (result.stdout || result.answer || '');
   box.className = 'out out-md ' + (result.ok ? 'ok' : 'err');
-  box.innerHTML = renderMarkdown(text ?? (result.stdout || result.answer || ''));
+  box.innerHTML = renderMarkdown(resolvedText || result.error || '');
   container.querySelector('.out-md-stderr')?.remove();
-  if (result.stderr || !result.ok) {
+  const showHint = needsRestartHint(result, resolvedText);
+  if (result.stderr || showHint) {
     const pre = document.createElement('pre');
     pre.className = 'out out-md-stderr';
     pre.style.marginTop = '10px';
-    pre.textContent = (result.stderr ? '[stderr]\n' + result.stderr + '\n\n' : '') + (result.ok ? '' : RESTART_HINT);
+    pre.textContent = (result.stderr ? '[stderr]\n' + result.stderr + '\n\n' : '') + (showHint ? RESTART_HINT : '');
     box.after(pre);
   }
 }
