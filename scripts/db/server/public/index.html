@@ -220,6 +220,14 @@ function show(id) {
   for (const sec of main.querySelectorAll('section')) sec.classList.toggle('active', sec.id === id);
 }
 
+// Pensado para el usuario novato que no sabe qué es un proceso ni un exit
+// code: un fallo del dashboard (ej. el servidor con un execPath obsoleto
+// tras horas corriendo) se leía como "esto no sirve" sin ninguna pista de
+// qué hacer. No intenta diagnosticar la causa, da la salida de escape más
+// probable, mediada por el agente en vez de un comando de terminal crudo
+// como primera opción.
+const RESTART_HINT = 'Si esto no tiene sentido o nada en el dashboard responde, el servidor puede necesitar reiniciarse, cierra esta ventana y solicita a tu LLM "reinicia el servidor del dashboard" o corre node scripts/db/server/dashboard-server.mjs en una terminal dentro de tu carpeta 2oBrain';
+
 function out(container, result) {
   let pre = container.querySelector('pre.out');
   if (!pre) {
@@ -229,6 +237,7 @@ function out(container, result) {
   }
   pre.className = 'out ' + (result.ok ? 'ok' : 'err');
   pre.textContent = (result.stdout || '') + (result.stderr ? '\n[stderr]\n' + result.stderr : '') || JSON.stringify(result, null, 2);
+  if (!result.ok) pre.textContent += '\n\n' + RESTART_HINT;
 }
 
 function escapeHtml(s) {
@@ -350,11 +359,11 @@ function outMarkdown(container, result, text) {
   box.className = 'out out-md ' + (result.ok ? 'ok' : 'err');
   box.innerHTML = renderMarkdown(text ?? (result.stdout || result.answer || ''));
   container.querySelector('.out-md-stderr')?.remove();
-  if (result.stderr) {
+  if (result.stderr || !result.ok) {
     const pre = document.createElement('pre');
     pre.className = 'out out-md-stderr';
     pre.style.marginTop = '10px';
-    pre.textContent = '[stderr]\n' + result.stderr;
+    pre.textContent = (result.stderr ? '[stderr]\n' + result.stderr + '\n\n' : '') + (result.ok ? '' : RESTART_HINT);
     box.after(pre);
   }
 }
