@@ -317,8 +317,15 @@ para que el usuario los siga:
   usuario que la escriba él.
 - **Hook `post-commit`**: corre tú `git config core.hooksPath
   scripts/hooks/git` en este repo, una sola vez.
+- **Hook `UserPromptSubmit` (`greeting-gate.mjs`)**: detecta un saludo de
+  arranque de día ("buenos días", "iniciemos", "qué tenemos para hoy"...)
+  y fuerza revisar la sección "Al iniciar sesión" de `MEMORY.md` antes de
+  responder, sin depender de que Claude lo recuerde por su cuenta. Actívalo
+  tú en la configuración de hooks de Claude Code apuntando a
+  `scripts/hooks/greeting-gate.mjs`, mismo criterio que el hook `Stop`
+  (revisa la sintaxis vigente antes de escribirla).
 
-Si el usuario no quiere ninguno de los dos, sigue sin ellos, no son
+Si el usuario no quiere ninguno de los tres, sigue sin ellos, no son
 obligatorios para que el resto del sistema funcione.
 
 ## Fase 9: Cierre

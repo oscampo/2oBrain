@@ -38,8 +38,10 @@ or a degraded one; the MCP server is the same thin layer for all of them.
   `search`/`remember` to any MCP client over the network, Claude Desktop,
   Claude Code, Claude Chat/Cowork, or anything else that speaks MCP.
 - **`scripts/hooks/`**, a Claude Code `Stop` hook (nudges you to capture a
-  fact before closing a turn) and a git `post-commit` hook (reloads
-  page embeddings when you commit a `.md` file).
+  fact before closing a turn), a `UserPromptSubmit` hook (detects a
+  day-start greeting and forces a review of `MEMORY.md`'s startup checklist,
+  deterministically, not by hoping Claude remembers), and a git
+  `post-commit` hook (reloads page embeddings when you commit a `.md` file).
 - **`skills/`**, `segundo-cerebro-capture` (when/how to save a fact from
   a session that has DB access) and `extract-code-facts` (extract facts
   from a session that has *no* access to this repo, another project,
