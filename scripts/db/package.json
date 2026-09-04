@@ -1,0 +1,11 @@
+{
+  "name": "2obrain-db",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "gray-matter": "^4.0.3",
+    "hono": "^4.13.5",
+    "pg": "^8.13.0"
+  }
+}
