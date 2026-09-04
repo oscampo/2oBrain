@@ -49,12 +49,32 @@ or a degraded one; the MCP server is the same thin layer for all of them.
 
 ## Quick start
 
-Follow `CLAUDE.md`, it's an interview script. Open this repo in Claude
-Code and it will walk you through: creating the Supabase project and
-applying `scripts/db/schema.sql`, filling in `.env` (see `.env.example`),
-choosing which MCP server to deploy (or skipping that and using the
-dashboard/CLI only), and writing your own `SOUL.md`/`USER.md` so the
-assistant knows who it's working with.
+Tell your coding agent (Claude Code, or anything similarly capable):
+
+```
+Sigue las instrucciones definidas aquí: https://github.com/oscampo/2oBrain
+```
+
+That single message is meant to be enough, even in a brand new session
+with nothing cloned yet. Before anything else, the agent should:
+
+1. Check whether `git` is installed (`git --version`); if not, install it
+   for the detected OS itself, not ask you to go do it.
+2. Clone this repo (`git clone https://github.com/oscampo/2oBrain.git`)
+   into a sensible folder, `./2oBrain/` by default unless that collides
+   with something already there.
+3. Move into that folder and continue from `CLAUDE.md`, which is a guided
+   installation script, not documentation to read passively.
+
+From there, `CLAUDE.md` takes over end to end: creating the Supabase
+project and applying `scripts/db/schema.sql`, filling in `.env` (see
+`.env.example`), choosing which MCP server to deploy (or skipping that
+and using the dashboard/CLI only), and writing your own `SOUL.md`/
+`USER.md` so the assistant knows who it's working with.
+
+Once installed, reopen your agent **from inside this cloned folder** in
+future sessions, that's what makes your `SOUL.md`/`USER.md`/`MEMORY.md`
+identity persist turn to turn instead of starting over each time.
 
 ## What doesn't ship here
 
