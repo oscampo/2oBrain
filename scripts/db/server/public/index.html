@@ -1,0 +1,1848 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>2nd-brain — dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="/vendor/d3.v7.min.js"></script>
+<style>
+  /* Temas: ver sección "Configuración". data-theme en <html> gana siempre;
+     sin él, "prefers-color-scheme"/"prefers-contrast" del sistema deciden
+     (tema por defecto = "seguir el sistema"). --accent-text y --console-bg
+     evitan los 2 colores que antes quedaban fijos fuera del sistema de
+     variables (botón principal, caja de salida). */
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #2a2f3a; --text: #e6e8eb;
+    --muted: #8a8f99; --accent: #6ea8fe; --accent-text: #0f1115; --console-bg: #0a0c10;
+    --ok: #4caf6d; --warn: #d8a531; --err: #e05561;
+    --ui-scale: 1;
+  }
+  html[data-theme="light"] {
+    --bg: #f7f8fa; --panel: #ffffff; --border: #d8dce2; --text: #1a1d23;
+    --muted: #5b6270; --accent: #2f6fed; --accent-text: #ffffff; --console-bg: #eef0f3;
+    --ok: #1e8e4f; --warn: #a86a00; --err: #c62839;
+  }
+  html[data-theme="hc-dark"] {
+    --bg: #000000; --panel: #0a0a0a; --border: #ffffff; --text: #ffffff;
+    --muted: #d8d8d8; --accent: #66d9ff; --accent-text: #000000; --console-bg: #000000;
+    --ok: #00e676; --warn: #ffd600; --err: #ff6e6e;
+  }
+  html[data-theme="hc-light"] {
+    --bg: #ffffff; --panel: #ffffff; --border: #000000; --text: #000000;
+    --muted: #2b2b2b; --accent: #0000ee; --accent-text: #ffffff; --console-bg: #f0f0f0;
+    --ok: #006400; --warn: #7a5c00; --err: #a00000;
+  }
+  @media (prefers-color-scheme: light) {
+    html:not([data-theme]) {
+      --bg: #f7f8fa; --panel: #ffffff; --border: #d8dce2; --text: #1a1d23;
+      --muted: #5b6270; --accent: #2f6fed; --accent-text: #ffffff; --console-bg: #eef0f3;
+      --ok: #1e8e4f; --warn: #a86a00; --err: #c62839;
+    }
+  }
+  @media (prefers-contrast: more) and (prefers-color-scheme: light) {
+    html:not([data-theme]) { --border: #000000; --muted: #202020; }
+  }
+  @media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+    html:not([data-theme]) { --border: #ffffff; --muted: #d8d8d8; }
+  }
+  html[data-density="compact"] { --ui-scale: 0.85; }
+  html[data-density="large"] { --ui-scale: 1.25; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, sans-serif; font-size: calc(14px * var(--ui-scale)); }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; }
+  header h1 { font-size: calc(15px * var(--ui-scale)); margin: 0; font-weight: 600; }
+  header .badge { font-size: calc(11px * var(--ui-scale)); color: var(--warn); border: 1px solid var(--warn); padding: 2px 8px; border-radius: 999px; }
+  .layout { display: flex; min-height: calc(100vh - 49px); }
+  nav { width: calc(190px * var(--ui-scale)); border-right: 1px solid var(--border); padding: 12px 0; flex-shrink: 0; }
+  nav button { display: block; width: 100%; text-align: left; padding: calc(9px * var(--ui-scale)) 18px; background: none; border: none; color: var(--muted); cursor: pointer; font-size: calc(13px * var(--ui-scale)); }
+  nav button:hover { color: var(--text); background: var(--panel); }
+  nav button.active { color: var(--accent); background: var(--panel); border-left: 2px solid var(--accent); padding-left: 16px; }
+  .nav-group {
+    margin: calc(16px * var(--ui-scale)) 10px calc(6px * var(--ui-scale));
+    padding: calc(5px * var(--ui-scale)) 12px;
+    font-size: calc(10.5px * var(--ui-scale)); font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); border-radius: 5px;
+  }
+  .nav-group:first-child { margin-top: calc(6px * var(--ui-scale)); }
+  main { flex: 1; padding: 22px 26px; max-width: 900px; }
+  section { display: none; }
+  section.active { display: block; }
+  h2 { font-size: calc(16px * var(--ui-scale)); margin: 0 0 4px; }
+  .hint { color: var(--muted); font-size: calc(12px * var(--ui-scale)); margin: 0 0 16px; }
+  ul.scenarios { margin: 0; padding-left: 20px; font-size: calc(13px * var(--ui-scale)); line-height: 1.6; }
+  ul.scenarios li { margin-bottom: 12px; }
+  ul.scenarios code { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: calc(12px * var(--ui-scale)); }
+  ul.scenarios em { color: var(--muted); font-style: normal; }
+  label { display: block; font-size: calc(12px * var(--ui-scale)); color: var(--muted); margin: 10px 0 4px; }
+  input[type=text], input[type=date], input[type=time], input[type=number], input[type=color], select, textarea {
+    width: 100%; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: calc(7px * var(--ui-scale)) 9px; border-radius: 6px; font-size: calc(13px * var(--ui-scale)); font-family: inherit;
+  }
+  input[type=color] { padding: 4px; height: calc(34px * var(--ui-scale)); cursor: pointer; }
+  textarea { font-family: ui-monospace, monospace; min-height: 90px; resize: vertical; }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  .checkline { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+  .checkline label { margin: 0; }
+  button.run {
+    margin-top: 16px; background: var(--accent); color: var(--accent-text); border: none; padding: calc(8px * var(--ui-scale)) 18px;
+    border-radius: 6px; font-size: calc(13px * var(--ui-scale)); font-weight: 600; cursor: pointer;
+  }
+  button.run:disabled { opacity: 0.5; cursor: default; }
+  button.secondary { background: none; border: 1px solid var(--border); color: var(--text); margin-left: 8px; }
+  .out {
+    margin-top: 16px; background: var(--console-bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 12px; font-size: calc(12.5px * var(--ui-scale)); max-height: 60vh; overflow-y: auto;
+  }
+  pre.out { white-space: pre-wrap; word-break: break-word; }
+  .out.err { border-color: var(--err); }
+  .out.ok { border-color: var(--ok); }
+  .out-md { font-size: 13.5px; line-height: 1.6; }
+  .out-md h2, .out-md h3, .out-md h4, .out-md h5, .out-md h6 { margin: 16px 0 6px; color: var(--text); }
+  .out-md :first-child { margin-top: 0; }
+  .out-md p { margin: 0 0 10px; }
+  .out-md ul, .out-md ol { margin: 0 0 10px; padding-left: 22px; }
+  .out-md li { margin-bottom: 4px; }
+  .out-md hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+  .out-md strong { color: var(--text); font-weight: 600; }
+  .out-md code { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 12px; font-family: ui-monospace, monospace; }
+  .out-md-table-wrap { overflow-x: auto; margin: 0 0 10px; }
+  .out-md table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  .out-md th, .out-md td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+  .out-md th { background: var(--panel); color: var(--text); white-space: nowrap; }
+  .status { font-size: 12px; margin-top: 10px; color: var(--muted); }
+  .fact-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-top: 14px; }
+  .fact-card.excluded { opacity: 0.5; }
+  .fact-card .fc-top { display: flex; align-items: flex-start; gap: 10px; }
+  .fact-card .fc-top label { margin: 0; color: var(--text); font-size: 13px; }
+  .fact-card textarea { min-height: 60px; }
+  .fact-card .fc-fragment { color: var(--muted); font-size: 12px; font-style: italic; margin-top: 8px; }
+  .fact-card .fc-suggestions { color: var(--accent); font-size: 12px; margin-top: 6px; cursor: default; }
+  .fact-card .fc-suggestions span { cursor: pointer; text-decoration: underline dotted; }
+  .gph-stats { display: flex; flex-wrap: wrap; gap: 10px; }
+  .gph-stat { display: flex; align-items: baseline; gap: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; }
+  .gph-stat b { font-size: 16px; color: var(--accent); font-variant-numeric: tabular-nums; }
+  .gph-stat span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .gph-circle { fill: color-mix(in srgb, var(--graph-normal, var(--accent)) 18%, transparent); stroke: var(--graph-normal, var(--accent)); stroke-width: 2; }
+  .gph-circle.gph-meta { fill: color-mix(in srgb, var(--graph-meta, var(--warn)) 18%, transparent); stroke: var(--graph-meta, var(--warn)); stroke-width: 2; stroke-dasharray: 4 3; }
+  .gph-circle.gph-circle-highlight { fill: color-mix(in srgb, var(--graph-highlight, var(--err)) 30%, transparent); stroke: var(--graph-highlight, var(--err)); stroke-width: 2.5; }
+  .gph-count { font-size: 12px; font-weight: 600; fill: var(--graph-normal, var(--accent)); text-anchor: middle; }
+  .gph-node.gph-meta .gph-count { fill: var(--graph-meta, var(--warn)); }
+  /* Alto contraste (hallazgo del usuario): el relleno semitransparente de abajo
+     deja ver la línea/flecha de la conexión por debajo, dificultando leer el
+     número — no es problema de orden de capas (los links ya se dibujan antes
+     que los nodos), es que la transparencia deja pasar lo de atrás. En
+     oscuro/claro se deja igual (el borde es sutil ahí, el usuario confirmó que no
+     molesta); en alto contraste, relleno sólido + número en --accent-text
+     (mismo color ya pensado para leerse encima de un color saturado sólido,
+     válido para accent/warn/err porque en ambos temas hc- los tres son o
+     todos claros (hc-dark) o todos oscuros (hc-light)). */
+  html[data-theme="hc-dark"] .gph-circle, html[data-theme="hc-light"] .gph-circle { fill: var(--graph-normal, var(--accent)); }
+  html[data-theme="hc-dark"] .gph-circle.gph-meta, html[data-theme="hc-light"] .gph-circle.gph-meta { fill: var(--graph-meta, var(--warn)); }
+  html[data-theme="hc-dark"] .gph-circle.gph-circle-highlight, html[data-theme="hc-light"] .gph-circle.gph-circle-highlight { fill: var(--graph-highlight, var(--err)); }
+  html[data-theme="hc-dark"] .gph-count, html[data-theme="hc-light"] .gph-count,
+  html[data-theme="hc-dark"] .gph-node.gph-meta .gph-count, html[data-theme="hc-light"] .gph-node.gph-meta .gph-count {
+    fill: var(--accent-text);
+  }
+  .gph-label { font-size: 10.5px; fill: var(--muted); }
+  .gph-tooltip { position: absolute; transform: translate(-50%, -100%); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; pointer-events: none; z-index: 10; }
+  .gph-ctx-menu { display: none; position: fixed; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px; z-index: 50; box-shadow: 0 6px 20px rgba(0,0,0,.45); }
+  .gph-ctx-menu button { display: block; width: 100%; text-align: left; padding: 7px 14px; background: none; border: none; color: var(--text); font-size: 13px; cursor: pointer; border-radius: 5px; white-space: nowrap; }
+  .gph-ctx-menu button:hover { background: var(--border); }
+  .gph-edge { stroke: var(--border); stroke-width: 1.6; }
+  .gph-edge-label { font-size: 10px; fill: var(--muted); }
+  .gph-legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 11px; color: var(--muted); }
+  .gph-legend-item { display: flex; align-items: center; gap: 6px; }
+  .gph-dot { width: 12px; height: 12px; border-radius: 50%; background: color-mix(in srgb, var(--graph-normal, var(--accent)) 18%, transparent); border: 2px solid var(--graph-normal, var(--accent)); }
+  .gph-dot.gph-meta { background: color-mix(in srgb, var(--graph-meta, var(--warn)) 18%, transparent); border: 2px dashed var(--graph-meta, var(--warn)); }
+</style>
+</head>
+<body>
+<header>
+  <h1>2nd-brain dashboard</h1>
+  <span class="badge">solo local — 127.0.0.1</span>
+</header>
+<div class="layout">
+  <nav id="nav"></nav>
+  <main id="main"></main>
+</div>
+
+<script>
+// Agrupado por lo que cada sección hace, no por cuándo se construyó
+// (discutido y acordado con el usuario, 2026-09-03). "group" cambia entre
+// entradas consecutivas dispara un encabezado nuevo en el nav.
+const SECTIONS = [
+  { id: 'search', label: 'Buscar', group: 'Consultar' },
+  { id: 'timeline', label: 'Timeline', group: 'Consultar' },
+  { id: 'node-status', label: 'Estado de nodo', group: 'Consultar' },
+  { id: 'graph', label: 'Grafo', group: 'Consultar' },
+  { id: 'delta', label: 'Delta', group: 'Consultar' },
+
+  { id: 'remember', label: 'Guardar hecho', group: 'Hechos' },
+  { id: 'remember-batch', label: 'Guardar lote', group: 'Hechos' },
+  { id: 'forget', label: 'Retractar', group: 'Hechos' },
+  { id: 'recategorize', label: 'Recategorizar hecho', group: 'Hechos' },
+
+  { id: 'merge-nodes', label: 'Fusionar nodos', group: 'Nodos' },
+  { id: 'aliases', label: 'Alias', group: 'Nodos' },
+  { id: 'relations', label: 'Relaciones', group: 'Nodos' },
+
+  { id: 'extract-facts', label: 'Extraer de sesión', group: 'Extraer' },
+  { id: 'extract-page-facts', label: 'Extraer de página', group: 'Extraer' },
+
+  { id: 'doctor', label: 'Doctor', group: 'Sistema' },
+  { id: 'models', label: 'Modelos', group: 'Sistema' },
+  { id: 'settings', label: 'Configuración', group: 'Sistema' },
+];
+
+const nav = document.getElementById('nav');
+const main = document.getElementById('main');
+
+let lastGroup = null;
+for (const s of SECTIONS) {
+  if (s.group !== lastGroup) {
+    const h = document.createElement('div');
+    h.className = 'nav-group';
+    h.textContent = s.group;
+    nav.appendChild(h);
+    lastGroup = s.group;
+  }
+  const btn = document.createElement('button');
+  btn.textContent = s.label;
+  btn.dataset.target = s.id;
+  btn.addEventListener('click', () => show(s.id));
+  nav.appendChild(btn);
+}
+
+function show(id) {
+  for (const btn of nav.querySelectorAll('button')) btn.classList.toggle('active', btn.dataset.target === id);
+  for (const sec of main.querySelectorAll('section')) sec.classList.toggle('active', sec.id === id);
+}
+
+function out(container, result) {
+  let pre = container.querySelector('pre.out');
+  if (!pre) {
+    pre = document.createElement('pre');
+    pre.className = 'out';
+    container.appendChild(pre);
+  }
+  pre.className = 'out ' + (result.ok ? 'ok' : 'err');
+  pre.textContent = (result.stdout || '') + (result.stderr ? '\n[stderr]\n' + result.stderr : '') || JSON.stringify(result, null, 2);
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Renderer de Markdown minimalista, a propósito (sin librería externa, sin
+// build step) — cubre solo lo que las respuestas sintetizadas por LLM
+// (node-status.mjs, synthesize.mjs) realmente producen: encabezados #/##/###,
+// **negrita**, *cursiva*, listas "- " y "1. ", "---" como separador, tablas
+// GFM ("| col | col |"), párrafos. No es un parser de Markdown general — no
+// hace falta serlo para este uso.
+function renderMarkdown(md) {
+  const lines = escapeHtml(md).split(/\r?\n/);
+  let html = '';
+  let listType = null; // 'ul' | 'ol' | null
+  let para = [];
+
+  function splitTableRow(line) {
+    // quita la barra inicial/final opcional antes de separar celdas.
+    return line.replace(/^\|/, '').replace(/\|$/, '').split('|').map((c) => c.trim());
+  }
+  function isTableSeparator(line) {
+    return /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$/.test(line);
+  }
+
+  function inline(s) {
+    // Los code spans (`...`) se extraen primero para que su contenido
+    // (guiones bajos, asteriscos de identificadores de código) no se
+    // confunda con énfasis — se restauran al final como <code>.
+    const codeSpans = [];
+    s = s.replace(/`([^`]+?)`/g, (_, code) => {
+      codeSpans.push(code);
+      return `@@CS${codeSpans.length - 1}@@`;
+    });
+    s = s
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/__(.+?)__/g, '<strong>$1</strong>')
+      .replace(/(?<!\*)\*(?!\*)([^*]+?)\*(?!\*)/g, '<em>$1</em>')
+      .replace(/(?<!_)_(?!_)([^_]+?)_(?!_)/g, '<em>$1</em>');
+    return s.replace(/@@CS(\d+)@@/g, (_, i) => `<code>${codeSpans[Number(i)]}</code>`);
+  }
+  function flushPara() {
+    if (para.length) { html += `<p>${inline(para.join(' '))}</p>`; para = []; }
+  }
+  function closeList() {
+    if (listType) { html += `</${listType}>`; listType = null; }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const heading = line.match(/^(#{1,6})\s+(.*)$/);
+    const ulItem = line.match(/^[-*]\s+(.*)$/);
+    const olItem = line.match(/^\d+\.\s+(.*)$/);
+
+    if (!line) { flushPara(); closeList(); continue; }
+    // Tabla GFM: una fila con "|" seguida de una fila separadora
+    // ("|---|---|") confirma que es una tabla y no una lista/párrafo con
+    // barras sueltas — sin esa segunda línea, no se trata como tabla.
+    if (line.includes('|') && isTableSeparator((lines[i + 1] || '').trim())) {
+      flushPara(); closeList();
+      const header = splitTableRow(line);
+      i += 2; // salta la fila de encabezado y la separadora
+      const rows = [];
+      while (i < lines.length && lines[i].trim().includes('|')) {
+        rows.push(splitTableRow(lines[i].trim()));
+        i++;
+      }
+      i--; // el for++ vuelve a avanzar uno
+      html += '<div class="out-md-table-wrap"><table><thead><tr>';
+      for (const cell of header) html += `<th>${inline(cell)}</th>`;
+      html += '</tr></thead><tbody>';
+      for (const row of rows) {
+        html += '<tr>';
+        for (const cell of row) html += `<td>${inline(cell)}</td>`;
+        html += '</tr>';
+      }
+      html += '</tbody></table></div>';
+      continue;
+    }
+    if (/^-{3,}$/.test(line)) { flushPara(); closeList(); html += '<hr>'; continue; }
+    if (heading) {
+      flushPara(); closeList();
+      const level = Math.min(heading[1].length + 2, 6); // ### -> h5, deja h1/h2 para el layout general
+      html += `<h${level}>${inline(heading[2])}</h${level}>`;
+      continue;
+    }
+    if (ulItem) {
+      flushPara();
+      if (listType !== 'ul') { closeList(); html += '<ul>'; listType = 'ul'; }
+      html += `<li>${inline(ulItem[1])}</li>`;
+      continue;
+    }
+    if (olItem) {
+      flushPara();
+      if (listType !== 'ol') { closeList(); html += '<ol>'; listType = 'ol'; }
+      html += `<li>${inline(olItem[1])}</li>`;
+      continue;
+    }
+    closeList();
+    para.push(line);
+  }
+  flushPara();
+  closeList();
+  return html;
+}
+
+// Variante de out() para respuestas de síntesis (prosa de un LLM, no salida
+// tabular/plana de un script) — renderiza el markdown en vez de mostrarlo
+// crudo. stderr (progreso/errores del synthesize) se mantiene como texto
+// plano aparte, nunca como prosa.
+function outMarkdown(container, result, text) {
+  let box = container.querySelector('.out-md');
+  if (!box) {
+    box = document.createElement('div');
+    box.className = 'out out-md';
+    container.appendChild(box);
+  }
+  box.className = 'out out-md ' + (result.ok ? 'ok' : 'err');
+  box.innerHTML = renderMarkdown(text ?? (result.stdout || result.answer || ''));
+  container.querySelector('.out-md-stderr')?.remove();
+  if (result.stderr) {
+    const pre = document.createElement('pre');
+    pre.className = 'out out-md-stderr';
+    pre.style.marginTop = '10px';
+    pre.textContent = '[stderr]\n' + result.stderr;
+    box.after(pre);
+  }
+}
+
+// Misma fuente de verdad que remember.mjs/remember-batch.mjs (--confirm-date,
+// hechos #528/#530): America/Bogota, no la zona horaria del navegador.
+function todayBogota() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+}
+
+// --- Configuración (tema, color de acento, colores del grafo, densidad,
+// reducir movimiento) — persistida en localStorage, por navegador, no
+// sincronizada entre máquinas. Sección "Configuración" al final del nav.
+const SETTINGS_KEY = 'segundo-cerebro-dashboard-settings-v1';
+const DEFAULT_SETTINGS = {
+  theme: 'system', // 'system' | 'dark' | 'light' | 'hc-dark' | 'hc-light'
+  accent: '', // '' = usa el default del tema; ignorado en hc-dark/hc-light (protege el contraste garantizado)
+  graphNormal: '', graphMeta: '', graphHighlight: '', // '' = heredan de --accent/--warn/--err
+  density: 'comfortable', // 'compact' | 'comfortable' | 'large'
+  reduceMotion: 'system', // 'system' | 'on' | 'off'
+  searchSynthProvider: 'ollama', // proveedor por defecto para la respuesta sintetizada de "Buscar"
+  searchSynthModel: '', // '' = auto (probar en orden)
+};
+
+function loadSettings() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    return { ...DEFAULT_SETTINGS, ...stored };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+let settings = loadSettings();
+
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {}
+}
+
+function isHighContrastTheme() {
+  return settings.theme === 'hc-dark' || settings.theme === 'hc-light';
+}
+
+function prefersReducedMotion() {
+  if (settings.reduceMotion === 'on') return true;
+  if (settings.reduceMotion === 'off') return false;
+  try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+}
+
+function applySettings() {
+  const html = document.documentElement;
+
+  if (settings.theme === 'system') html.removeAttribute('data-theme');
+  else html.dataset.theme = settings.theme;
+
+  html.dataset.density = settings.density;
+
+  // Override de color de acento: bloqueado en alto contraste a propósito —
+  // esos temas existen para garantizar un contraste mínimo, y un acento
+  // elegido a mano podría romper esa garantía sin que quien lo elige se dé
+  // cuenta (pidió alto contraste, no "casi" alto contraste).
+  if (settings.accent && !isHighContrastTheme()) html.style.setProperty('--accent', settings.accent);
+  else html.style.removeProperty('--accent');
+
+  if (settings.graphNormal && !isHighContrastTheme()) html.style.setProperty('--graph-normal', settings.graphNormal);
+  else html.style.removeProperty('--graph-normal');
+  if (settings.graphMeta && !isHighContrastTheme()) html.style.setProperty('--graph-meta', settings.graphMeta);
+  else html.style.removeProperty('--graph-meta');
+  if (settings.graphHighlight && !isHighContrastTheme()) html.style.setProperty('--graph-highlight', settings.graphHighlight);
+  else html.style.removeProperty('--graph-highlight');
+}
+
+applySettings();
+
+async function call(method, url, body) {
+  let res;
+  try {
+    res = await fetch(url, {
+      method,
+      headers: body ? { 'content-type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    return { ok: false, error: `No se pudo conectar: ${err.message}` };
+  }
+  try {
+    return await res.json();
+  } catch {
+    // respuesta no-JSON (ej. 404 plano de una ruta que no existe) — no dejar
+    // que esto se propague sin capturar, un llamador esperando el objeto
+    // {ok, ...} de vuelta se quedaría colgado si esto lanza.
+    return { ok: false, error: `${res.status} ${res.statusText}` };
+  }
+}
+
+// Variante de call() para endpoints que responden en streaming (texto
+// plano, no un JSON al final): lee el body como stream y le pasa cada
+// chunk a onChunk apenas llega, para pintar avance real en vez de un
+// spinner ciego hasta que todo termine. Devuelve {ok} según el código
+// "[EXIT:N]" que el propio endpoint escribe al final (ver
+// /api/remember-batch/stream en dashboard-server.mjs).
+async function callStream(url, body, onChunk) {
+  let res;
+  try {
+    res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  } catch (err) {
+    onChunk(`No se pudo conectar: ${err.message}`);
+    return { ok: false };
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let full = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const text = decoder.decode(value, { stream: true });
+    full += text;
+    onChunk(text);
+  }
+  const m = full.match(/\[EXIT:(-?\d+)\]\s*$/);
+  return { ok: res.ok && m !== null && m[1] === '0', raw: full };
+}
+
+// Ingesta de un lote con avance en vivo: usa el botón "run" de la sección
+// (busca [id$=-run]) para mostrar contador de progreso, deshabilitarlo
+// mientras corre, y pintar cada línea de remember-batch.mjs (embedding,
+// clasificador, "Registrado #N") apenas llega, no solo el resumen final.
+async function runRememberBatchStream(sec, body, btn) {
+  const total = body.facts.length;
+  let pre = sec.querySelector('pre.out');
+  if (!pre) { pre = document.createElement('pre'); pre.className = 'out'; sec.appendChild(pre); }
+  pre.className = 'out';
+  pre.textContent = `Ingiriendo 0/${total}...\n`;
+  const origLabel = btn.textContent;
+  btn.disabled = true;
+  let done = 0;
+  const result = await callStream('/api/remember-batch/stream', body, (chunk) => {
+    pre.textContent += chunk;
+    pre.scrollTop = pre.scrollHeight;
+    const matches = chunk.match(/^\[\d+\/\d+\]/gm);
+    if (matches) done += matches.length;
+    if (done > 0) btn.textContent = `Ingiriendo ${Math.min(done, total)}/${total}...`;
+  });
+  pre.className = 'out ' + (result.ok ? 'ok' : 'err');
+  btn.disabled = false;
+  btn.textContent = origLabel;
+  return result;
+}
+
+function section(id, title, hint, bodyHtml) {
+  const sec = document.createElement('section');
+  sec.id = id;
+  sec.innerHTML = `<h2>${title}</h2><p class="hint">${hint}</p>${bodyHtml}`;
+  main.appendChild(sec);
+  return sec;
+}
+
+// --- Buscar ---
+// Por defecto muestra la respuesta SINTETIZADA (a partir de search.mjs, con
+// el proveedor/modelo elegido en Configuración), no los fragmentos crudos --
+// decisión del usuario el 2026-09-03 tras comparar la salida cruda del
+// dashboard contra la misma pregunta vía MyMCP en Obsidian/Neural Composer:
+// la respuesta redactada es lo que de verdad se quiere leer, los fragmentos
+// crudos son la excepción para verificar una cita, no el caso por defecto.
+// "Ver datos crudos" los muestra sin volver a buscar (ya se pidieron ambos
+// en la misma corrida).
+{
+  const sec = section('search', 'Buscar', 'Busca en páginas y hechos combinando texto y significado ("search.mjs") y redacta una respuesta a partir de los fragmentos encontrados. El proveedor/modelo de la síntesis se elige en Configuración. Activa "Ver datos crudos" para ver los fragmentos originales (sin redactar) en vez de o además de la respuesta.',
+    `<label>Pregunta</label><input type="text" id="search-q" placeholder="ej. presupuesto del proyecto Atlas">
+     <div class="checkline" style="margin-top:10px"><input type="checkbox" id="search-raw"><label for="search-raw">Ver datos crudos</label></div>
+     <button class="run" id="search-run">Buscar</button>
+     <div id="search-answer"></div>
+     <div id="search-raw-box" style="display:none; margin-top:16px"></div>`);
+
+  const answerEl = sec.querySelector('#search-answer');
+  const rawBox = sec.querySelector('#search-raw-box');
+  const rawCheckbox = sec.querySelector('#search-raw');
+
+  function renderAnswer(text, isError) {
+    answerEl.innerHTML = '';
+    const box = document.createElement('div');
+    box.className = 'out out-md ' + (isError ? 'err' : 'ok');
+    box.innerHTML = isError ? escapeHtml(text) : renderMarkdown(text);
+    answerEl.appendChild(box);
+  }
+
+  function renderRaw(text, isError) {
+    rawBox.innerHTML = '';
+    const pre = document.createElement('pre');
+    pre.className = 'out ' + (isError ? 'err' : 'ok');
+    pre.textContent = text;
+    rawBox.appendChild(pre);
+  }
+
+  rawCheckbox.addEventListener('change', () => {
+    rawBox.style.display = rawCheckbox.checked ? 'block' : 'none';
+  });
+
+  sec.querySelector('#search-run').addEventListener('click', async () => {
+    const q = sec.querySelector('#search-q').value.trim();
+    if (!q) return;
+    answerEl.innerHTML = '<p class="hint">Buscando…</p>';
+    rawBox.innerHTML = '';
+    rawBox.style.display = rawCheckbox.checked ? 'block' : 'none';
+
+    const r = await call('GET', '/api/search?q=' + encodeURIComponent(q));
+    if (!r.ok) {
+      renderAnswer(r.stderr || r.error || 'search.mjs falló', true);
+      return;
+    }
+    const raw = r.stdout || '';
+    renderRaw(raw || '(sin resultados)', false);
+    if (!raw.trim()) {
+      renderAnswer('Sin resultados para esa pregunta.', false);
+      return;
+    }
+
+    answerEl.innerHTML = '<p class="hint">Sintetizando…</p>';
+    const provider = settings.searchSynthProvider;
+    const model = settings.searchSynthModel || undefined;
+    const synth = await call('POST', '/api/synthesize', { query: q, rawResults: raw, provider, model });
+    renderAnswer(synth.ok ? synth.answer : `Error al sintetizar: ${synth.error}. Activa "Ver datos crudos" para ver los fragmentos sin redactar.`, !synth.ok);
+  });
+}
+
+// --- Timeline ---
+{
+  const sec = section('timeline', 'Timeline', 'Lista hechos en orden cronológico ("timeline.mjs"). No es un buscador. Déjalo vacío para ver los más recientes de todo el sistema. Escribe un nodo para ver solo sus hechos — empieza a teclear para ver los nodos existentes. No acepta términos de búsqueda libres; para eso usa "Buscar".',
+    `<label>Nodo (opcional, empieza a escribir para ver sugerencias)</label>
+     <input type="text" id="tl-node" placeholder="ej. segundo-cerebro" list="tl-nodes-list">
+     <datalist id="tl-nodes-list"></datalist>
+     <div class="checkline"><input type="checkbox" id="tl-all"><label for="tl-all">Incluir reemplazados (--all)</label></div>
+     <button class="run" id="tl-run">Ver</button>`);
+
+  call('GET', '/api/nodes').then((r) => {
+    const list = sec.querySelector('#tl-nodes-list');
+    for (const n of r.nodes ?? []) {
+      const opt = document.createElement('option');
+      opt.value = n.name;
+      list.appendChild(opt);
+    }
+  });
+
+  sec.querySelector('#tl-run').addEventListener('click', async () => {
+    const node = sec.querySelector('#tl-node').value.trim();
+    const all = sec.querySelector('#tl-all').checked;
+    const params = new URLSearchParams();
+    if (node) params.set('node', node);
+    if (all) params.set('all', '1');
+    const r = await call('GET', '/api/timeline?' + params.toString());
+    out(sec, r);
+  });
+}
+
+// --- Estado de nodo ---
+{
+  const sec = section('node-status', 'Estado de nodo', 'Resume en prosa el estado actual de un nodo ("node-status.mjs"). Genera el resumen al momento, a partir de sus hechos vigentes. Así ya no necesitas mantener una página narrativa a mano.',
+    `<label>Nodo (empieza a escribir para ver sugerencias)</label>
+     <input type="text" id="ns-node" placeholder="ej. segundo-cerebro" list="ns-nodes-list">
+     <datalist id="ns-nodes-list"></datalist>
+     <div class="row">
+       <div><label style="margin-top:10px">Sintetizar con</label>
+         <select id="ns-provider">
+           <option value="ollama">Ollama Cloud</option>
+           <option value="gemini">Gemini</option>
+         </select>
+       </div>
+       <div><label style="margin-top:10px">Modelo (opcional, override sin fallback)</label>
+         <select id="ns-model"><option value="">(auto — probar en orden)</option></select>
+       </div>
+     </div>
+     <button class="run" id="ns-run">Ver estado</button>`);
+
+  const nsProviderSel = sec.querySelector('#ns-provider');
+  const nsModelSel = sec.querySelector('#ns-model');
+
+  async function loadNsModelOptions() {
+    nsModelSel.innerHTML = '<option value="">(auto — probar en orden)</option>';
+    const r = await call('GET', '/api/model-config?provider=' + nsProviderSel.value);
+    for (const m of r.fallbackOrder ?? []) {
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = m;
+      nsModelSel.appendChild(opt);
+    }
+  }
+  nsProviderSel.addEventListener('change', loadNsModelOptions);
+  loadNsModelOptions();
+
+  call('GET', '/api/nodes').then((r) => {
+    const list = sec.querySelector('#ns-nodes-list');
+    for (const n of r.nodes ?? []) {
+      const opt = document.createElement('option');
+      opt.value = n.name;
+      list.appendChild(opt);
+    }
+  });
+
+  sec.querySelector('#ns-run').addEventListener('click', async () => {
+    const node = sec.querySelector('#ns-node').value.trim();
+    if (!node) { outMarkdown(sec, { ok: false }, 'Falta el nodo.'); return; }
+    const provider = nsProviderSel.value;
+    const model = nsModelSel.value;
+    const params = new URLSearchParams({ node, provider });
+    if (model) params.set('model', model);
+    const btn = sec.querySelector('#ns-run');
+    btn.disabled = true;
+    btn.textContent = 'Sintetizando…';
+    try {
+      const r = await call('GET', '/api/node-status?' + params.toString());
+      outMarkdown(sec, r);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Ver estado';
+    }
+  });
+}
+
+// --- Delta ---
+{
+  const sec = section('delta', 'Delta', 'Muestra qué cambió desde la última vez que esta máquina revisó ("delta.mjs").',
+    `<button class="run" id="delta-run">Ver cambios (no mueve el watermark)</button>
+     <button class="run secondary" id="delta-advance">Ver y marcar como visto</button>`);
+  sec.querySelector('#delta-run').addEventListener('click', async () => out(sec, await call('GET', '/api/delta')));
+  sec.querySelector('#delta-advance').addEventListener('click', async () => out(sec, await call('GET', '/api/delta?advance=1')));
+}
+
+// --- Doctor ---
+{
+  const sec = section('doctor', 'Doctor', 'Corre un chequeo de integridad de la base ("doctor.mjs"): RLS, embeddings, duplicados y consistencia.',
+    `<button class="run" id="doctor-run">Correr chequeo</button>`);
+  sec.querySelector('#doctor-run').addEventListener('click', async () => out(sec, await call('GET', '/api/doctor')));
+}
+
+// --- Grafo ---
+// Grafo interactivo dirigido por fuerzas (d3-force, vendorizado localmente
+// en vendor/d3.v7.min.js -- nada de CDN externo, "solo localhost" aplica
+// también a dependencias del frontend). Reemplaza el layout jerárquico
+// estático anterior (2026-09-03): el usuario lo pidió parecido a LightRAG/
+// Obsidian tras ver que un layout fijo por niveles no aguanta un grafo con
+// ciclos reales (ver PLAN-nodos.md) -- acá la física corre en el navegador
+// y decide las posiciones sola, arrastrar/zoom/clic funcionan de verdad.
+// El servidor (graph.mjs) solo entrega nodes/edges en JSON, sin caché --
+// cada refresco trae el estado vigente.
+{
+  const sec = section('graph', 'Grafo', 'Mapa interactivo de nodos y conexiones (node_edges) tal como existen ahora mismo en la base. Arrastra un nodo para reacomodarlo, usa la rueda del mouse para zoom, clic en un nodo para resaltar sus vecinos directos (clic de nuevo, o en un espacio vacío, para quitar el resaltado).',
+    `<div class="row" style="align-items:flex-end; gap:10px">
+       <div style="flex:0 0 auto"><button class="run" id="graph-run" style="margin-top:0">Refrescar</button></div>
+       <div style="flex:0 0 auto"><button class="run secondary" id="graph-fit" style="margin-top:0">Encuadre</button></div>
+       <div style="flex:1"><label style="margin:0 0 4px">Buscar nodo</label>
+         <input type="text" id="graph-search" list="graph-nodes-list" placeholder="empieza a escribir…"></div>
+       <div style="flex:0 0 auto"><button class="run secondary" id="graph-search-go" style="margin-top:0">Ir</button></div>
+     </div>
+     <datalist id="graph-nodes-list"></datalist>
+     <div class="checkline"><input type="checkbox" id="graph-show-labels" checked><label for="graph-show-labels">Mostrar nombres de relaciones</label></div>
+     <div class="gph-stats" id="graph-stats" style="margin-top:16px"></div>
+     <div id="graph-canvas" style="position:relative; margin-top:12px; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--panel)"></div>
+     <div class="gph-legend" style="margin-top:10px">
+       <div class="gph-legend-item"><span class="gph-dot"></span> nodo de dominio</div>
+       <div class="gph-legend-item"><span class="gph-dot gph-meta"></span> nodo meta (sobre el propio sistema)</div>
+     </div>`);
+
+  const statsEl = sec.querySelector('#graph-stats');
+  const canvasEl = sec.querySelector('#graph-canvas');
+  const W = 1100, H = 700;
+  let simulation = null;
+  let graph = null; // estado del render vigente (nodos, selección d3, zoom) para los controles de fuera: encuadre, buscador, checkbox
+
+  function radius(factCount) {
+    return Math.max(16, Math.min(50, 16 + Math.sqrt(factCount) * 2.8));
+  }
+
+  // Mismo truco que el layout anterior: sin wrap nativo en SVG, se parte el
+  // nombre por guiones en varias líneas (tspans) para que no se salga del nodo.
+  function wrapLabel(name, maxCharsPerLine = 14) {
+    const parts = name.split('-');
+    const lines = [];
+    let current = '';
+    for (const part of parts) {
+      const candidate = current ? `${current}-${part}` : part;
+      if (candidate.length > maxCharsPerLine && current) {
+        lines.push(current + '-');
+        current = part;
+      } else {
+        current = candidate;
+      }
+    }
+    if (current) lines.push(current);
+    return lines;
+  }
+
+  async function loadGraph() {
+    canvasEl.innerHTML = '<p class="hint" style="padding:16px">Cargando…</p>';
+    const r = await call('GET', '/api/graph');
+    if (!r.ok) {
+      canvasEl.innerHTML = `<pre class="out err">${escapeHtml(r.error || 'graph.mjs falló')}</pre>`;
+      return;
+    }
+    renderGraph(r.nodes, r.edges);
+  }
+
+  function edgeEndpointName(x) { return typeof x === 'object' ? x.name : x; }
+
+  function renderGraph(rawNodes, rawEdges) {
+    if (simulation) { simulation.stop(); simulation = null; }
+    canvasEl.innerHTML = '';
+    // El auto-encuadre solo debe disparar UNA vez, cuando la simulación
+    // inicial se asienta -- no cada vez que "end" vuelve a dispararse tras
+    // reactivarse (arrastrar un nodo hace simulation.alphaTarget(0.3).restart(),
+    // que eventualmente vuelve a emitir "end" al enfriarse). Sin este freno,
+    // la vista se resetea sola después de cada arrastre, o de un zoom hecho
+    // mientras la simulación inicial todavía no terminaba de asentarse.
+    let hasAutoFitted = false;
+
+    const touched = new Set();
+    for (const e of rawEdges) { touched.add(e.from); touched.add(e.to); }
+    const isolatedCount = rawNodes.filter((n) => !touched.has(n.name)).length;
+    const metaCount = rawNodes.filter((n) => n.isMeta).length;
+    statsEl.innerHTML = [
+      [rawNodes.length, 'nodos'], [rawEdges.length, 'conexiones'], [touched.size, 'conectados'],
+      [isolatedCount, 'sin conexión'], [metaCount, 'meta'],
+    ].map(([n, label]) => `<div class="gph-stat"><b>${n}</b><span>${label}</span></div>`).join('');
+
+    const nodes = rawNodes.map((n) => ({ ...n }));
+    const links = rawEdges.map((e) => ({ source: e.from, target: e.to, relation: e.relation }));
+
+    const svg = d3.select(canvasEl).append('svg')
+      .attr('viewBox', [0, 0, W, H]).attr('width', '100%').attr('height', 'auto')
+      .style('display', 'block');
+
+    svg.append('defs').html(`
+      <marker id="gph-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="var(--border)" />
+      </marker>`);
+
+    const g = svg.append('g');
+    const zoomBehavior = d3.zoom().scaleExtent([0.2, 4]).on('zoom', (event) => g.attr('transform', event.transform));
+    svg.call(zoomBehavior);
+
+    const linkSel = g.append('g').selectAll('line').data(links).join('line')
+      .attr('class', 'gph-edge').attr('marker-end', 'url(#gph-arrow)');
+    const linkLabelSel = g.append('g').selectAll('text').data(links).join('text')
+      .attr('class', 'gph-edge-label').attr('text-anchor', 'middle').text((d) => d.relation);
+
+    const nodeSel = g.append('g').selectAll('g').data(nodes, (d) => d.name).join('g')
+      .attr('class', (d) => 'gph-node' + (d.isMeta ? ' gph-meta' : ''))
+      .style('cursor', 'grab');
+
+    nodeSel.append('circle')
+      .attr('class', (d) => 'gph-circle' + (d.isMeta ? ' gph-meta' : ''))
+      .attr('r', (d) => radius(d.factCount));
+    nodeSel.append('text').attr('class', 'gph-count').attr('text-anchor', 'middle').attr('dy', 4)
+      .text((d) => d.factCount);
+    nodeSel.each(function (d) {
+      const r = radius(d.factCount);
+      const text = d3.select(this).append('text').attr('class', 'gph-label').attr('text-anchor', 'middle').attr('y', r + 15);
+      wrapLabel(d.name).forEach((line, i) => {
+        text.append('tspan').attr('x', 0).attr('dy', i === 0 ? 0 : '1.15em').text(line);
+      });
+    });
+
+    let highlighted = null;
+    function applyHighlight() {
+      if (!highlighted) {
+        nodeSel.style('opacity', 1); linkSel.style('opacity', 1); linkLabelSel.style('opacity', 1);
+        nodeSel.select('circle').classed('gph-circle-highlight', false);
+        return;
+      }
+      const neighbors = new Set([highlighted]);
+      for (const l of links) {
+        const s = edgeEndpointName(l.source), t = edgeEndpointName(l.target);
+        if (s === highlighted) neighbors.add(t);
+        if (t === highlighted) neighbors.add(s);
+      }
+      // El resto del grafo baja a 0.6 (no 0.15) -- lo suficientemente
+      // atenuado para que el resaltado destaque, pero sin volverse casi
+      // invisible sobre fondo oscuro. Los nodos resaltados, además, cambian
+      // a rojo (var(--err)) para que destaquen por color, no solo por opacidad.
+      nodeSel.style('opacity', (d) => (neighbors.has(d.name) ? 1 : 0.6));
+      nodeSel.select('circle').classed('gph-circle-highlight', (d) => neighbors.has(d.name));
+      const edgeTouches = (l) => edgeEndpointName(l.source) === highlighted || edgeEndpointName(l.target) === highlighted;
+      linkSel.style('opacity', (l) => (edgeTouches(l) ? 1 : 0.6));
+      linkLabelSel.style('opacity', (l) => (edgeTouches(l) ? 1 : 0.6));
+    }
+
+    nodeSel.on('click', (event, d) => {
+      event.stopPropagation();
+      highlighted = highlighted === d.name ? null : d.name;
+      applyHighlight();
+    });
+    svg.on('click', () => { highlighted = null; applyHighlight(); });
+
+    nodeSel.on('contextmenu', (event, d) => {
+      event.preventDefault();
+      event.stopPropagation();
+      showCtxMenu(event.clientX, event.clientY, d.name);
+    });
+
+    // Los nombres son ilegibles a este tamaño con varias docenas de nodos --
+    // al pasar el mouse se muestra un tooltip HTML normal (no un <text> SVG
+    // dentro de "g", que se agranda/encoge con el zoom igual que todo lo
+    // demás -- un font-size fijo en SVG no queda fijo en pantalla si el
+    // ancestro tiene una transformación de escala). El tooltip vive fuera
+    // del <g> con zoom, así que su tamaño de fuente es el mismo sin importar
+    // qué tan alejada esté la vista.
+    const tooltip = d3.select(canvasEl).append('div')
+      .attr('class', 'gph-tooltip').style('display', 'none');
+    nodeSel.on('mouseenter', function (event, d) {
+      d3.select(this).raise();
+      const svgRect = svg.node().getBoundingClientRect();
+      const canvasRect = canvasEl.getBoundingClientRect();
+      const t = d3.zoomTransform(svg.node());
+      const scaleX = svgRect.width / W, scaleY = svgRect.height / H;
+      const screenX = (svgRect.left - canvasRect.left) + (t.x + d.x * t.k) * scaleX;
+      const screenY = (svgRect.top - canvasRect.top) + (t.y + d.y * t.k) * scaleY;
+      const screenR = radius(d.factCount) * t.k * scaleY;
+      tooltip.style('left', screenX + 'px').style('top', (screenY - screenR - 8) + 'px')
+        .style('display', 'block').text(d.name);
+    }).on('mouseleave', function () {
+      tooltip.style('display', 'none');
+    });
+
+    nodeSel.call(d3.drag()
+      .on('start', (event, d) => { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+      .on('end', (event, d) => { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+    function renderTick() {
+      linkSel.attr('x1', (d) => d.source.x).attr('y1', (d) => d.source.y)
+        .attr('x2', (d) => d.target.x).attr('y2', (d) => d.target.y);
+      linkLabelSel.attr('x', (d) => (d.source.x + d.target.x) / 2).attr('y', (d) => (d.source.y + d.target.y) / 2 - 6);
+      nodeSel.attr('transform', (d) => `translate(${d.x},${d.y})`);
+    }
+
+    // alphaDecay SIEMPRE normal — es lo que hace que el layout converja bien
+    // separado (probado: alphaDecay alto no solo quita la animación, apaga
+    // la física antes de que el charge/collide tengan tiempo de separar los
+    // nodos, quedan amontonados; y el arrastre pierde la inercia porque
+    // decae casi instantáneo incluso durante el drag, hallazgo real de
+    // el usuario). "Reducir movimiento" adelanta la simulación entera de un
+    // jalón (tick() manual en loop, sin pintar) antes del primer render, en
+    // vez de tocar la física en sí — layout final idéntico, solo sin
+    // animación visible de asentamiento. simulation.restart() al final deja
+    // el arrastre con inercia normal después.
+    simulation = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(links).id((d) => d.name).distance(95).strength(0.5))
+      .force('charge', d3.forceManyBody().strength(-260))
+      .force('center', d3.forceCenter(W / 2, H / 2))
+      .force('collide', d3.forceCollide((d) => radius(d.factCount) + 14))
+      .on('tick', renderTick)
+      .on('end', () => {
+        if (hasAutoFitted) return;
+        hasAutoFitted = true;
+        fitToView(false);
+      });
+
+    if (prefersReducedMotion()) {
+      simulation.stop();
+      for (let i = 0; i < 300 && simulation.alpha() > simulation.alphaMin(); i++) simulation.tick();
+      renderTick();
+      hasAutoFitted = true;
+      fitToView(false);
+      simulation.restart(); // alpha ya casi en 0 -- no anima nada visible, pero deja el arrastre con inercia normal
+    }
+
+    graph = {
+      nodes, svg, zoomBehavior, linkLabelSel,
+      setHighlight: (name) => { highlighted = name; applyHighlight(); },
+    };
+    sec.querySelector('#graph-show-labels').dispatchEvent(new Event('change'));
+  }
+
+  // Encuadra la vista al bounding box actual de los nodos -- se llama sola
+  // cuando la simulación se asienta (evento "end" de d3-force) y también a
+  // mano con el botón "Encuadre", para volver a ver todo tras hacer zoom o
+  // arrastrar nodos fuera de vista.
+  function fitToView(animate = true) {
+    if (!graph || graph.nodes.length === 0) return;
+    const pad = 60;
+    const xs = graph.nodes.map((n) => n.x ?? W / 2);
+    const ys = graph.nodes.map((n) => n.y ?? H / 2);
+    const minX = Math.min(...xs) - pad, maxX = Math.max(...xs) + pad;
+    const minY = Math.min(...ys) - pad, maxY = Math.max(...ys) + pad;
+    const w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
+    const scale = Math.max(0.2, Math.min(4, Math.min(W / w, H / h)));
+    const tx = W / 2 - scale * (minX + maxX) / 2;
+    const ty = H / 2 - scale * (minY + maxY) / 2;
+    const transform = d3.zoomIdentity.translate(tx, ty).scale(scale);
+    const target = animate ? graph.svg.transition().duration(400) : graph.svg;
+    target.call(graph.zoomBehavior.transform, transform);
+  }
+
+  function goToNode(name) {
+    if (!graph) return;
+    const node = graph.nodes.find((n) => n.name === name);
+    if (!node) return;
+    const scale = 1.6;
+    const transform = d3.zoomIdentity.translate(W / 2 - scale * node.x, H / 2 - scale * node.y).scale(scale);
+    graph.svg.transition().duration(400).call(graph.zoomBehavior.transform, transform);
+    graph.setHighlight(name);
+  }
+
+  // Menú contextual (clic derecho en un nodo): "Ver timeline" / "Ver estado
+  // del nodo" -- en vez de duplicar la lógica de esas dos secciones acá,
+  // cambia de pestaña con show(), precarga el campo de nodo, y dispara el
+  // mismo botón "Ver"/"Ver estado" que ya existe ahí. Una sola instancia
+  // del menú en el DOM (no una por renderGraph), colgada de document.body
+  // para que su position:fixed no dependa del contenedor del grafo.
+  const ctxMenu = document.createElement('div');
+  ctxMenu.className = 'gph-ctx-menu';
+  ctxMenu.innerHTML = `
+    <button type="button" data-action="timeline">Ver timeline</button>
+    <button type="button" data-action="node-status">Ver estado del nodo</button>`;
+  document.body.appendChild(ctxMenu);
+
+  function hideCtxMenu() { ctxMenu.style.display = 'none'; }
+  function showCtxMenu(x, y, nodeName) {
+    ctxMenu.dataset.node = nodeName;
+    ctxMenu.style.display = 'block';
+    // clamp para que no se salga del viewport si el clic fue cerca del borde
+    const menuW = 180, menuH = 76;
+    ctxMenu.style.left = Math.min(x, window.innerWidth - menuW - 8) + 'px';
+    ctxMenu.style.top = Math.min(y, window.innerHeight - menuH - 8) + 'px';
+  }
+  document.addEventListener('click', hideCtxMenu);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideCtxMenu(); });
+  ctxMenu.querySelectorAll('button').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const nodeName = ctxMenu.dataset.node;
+      hideCtxMenu();
+      if (btn.dataset.action === 'timeline') {
+        show('timeline');
+        document.querySelector('#tl-node').value = nodeName;
+        document.querySelector('#tl-run').click();
+      } else {
+        show('node-status');
+        document.querySelector('#ns-node').value = nodeName;
+        document.querySelector('#ns-run').click();
+      }
+    });
+  });
+
+  sec.querySelector('#graph-run').addEventListener('click', loadGraph);
+  sec.querySelector('#graph-fit').addEventListener('click', () => fitToView(true));
+  sec.querySelector('#graph-show-labels').addEventListener('change', (e) => {
+    graph?.linkLabelSel.style('display', e.target.checked ? null : 'none');
+  });
+  sec.querySelector('#graph-search-go').addEventListener('click', () => {
+    const name = sec.querySelector('#graph-search').value.trim();
+    if (name) goToNode(name);
+  });
+  sec.querySelector('#graph-search').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); sec.querySelector('#graph-search-go').click(); }
+  });
+  call('GET', '/api/nodes').then((r) => {
+    const list = sec.querySelector('#graph-nodes-list');
+    for (const n of r.nodes ?? []) {
+      const opt = document.createElement('option');
+      opt.value = n.name;
+      list.appendChild(opt);
+    }
+  });
+  loadGraph();
+}
+
+// --- Fusionar nodos ---
+{
+  const sec = section('merge-nodes', 'Fusionar nodos', 'Compara los embeddings de todos los nodos y sugiere pares parecidos ("list-merge-candidates.mjs", umbral 0.85). Ningún par se fusiona solo. Revisa cada uno y decide a mano abajo: fusionar retira el nodo "from" y pasa sus hechos al nodo "to" ("merge-nodes.mjs").',
+    `<button class="run" id="mn-run">Buscar candidatos</button>
+     <label style="margin-top:22px">Fusionar (from → to)</label>
+     <div class="row">
+       <div><input type="text" id="mn-from" placeholder="nodo a retirar" list="mn-nodes-list"></div>
+       <div><input type="text" id="mn-to" placeholder="nodo vigente" list="mn-nodes-list"></div>
+     </div>
+     <datalist id="mn-nodes-list"></datalist>
+     <label>Motivo</label><input type="text" id="mn-reason" placeholder="ej. es la misma colaboración, no dos temas distintos">
+     <button class="run secondary" id="mn-merge">Fusionar</button>`);
+
+  sec.querySelector('#mn-run').addEventListener('click', async () => out(sec, await call('GET', '/api/merge-candidates')));
+
+  call('GET', '/api/nodes').then((r) => {
+    const list = sec.querySelector('#mn-nodes-list');
+    for (const n of r.nodes ?? []) {
+      const opt = document.createElement('option');
+      opt.value = n.name;
+      list.appendChild(opt);
+    }
+  });
+
+  sec.querySelector('#mn-merge').addEventListener('click', async () => {
+    const from = sec.querySelector('#mn-from').value.trim();
+    const to = sec.querySelector('#mn-to').value.trim();
+    const reason = sec.querySelector('#mn-reason').value.trim();
+    if (!from || !to || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan from/to/motivo.' }); return; }
+    const btn = sec.querySelector('#mn-merge');
+    btn.disabled = true;
+    btn.textContent = 'Fusionando…';
+    try {
+      out(sec, await call('POST', '/api/merge-nodes', { from, to, reason }));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Fusionar';
+    }
+  });
+}
+
+// --- Alias ---
+// Backfill guiado de alias (Etapa 6, hecho #497): list-alias-candidates.mjs
+// solo propone (determinístico + extracción verificada contra el texto real
+// de los hechos del nodo), set-node-aliases.mjs es el único que escribe.
+// Un alias no tiene sentido compartido entre dos nodos (colisión de
+// identidad, no relación) — el chequeo de colisión vive en el script, acá
+// solo se muestra lo que devuelva.
+{
+  const sec = section('aliases', 'Alias', 'Un alias es una forma natural de nombrar un nodo (nombre de pila, sigla) — sin alias, el name interno (kebab-case) casi nunca aparece tal cual en prosa, y el sistema no puede reconocer menciones futuras. "Buscar candidatos" propone formas extraídas de los propios hechos del nodo (verificadas contra el texto real, nunca inventadas). Nada se aplica solo: revisa y aplica/quita abajo.',
+    `<label>Nodo (opcional — vacío = revisa todos los que tengan alias vacío)</label>
+     <input type="text" id="al-scan-node" list="al-nodes-list">
+     <datalist id="al-nodes-list"></datalist>
+     <button class="run" id="al-scan">Buscar candidatos</button>
+
+     <label style="margin-top:22px">Aplicar alias</label>
+     <input type="text" id="al-add-node" placeholder="nodo" list="al-nodes-list">
+     <label>Alias a agregar (separados por coma)</label>
+     <input type="text" id="al-add-values" placeholder="ej. Pedro Pérea, pedro-perez">
+     <label>Motivo</label><input type="text" id="al-add-reason" placeholder="ej. backfill guiado, aprobado por el usuario">
+     <button class="run secondary" id="al-add">Aplicar</button>
+
+     <label style="margin-top:22px">Quitar alias</label>
+     <input type="text" id="al-rm-node" placeholder="nodo" list="al-nodes-list">
+     <label>Alias a quitar (separados por coma)</label>
+     <input type="text" id="al-rm-values" placeholder="ej. Diseño Biomédico 2, DB2">
+     <label>Motivo</label><input type="text" id="al-rm-reason" placeholder="ej. forma genérica, colisiona con otro nodo">
+     <button class="run secondary" id="al-rm">Quitar</button>`);
+
+  call('GET', '/api/nodes').then((r) => {
+    const list = sec.querySelector('#al-nodes-list');
+    for (const n of r.nodes ?? []) {
+      const opt = document.createElement('option');
+      opt.value = n.name;
+      list.appendChild(opt);
+    }
+  });
+
+  sec.querySelector('#al-scan').addEventListener('click', async () => {
+    const node = sec.querySelector('#al-scan-node').value.trim();
+    out(sec, await call('GET', '/api/alias-candidates' + (node ? '?node=' + encodeURIComponent(node) : '')));
+  });
+
+  sec.querySelector('#al-add').addEventListener('click', async () => {
+    const node = sec.querySelector('#al-add-node').value.trim();
+    const aliases = sec.querySelector('#al-add-values').value.trim();
+    const reason = sec.querySelector('#al-add-reason').value.trim();
+    if (!node || !aliases || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan nodo/alias/motivo.' }); return; }
+    const btn = sec.querySelector('#al-add');
+    btn.disabled = true;
+    btn.textContent = 'Aplicando…';
+    try {
+      out(sec, await call('POST', '/api/set-node-aliases', { node, aliases, reason }));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Aplicar';
+    }
+  });
+
+  sec.querySelector('#al-rm').addEventListener('click', async () => {
+    const node = sec.querySelector('#al-rm-node').value.trim();
+    const remove = sec.querySelector('#al-rm-values').value.trim();
+    const reason = sec.querySelector('#al-rm-reason').value.trim();
+    if (!node || !remove || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan nodo/alias/motivo.' }); return; }
+    const btn = sec.querySelector('#al-rm');
+    btn.disabled = true;
+    btn.textContent = 'Quitando…';
+    try {
+      out(sec, await call('POST', '/api/set-node-aliases', { node, remove, reason }));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Quitar';
+    }
+  });
+}
+
+// --- Relaciones ---
+// Etapa 6: detect-node-mentions.mjs ya avisa/auto-crea al guardar un hecho
+// nuevo (ver "Guardar hecho"); esta sección es para revisar el histórico
+// completo (list-node-mentions.mjs) y para crear/borrar enlaces a mano
+// cuando la auto-creación no alcanzó confianza suficiente. Ningún enlace se
+// crea solo desde acá salvo que pulses "Crear".
+{
+  const sec = section('relations', 'Relaciones', 'Enlaces persistentes nodo-a-nodo ("node_edges") — distinto de que un hecho puntual mencione a dos nodos a la vez. "Buscar candidatos" corre el escaneo de co-ocurrencia contra TODO el histórico ("list-node-mentions.mjs"), útil para auditar lo que la auto-creación no llegó a resolver sola. Crear/Borrar son siempre manuales.',
+    `<button class="run" id="rl-scan">Buscar candidatos (histórico completo)</button>
+
+     <label style="margin-top:22px">Ver enlaces de un nodo</label>
+     <input type="text" id="rl-view-node" placeholder="nodo" list="rl-nodes-list">
+     <datalist id="rl-nodes-list"></datalist>
+     <button class="run secondary" id="rl-view">Ver</button>
+
+     <label style="margin-top:22px">Crear enlace</label>
+     <div class="row">
+       <div><input type="text" id="rl-from" placeholder="from" list="rl-nodes-list"></div>
+       <div><input type="text" id="rl-to" placeholder="to" list="rl-nodes-list"></div>
+     </div>
+     <div class="row">
+       <div><label>Relación</label><input type="text" id="rl-relation" placeholder="ej. colabora_con"></div>
+       <div><label>Fecha</label><input type="date" id="rl-date"></div>
+     </div>
+     <label>Motivo</label><input type="text" id="rl-reason" placeholder="ej. envió insumos para la presentación">
+     <button class="run secondary" id="rl-link">Crear</button>
+
+     <label style="margin-top:22px">Borrar enlace</label>
+     <div class="row">
+       <div><input type="text" id="rl-un-from" placeholder="from" list="rl-nodes-list"></div>
+       <div><input type="text" id="rl-un-to" placeholder="to" list="rl-nodes-list"></div>
+     </div>
+     <label>Relación (opcional — obligatoria si el par tiene más de una)</label>
+     <input type="text" id="rl-un-relation" placeholder="ej. colabora_con">
+     <label>Motivo</label><input type="text" id="rl-un-reason" placeholder="ej. colisión de alias, no era relación real">
+     <button class="run secondary" id="rl-unlink">Borrar</button>`);
+
+  call('GET', '/api/nodes').then((r) => {
+    const list = sec.querySelector('#rl-nodes-list');
+    for (const n of r.nodes ?? []) {
+      const opt = document.createElement('option');
+      opt.value = n.name;
+      list.appendChild(opt);
+    }
+  });
+
+  sec.querySelector('#rl-scan').addEventListener('click', async () => out(sec, await call('GET', '/api/mention-candidates')));
+
+  sec.querySelector('#rl-view').addEventListener('click', async () => {
+    const node = sec.querySelector('#rl-view-node').value.trim();
+    if (!node) { out(sec, { ok: false, stdout: '', stderr: 'Falta el nodo.' }); return; }
+    out(sec, await call('GET', '/api/node-edges?node=' + encodeURIComponent(node)));
+  });
+
+  sec.querySelector('#rl-link').addEventListener('click', async () => {
+    const from = sec.querySelector('#rl-from').value.trim();
+    const to = sec.querySelector('#rl-to').value.trim();
+    const relation = sec.querySelector('#rl-relation').value.trim();
+    const date = sec.querySelector('#rl-date').value;
+    const reason = sec.querySelector('#rl-reason').value.trim();
+    if (!from || !to || !relation || !date || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan from/to/relación/fecha/motivo.' }); return; }
+    const btn = sec.querySelector('#rl-link');
+    btn.disabled = true;
+    btn.textContent = 'Creando…';
+    try {
+      out(sec, await call('POST', '/api/node-link', { from, to, relation, date, reason }));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Crear';
+    }
+  });
+
+  sec.querySelector('#rl-unlink').addEventListener('click', async () => {
+    const from = sec.querySelector('#rl-un-from').value.trim();
+    const to = sec.querySelector('#rl-un-to').value.trim();
+    const relation = sec.querySelector('#rl-un-relation').value.trim() || undefined;
+    const reason = sec.querySelector('#rl-un-reason').value.trim();
+    if (!from || !to || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan from/to/motivo.' }); return; }
+    const btn = sec.querySelector('#rl-unlink');
+    btn.disabled = true;
+    btn.textContent = 'Borrando…';
+    try {
+      out(sec, await call('POST', '/api/node-unlink', { from, to, relation, reason }));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Borrar';
+    }
+  });
+}
+
+// --- Recategorizar hecho ---
+// Distinto de Fusionar nodos (mueve TODOS los hechos de un nodo): esto
+// corrige un hecho puntual mal etiquetado sin tocar el resto del nodo (ver
+// hecho #498, caso real del hecho #412 en vault-overview en vez de
+// cabd-2026-2). No borra ni retracta el hecho, solo corrige a qué nodo
+// pertenece.
+{
+  const sec = section('recategorize', 'Recategorizar hecho', 'Reasigna UN hecho a otro nodo, sin tocar el resto del nodo original ("recategorize-fact.mjs") — para cuando la desambiguación automática se equivocó, o se guardó con --node a mano sin pensarlo. Usa "Retractar → Ver hecho(s)" si primero quieres confirmar el texto del id.',
+    `<label>Id del hecho</label><input type="text" id="rc-fact" placeholder="412">
+     <div class="row">
+       <div><label>Nodo actual</label><input type="text" id="rc-from" list="rc-nodes-list"></div>
+       <div><label>Nodo correcto</label><input type="text" id="rc-to" list="rc-nodes-list"></div>
+     </div>
+     <datalist id="rc-nodes-list"></datalist>
+     <label>Motivo</label><input type="text" id="rc-reason" placeholder="ej. el hecho es sobre CABD, no sobre el vault en general">
+     <button class="run" id="rc-run">Reasignar</button>`);
+
+  call('GET', '/api/nodes').then((r) => {
+    const list = sec.querySelector('#rc-nodes-list');
+    for (const n of r.nodes ?? []) {
+      const opt = document.createElement('option');
+      opt.value = n.name;
+      list.appendChild(opt);
+    }
+  });
+
+  sec.querySelector('#rc-run').addEventListener('click', async () => {
+    const fact = sec.querySelector('#rc-fact').value.trim();
+    const from = sec.querySelector('#rc-from').value.trim();
+    const to = sec.querySelector('#rc-to').value.trim();
+    const reason = sec.querySelector('#rc-reason').value.trim();
+    if (!fact || !from || !to || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan id/nodo actual/nodo correcto/motivo.' }); return; }
+    const btn = sec.querySelector('#rc-run');
+    btn.disabled = true;
+    btn.textContent = 'Reasignando…';
+    try {
+      out(sec, await call('POST', '/api/recategorize-fact', { fact, from, to, reason }));
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Reasignar';
+    }
+  });
+}
+
+// --- Guardar hecho ---
+{
+  const sec = section('remember', 'Guardar hecho', 'Inserta un hecho nuevo ("remember.mjs"). Fecha y fuente son obligatorias. Antes de guardarlo, pasa por el filtro de contradicciones.',
+    `<label>Hecho (claim)</label><textarea id="rm-claim"></textarea>
+     <div class="row">
+       <div><label>Fecha</label><input type="date" id="rm-date"></div>
+       <div><label>Tipo</label>
+         <select id="rm-kind">
+           <option value="fact">fact</option><option value="event">event</option>
+           <option value="preference">preference</option><option value="commitment">commitment</option>
+         </select>
+       </div>
+     </div>
+     <div class="checkline" id="rm-confirm-date-wrap" style="display:none">
+       <input type="checkbox" id="rm-confirm-date">
+       <label for="rm-confirm-date">Confirmo que la fecha distinta de hoy es intencional (--confirm-date)</label>
+     </div>
+     <label>Fuente</label><input type="text" id="rm-source" placeholder="ej. conversación Claude Code, sesión de trabajo">
+     <label>Nodo(s) (opcional, separados por coma, empieza a escribir para ver sugerencias)</label>
+     <input type="text" id="rm-node" placeholder="ej. segundo-cerebro" list="rm-nodes-list">
+     <datalist id="rm-nodes-list"></datalist>
+     <div class="checkline"><input type="checkbox" id="rm-create-node"><label for="rm-create-node">Crear nodo nuevo — requiere escribir el nombre arriba en "Nodo(s)" (--create-node)</label></div>
+     <label style="margin-top:10px">Alias del nodo nuevo (opcional, separados por coma — solo aplica con "Crear nodo nuevo" y un único nodo)</label>
+     <input type="text" id="rm-aliases" placeholder="ej. Pedro Pérez, jefe">
+     <div class="row">
+       <div><label>Supersede a (ids, opcional)</label><input type="text" id="rm-supersedes" placeholder="12,15"></div>
+       <div class="checkline" style="margin-top:26px"><input type="checkbox" id="rm-distinct"><label for="rm-distinct">Confirmar distinto (--distinct)</label></div>
+     </div>
+     <button class="run" id="rm-run">Guardar</button>`);
+
+  call('GET', '/api/nodes').then((r) => {
+    const list = sec.querySelector('#rm-nodes-list');
+    for (const n of r.nodes ?? []) {
+      const opt = document.createElement('option');
+      opt.value = n.name;
+      list.appendChild(opt);
+    }
+  });
+
+  const dateInput = sec.querySelector('#rm-date');
+  const confirmDateWrap = sec.querySelector('#rm-confirm-date-wrap');
+  const confirmDateCheck = sec.querySelector('#rm-confirm-date');
+  dateInput.value = todayBogota(); // default: hoy — mismo motivo que el bloqueo de #528, reduce el caso de guardar sin darse cuenta con la fecha equivocada
+
+  function syncConfirmDateVisibility() {
+    const mismatched = dateInput.value && dateInput.value !== todayBogota();
+    confirmDateWrap.style.display = mismatched ? 'flex' : 'none';
+    if (!mismatched) confirmDateCheck.checked = false;
+  }
+  dateInput.addEventListener('change', syncConfirmDateVisibility);
+  syncConfirmDateVisibility();
+
+  sec.querySelector('#rm-run').addEventListener('click', async () => {
+    const body = {
+      claim: sec.querySelector('#rm-claim').value.trim(),
+      date: sec.querySelector('#rm-date').value,
+      source: sec.querySelector('#rm-source').value.trim(),
+      kind: sec.querySelector('#rm-kind').value,
+      node: sec.querySelector('#rm-node').value.trim() || undefined,
+      createNode: sec.querySelector('#rm-create-node').checked || undefined,
+      aliases: sec.querySelector('#rm-aliases').value.trim() || undefined,
+      supersedes: sec.querySelector('#rm-supersedes').value.trim() || undefined,
+      distinct: sec.querySelector('#rm-distinct').checked || undefined,
+      confirmDate: confirmDateCheck.checked || undefined,
+    };
+    if (!body.claim || !body.date || !body.source) { out(sec, { ok: false, stdout: '', stderr: 'Faltan claim/fecha/fuente.' }); return; }
+    if (body.date !== todayBogota() && !body.confirmDate) {
+      out(sec, { ok: false, stdout: '', stderr: `La fecha (${body.date}) es distinta de hoy (${todayBogota()}) — marca "Confirmo que la fecha distinta de hoy es intencional" antes de guardar.` });
+      return;
+    }
+    if (body.createNode && !body.node) {
+      out(sec, { ok: false, stdout: '', stderr: 'Marcaste "Crear nodo nuevo" pero el campo "Nodo(s)" está vacío — escribe ahí el nombre del nodo nuevo antes de guardar.' });
+      return;
+    }
+    if (body.aliases && !body.createNode) {
+      out(sec, { ok: false, stdout: '', stderr: 'Escribiste alias pero no marcaste "Crear nodo nuevo" — los alias solo aplican al crear un nodo.' });
+      return;
+    }
+    // Sin esto, un usuario que se distrae entre el clic y la respuesta (o
+    // que no ve el recuadro de salida más abajo) no tiene ninguna señal de
+    // que el guardado ya corrió, y puede volver a hacer clic — insertando
+    // el mismo hecho dos veces (visto en vivo: #513 duplicado por #514,
+    // mismo contenido). El botón deshabilitado + "Guardando…" cubre el
+    // primer caso; vaciar el claim solo en éxito real es la señal fuerte:
+    // si el texto sigue ahí, no se guardó (o falló/bloqueó), así de simple.
+    const btn = sec.querySelector('#rm-run');
+    btn.disabled = true;
+    btn.textContent = 'Guardando…';
+    try {
+      const r = await call('POST', '/api/remember', body);
+      out(sec, r);
+      if (r.ok) sec.querySelector('#rm-claim').value = '';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Guardar';
+    }
+  });
+}
+
+// --- Guardar lote ---
+{
+  const sec = section('remember-batch', 'Guardar lote', 'Ingiere un lote de hechos en JSON ("remember-batch.mjs"). Pega un objeto con la forma {"facts":[...]}, generado por extracción automática o cualquier otra fuente.',
+    `<label>JSON</label><textarea id="rb-json" placeholder='{"facts":[{"claim":"...","date":"YYYY-MM-DD","source":"..."}]}'></textarea>
+     <div class="checkline">
+       <input type="checkbox" id="rb-confirm-date">
+       <label for="rb-confirm-date">Confirmo que las fechas distintas de hoy en el lote son intencionales (--confirm-date, ej. un timeline histórico)</label>
+     </div>
+     <button class="run" id="rb-run">Ingerir lote</button>`);
+  sec.querySelector('#rb-run').addEventListener('click', async () => {
+    let body;
+    try { body = JSON.parse(sec.querySelector('#rb-json').value); }
+    catch (e) { out(sec, { ok: false, stdout: '', stderr: 'JSON inválido: ' + e.message }); return; }
+    body.confirmDate = sec.querySelector('#rb-confirm-date').checked || undefined;
+    await runRememberBatchStream(sec, body, sec.querySelector('#rb-run'));
+  });
+}
+
+// --- Retractar ---
+{
+  const sec = section('forget', 'Retractar', 'Invalida un hecho vigente sin reemplazarlo ("forget.mjs"). Nunca borra la fila — el motivo queda anotado y sigue consultable con --all en Timeline. Para borrar de verdad basura sin ningún valor histórico (pruebas, duplicados de debugging), existe forget.mjs --id <id> --purge (o --node <nombre> --purge) por CLI, deliberadamente fuera de este panel — solo borra lo ya retractado, nunca un hecho vigente en un solo paso.',
+    `<label>Id(s) (separados por coma)</label><input type="text" id="fg-id" placeholder="159,160">
+     <button class="run secondary" id="fg-preview" style="margin-top:8px">Ver hecho(s)</button>
+     <label style="margin-top:16px">Motivo</label><input type="text" id="fg-reason" placeholder="ej. aprobado por error, ruido de desarrollo interno">
+     <button class="run" id="fg-run" disabled>Retractar</button>
+     <div class="status" id="fg-status">Primero pulsa "Ver hecho(s)" para confirmar qué vas a retractar.</div>`);
+
+  const idInput = sec.querySelector('#fg-id');
+  const runBtn = sec.querySelector('#fg-run');
+  const statusEl = sec.querySelector('#fg-status');
+  let previewedFor = null; // último valor de id para el que sí se vio el contenido
+  let previewedFacts = []; // [{id, claim}] del último preview, para el confirm() final
+
+  function invalidatePreview() {
+    previewedFor = null;
+    previewedFacts = [];
+    runBtn.disabled = true;
+    statusEl.textContent = 'El id cambió — vuelve a pulsar "Ver hecho(s)" antes de retractar.';
+  }
+  idInput.addEventListener('input', invalidatePreview);
+
+  sec.querySelector('#fg-preview').addEventListener('click', async () => {
+    const id = idInput.value.trim();
+    if (!id) { out(sec, { ok: false, stdout: '', stderr: 'Falta el id.' }); return; }
+    const r = await call('GET', '/api/facts?id=' + encodeURIComponent(id));
+    out(sec, r);
+    if (r.ok && !/^Ningún id existe\.?$/.test((r.stdout || '').trim())) {
+      previewedFor = id;
+      previewedFacts = [...(r.stdout || '').matchAll(/#(\d+) \[[\d-]+\] \[([^\]]+)\] (.+)/g)]
+        .map((m) => ({ id: m[1], status: m[2], claim: m[3] }));
+      runBtn.disabled = false;
+      statusEl.textContent = `Contenido verificado para el id "${id}" — ya puedes retractar.`;
+    } else {
+      invalidatePreview();
+      statusEl.textContent = 'No se pudo previsualizar — revisa el id.';
+    }
+  });
+
+  runBtn.addEventListener('click', async () => {
+    const id = idInput.value.trim();
+    const reason = sec.querySelector('#fg-reason').value.trim();
+    if (!id || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan id/motivo.' }); return; }
+    if (previewedFor !== id) { out(sec, { ok: false, stdout: '', stderr: 'Vuelve a pulsar "Ver hecho(s)" — el id no coincide con el último previsualizado.' }); return; }
+
+    const summary = previewedFacts.map((f) => `#${f.id} [${f.status}]: ${f.claim.slice(0, 100)}${f.claim.length > 100 ? '…' : ''}`).join('\n');
+    const confirmed = window.confirm(
+      `¿Confirmas retractar ${previewedFacts.length} hecho(s)?\n\n${summary}\n\nMotivo: ${reason}`,
+    );
+    if (!confirmed) { statusEl.textContent = 'Retracto cancelado por el usuario.'; return; }
+
+    out(sec, await call('POST', '/api/forget', { id, reason }));
+    invalidatePreview();
+  });
+}
+
+// --- Modelos ---
+// Edita config/gemini-models.json y config/ollama-models.json — las listas
+// de respaldo que usan extract-facts.mjs y extract-page-facts.mjs cuando el
+// primer modelo responde 503 (sobrecargado). Un modelo por línea, en orden
+// de prioridad. Se recargan en "Extraer de sesión"/"Extraer de página" al
+// volver a abrir esas pestañas.
+{
+  const sec = section('models', 'Modelos', 'Edita las listas de modelos de respaldo para extracción, una por proveedor (Gemini y Ollama Cloud). Escribe un modelo por línea. El primero de la lista es el primero que se prueba.',
+    `<label>Gemini — config/gemini-models.json</label>
+     <textarea id="mc-gemini" placeholder="gemini-flash-latest"></textarea>
+     <button class="run" id="mc-gemini-save">Guardar</button>
+     <label style="margin-top:24px">Ollama Cloud — config/ollama-models.json</label>
+     <textarea id="mc-ollama" placeholder="gpt-oss:120b-cloud"></textarea>
+     <button class="run" id="mc-ollama-save">Guardar</button>`);
+
+  async function loadList(provider, textareaSel) {
+    const r = await call('GET', '/api/model-config?provider=' + provider);
+    sec.querySelector(textareaSel).value = (r.fallbackOrder ?? []).join('\n');
+  }
+  loadList('gemini', '#mc-gemini');
+  loadList('ollama', '#mc-ollama');
+
+  function wireSave(provider, textareaSel, btnSel) {
+    sec.querySelector(btnSel).addEventListener('click', async () => {
+      const fallbackOrder = sec.querySelector(textareaSel).value.split('\n').map((s) => s.trim()).filter(Boolean);
+      out(sec, await call('POST', '/api/model-config', { provider, fallbackOrder }));
+    });
+  }
+  wireSave('gemini', '#mc-gemini', '#mc-gemini-save');
+  wireSave('ollama', '#mc-ollama', '#mc-ollama-save');
+}
+
+// --- Extraer de sesión ---
+// No ejecuta nada del lado del servidor: "extraer de sesión" ya es posible
+// desde varios lugares (Chat/Cowork con MyMCP + skill, Code, o el propio
+// .mjs a mano), y --review (revisión interactiva antes de insertar) solo
+// tiene sentido en una terminal real con TTY. El frontend solo arma el
+// comando exacto con los flags elegidos, para copiar y correr donde el
+// usuario prefiera.
+{
+  const sec = section('extract-facts', 'Extraer de sesión', 'No hay un único camino: depende de dónde estés. Elige tu caso.',
+    `<ul class="scenarios">
+       <li><strong>Chat, Cowork, Code o CLI, en cualquier repo:</strong>
+         usa la skill <code>/extract-code-facts</code> + MyMCP. O pídele al LLM:
+         <em>"extrae los hechos de esta sesión y usa MyMCP para subirlos a nuestro segundo cerebro."</em></li>
+       <li><strong>Dentro de la carpeta local del segundo cerebro (ej. C:\\segundo-cerebro):</strong>
+         pídele al LLM <em>"extrae los hechos de la sesión de hoy y súbelos a nuestro segundo cerebro"</em>.
+         Si necesitas algo más preciso (fecha/hora exactas, proveedor, revisión interactiva), arma el
+         comando de abajo y córrelo tú mismo en una terminal.</li>
+     </ul>
+     <p class="hint" style="margin-top:22px">Arma el comando de "extract-facts.mjs" para tu propia terminal, donde sí puedes usar --review. Este botón no ejecuta nada: solo copia el comando.</p>
+     <div class="row">
+       <div><label>Fecha</label><input type="date" id="ef-date"></div>
+       <div><label>Desde</label><input type="time" id="ef-from"></div>
+       <div><label>Hasta</label><input type="time" id="ef-to"></div>
+     </div>
+     <div class="row">
+       <div><label>Proveedor</label>
+         <select id="ef-provider"><option value="gemini">gemini</option><option value="ollama">ollama</option></select>
+       </div>
+       <div><label>Modelo (opcional, override sin fallback)</label>
+         <select id="ef-model"><option value="">(auto — probar en orden)</option></select>
+       </div>
+     </div>
+     <label>Sesión (opcional, id del .jsonl — vacío = la más reciente)</label>
+     <input type="text" id="ef-session">
+     <div class="checkline"><input type="checkbox" id="ef-review"><label for="ef-review">Revisión interactiva (--review, requiere terminal real)</label></div>
+     <label style="margin-top:16px">Comando</label>
+     <pre class="out ok" id="ef-cmd" style="margin-top:4px; user-select: all;"></pre>
+     <button class="run secondary" id="ef-copy">Copiar comando</button>`);
+
+  const providerSel = sec.querySelector('#ef-provider');
+  const modelSel = sec.querySelector('#ef-model');
+  const cmdEl = sec.querySelector('#ef-cmd');
+
+  async function loadModelOptions() {
+    modelSel.innerHTML = '<option value="">(auto — probar en orden)</option>';
+    const r = await call('GET', '/api/model-config?provider=' + providerSel.value);
+    for (const m of r.fallbackOrder ?? []) {
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = m;
+      modelSel.appendChild(opt);
+    }
+  }
+  providerSel.addEventListener('change', () => { loadModelOptions().then(renderCommand); });
+  loadModelOptions();
+
+  function shellQuote(s) {
+    return /[^\w.\-:/]/.test(s) ? `"${s.replace(/"/g, '\\"')}"` : s;
+  }
+
+  function renderCommand() {
+    const date = sec.querySelector('#ef-date').value;
+    const from = sec.querySelector('#ef-from').value;
+    const to = sec.querySelector('#ef-to').value;
+    const provider = providerSel.value;
+    const model = modelSel.value;
+    const session = sec.querySelector('#ef-session').value.trim();
+    const review = sec.querySelector('#ef-review').checked;
+
+    const parts = ['node', 'scripts/db/extract-facts.mjs'];
+    parts.push('--date', date || 'YYYY-MM-DD');
+    parts.push('--from', from || 'HH:MM');
+    parts.push('--to', to || 'HH:MM');
+    if (provider !== 'gemini') parts.push('--provider', provider);
+    if (model) parts.push('--model', model);
+    if (session) parts.push('--session', shellQuote(session));
+    if (review) parts.push('--review');
+
+    cmdEl.textContent = parts.join(' ');
+  }
+
+  for (const id of ['ef-date', 'ef-from', 'ef-to', 'ef-model', 'ef-session', 'ef-review']) {
+    sec.querySelector('#' + id).addEventListener('input', renderCommand);
+    sec.querySelector('#' + id).addEventListener('change', renderCommand);
+  }
+  renderCommand();
+
+  sec.querySelector('#ef-copy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(cmdEl.textContent);
+      sec.querySelector('#ef-copy').textContent = 'Copiado';
+      setTimeout(() => { sec.querySelector('#ef-copy').textContent = 'Copiar comando'; }, 1500);
+    } catch {
+      // clipboard puede fallar sin HTTPS/permiso — el texto ya está seleccionable (user-select: all)
+    }
+  });
+}
+
+// --- Extraer de página ---
+// Revisión interactiva de verdad, en el navegador (2026-08-31) — antes esta
+// sección solo armaba un comando de terminal, porque --review necesita TTY.
+// extract-page-facts.mjs ahora tiene un modo --json (sin preguntas por
+// stdin) que entrega los candidatos con sus nodos parecidos ya calculados;
+// esta sección arma las tarjetas de aprobar/editar/saltar acá mismo y los
+// inserta vía /api/remember-batch (el mismo endpoint de "Guardar lote", sin
+// código nuevo de escritura).
+{
+  const sec = section('extract-page-facts', 'Extraer de página', 'Extrae hechos candidatos del contenido de una página ("extract-page-facts.mjs") y los revisa acá mismo, sin terminal. Acepta un slug ya existente, o la ruta a cualquier archivo .md en disco, esté o no en la tabla "pages". Cada candidato trae nodos existentes parecidos por contenido, no solo el que sugiere el nombre del archivo.',
+    `<label>Página (slug existente o ruta .md)</label>
+     <input type="text" id="epf-page" placeholder="ej. projects/segundo-cerebro o C:\\notas\\ejemplo.md" list="epf-pages-list">
+     <datalist id="epf-pages-list"></datalist>
+     <div class="row">
+       <div><label>Proveedor</label>
+         <select id="epf-provider"><option value="gemini">gemini</option><option value="ollama">ollama</option></select>
+       </div>
+       <div><label>Modelo (opcional, override sin fallback)</label>
+         <select id="epf-model"><option value="">(auto — probar en orden)</option></select>
+       </div>
+     </div>
+     <button class="run" id="epf-extract">Extraer candidatos</button>
+     <div class="status" id="epf-info"></div>
+     <datalist id="epf-nodes-list"></datalist>
+     <div id="epf-cards"></div>
+     <button class="run" id="epf-insert" style="display:none">Insertar aprobados</button>`);
+
+  const providerSel = sec.querySelector('#epf-provider');
+  const modelSel = sec.querySelector('#epf-model');
+  const extractBtn = sec.querySelector('#epf-extract');
+  const infoEl = sec.querySelector('#epf-info');
+  const cardsEl = sec.querySelector('#epf-cards');
+  const insertBtn = sec.querySelector('#epf-insert');
+  const nodesList = sec.querySelector('#epf-nodes-list');
+
+  call('GET', '/api/pages').then((r) => {
+    const list = sec.querySelector('#epf-pages-list');
+    for (const p of r.pages ?? []) {
+      const opt = document.createElement('option');
+      opt.value = p.slug ?? p;
+      list.appendChild(opt);
+    }
+  });
+  call('GET', '/api/nodes').then((r) => {
+    for (const n of r.nodes ?? []) {
+      const opt = document.createElement('option');
+      opt.value = n.name;
+      nodesList.appendChild(opt);
+    }
+  });
+
+  async function loadModelOptions() {
+    modelSel.innerHTML = '<option value="">(auto — probar en orden)</option>';
+    const r = await call('GET', '/api/model-config?provider=' + providerSel.value);
+    for (const m of r.fallbackOrder ?? []) {
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = m;
+      modelSel.appendChild(opt);
+    }
+  }
+  providerSel.addEventListener('change', loadModelOptions);
+  loadModelOptions();
+
+  let lastSource = '';
+
+  function renderCard(fact, index, fallbackDate) {
+    const card = document.createElement('div');
+    card.className = 'fact-card';
+    card.dataset.index = String(index);
+    const suggestionsHtml = (fact.similarNodes ?? []).length
+      ? (fact.similarNodes ?? []).map((n) => `<span data-node="${n.node_name.replace(/"/g, '&quot;')}">${n.node_name} (${n.similarity.toFixed(2)})</span>`).join(', ')
+      : '(sin sugerencias)';
+    card.innerHTML = `
+      <div class="fc-top">
+        <input type="checkbox" class="fc-include" checked>
+        <label>Incluir #${index + 1} (${fact.kind})</label>
+      </div>
+      <label>Hecho</label>
+      <textarea class="fc-claim">${fact.claim.replace(/</g, '&lt;')}</textarea>
+      <div class="row">
+        <div><label>Fecha</label><input type="date" class="fc-date" value="${fact.date ?? fallbackDate ?? ''}"></div>
+        <div><label>Tipo</label>
+          <select class="fc-kind">
+            <option value="fact">fact</option><option value="event">event</option>
+            <option value="preference">preference</option><option value="commitment">commitment</option>
+          </select>
+        </div>
+      </div>
+      <label>Nodo</label>
+      <input type="text" class="fc-node" value="${fact.node}" list="epf-nodes-list">
+      <div class="fc-suggestions">nodos parecidos: ${suggestionsHtml}</div>
+      <div class="fc-fragment">"${(fact.sourceFragment ?? '').replace(/</g, '&lt;')}"</div>`;
+    card.querySelector('.fc-kind').value = fact.kind;
+    card.querySelector('.fc-include').addEventListener('change', (e) => card.classList.toggle('excluded', !e.target.checked));
+    for (const span of card.querySelectorAll('.fc-suggestions span')) {
+      span.addEventListener('click', () => { card.querySelector('.fc-node').value = span.dataset.node; });
+    }
+    return card;
+  }
+
+  extractBtn.addEventListener('click', async () => {
+    const page = sec.querySelector('#epf-page').value.trim();
+    if (!page) { infoEl.textContent = 'Falta la página.'; return; }
+    cardsEl.innerHTML = '';
+    insertBtn.style.display = 'none';
+    extractBtn.disabled = true;
+    infoEl.textContent = 'Extrayendo (puede tardar, corre un LLM sobre el contenido)…';
+    try {
+      const params = new URLSearchParams({ page });
+      if (providerSel.value !== 'gemini') params.set('provider', providerSel.value);
+      if (modelSel.value) params.set('model', modelSel.value);
+      const r = await call('GET', '/api/extract-page-facts?' + params.toString());
+      if (!r.ok) { infoEl.textContent = 'Error: ' + r.error; return; }
+      lastSource = r.source;
+      const nodeInfo = r.liveNode && r.liveNode !== r.defaultNode ? `fusionado, vigente: "${r.liveNode}"` : r.liveNode ? 'ya existe' : 'nuevo';
+      infoEl.textContent = `Página: ${r.page.slug} (${r.page.type}) — nodo por defecto "${r.defaultNode}" (${nodeInfo}) — ${r.existingFactsCount} hecho(s) ya vigente(s) — ${r.facts.length} candidato(s).`;
+      if (r.facts.length === 0) return;
+      const fallbackDate = r.page.updatedAt ? r.page.updatedAt.slice(0, 10) : '';
+      r.facts.forEach((f, i) => cardsEl.appendChild(renderCard(f, i, fallbackDate)));
+      insertBtn.style.display = '';
+    } finally {
+      extractBtn.disabled = false;
+    }
+  });
+
+  insertBtn.addEventListener('click', async () => {
+    const cards = [...cardsEl.querySelectorAll('.fact-card')].filter((c) => c.querySelector('.fc-include').checked);
+    if (cards.length === 0) { out(sec, { ok: false, stdout: '', stderr: 'No hay ningún candidato incluido.' }); return; }
+    const facts = cards.map((c) => ({
+      claim: c.querySelector('.fc-claim').value.trim(),
+      date: c.querySelector('.fc-date').value || undefined,
+      kind: c.querySelector('.fc-kind').value,
+      node: c.querySelector('.fc-node').value.trim(),
+      source: lastSource,
+      createNode: true,
+    }));
+    await runRememberBatchStream(sec, { facts }, insertBtn);
+  });
+}
+
+// --- Configuración ---
+// Tema/color/densidad/movimiento, guardados en localStorage (por navegador,
+// no viaja entre máquinas ni con el repo). Alto contraste bloquea el
+// override de acento/colores del grafo a propósito -- ver applySettings().
+{
+  const sec = section('settings', 'Configuración', 'Tema, colores y accesibilidad del dashboard. Se guarda en este navegador (localStorage) -- no sincroniza entre máquinas ni viaja con git.',
+    `<label>Tema</label>
+     <select id="cfg-theme">
+       <option value="system">Seguir el sistema</option>
+       <option value="dark">Oscuro</option>
+       <option value="light">Claro</option>
+       <option value="hc-dark">Alto contraste (oscuro)</option>
+       <option value="hc-light">Alto contraste (claro)</option>
+     </select>
+
+     <label style="margin-top:18px">Densidad</label>
+     <select id="cfg-density">
+       <option value="compact">Compacta</option>
+       <option value="comfortable">Cómoda</option>
+       <option value="large">Grande</option>
+     </select>
+
+     <label style="margin-top:18px">Reducir movimiento (animación del grafo al cargar)</label>
+     <select id="cfg-reduce-motion">
+       <option value="system">Seguir el sistema</option>
+       <option value="on">Activado</option>
+       <option value="off">Desactivado</option>
+     </select>
+
+     <label style="margin-top:26px">Síntesis por defecto en "Buscar"</label>
+     <div class="row">
+       <div><label style="margin-top:0">Proveedor</label>
+         <select id="cfg-search-provider">
+           <option value="ollama">Ollama Cloud</option>
+           <option value="gemini">Gemini</option>
+         </select>
+       </div>
+       <div><label style="margin-top:0">Modelo (opcional, override sin fallback)</label>
+         <select id="cfg-search-model"><option value="">(auto -- probar en orden)</option></select>
+       </div>
+     </div>
+
+     <p class="hint" id="cfg-hc-notice" style="margin-top:18px; display:none">Con un tema de alto contraste activo, el color de acento y los colores del grafo quedan fijos (protege el contraste garantizado) -- los controles de abajo no tienen efecto hasta que cambies a un tema normal.</p>
+
+     <div class="row" style="margin-top:18px">
+       <div><label>Color de acento</label><input type="color" id="cfg-accent"></div>
+       <div style="flex:0; align-self:flex-end"><button class="run secondary" id="cfg-accent-reset" style="margin-top:0">Restablecer</button></div>
+     </div>
+
+     <label style="margin-top:18px">Colores del grafo</label>
+     <div class="row">
+       <div><label style="margin-top:0">Nodo normal</label><input type="color" id="cfg-graph-normal"></div>
+       <div><label style="margin-top:0">Nodo meta</label><input type="color" id="cfg-graph-meta"></div>
+       <div><label style="margin-top:0">Resaltado</label><input type="color" id="cfg-graph-highlight"></div>
+     </div>
+     <button class="run secondary" id="cfg-graph-reset">Restablecer colores del grafo</button>
+
+     <div style="margin-top:26px"><button class="run" id="cfg-reset-all">Restablecer todo</button></div>`);
+
+  const themeSel = sec.querySelector('#cfg-theme');
+  const densitySel = sec.querySelector('#cfg-density');
+  const motionSel = sec.querySelector('#cfg-reduce-motion');
+  const searchProviderSel = sec.querySelector('#cfg-search-provider');
+  const searchModelSel = sec.querySelector('#cfg-search-model');
+  const hcNotice = sec.querySelector('#cfg-hc-notice');
+  const accentInput = sec.querySelector('#cfg-accent');
+  const graphNormalInput = sec.querySelector('#cfg-graph-normal');
+  const graphMetaInput = sec.querySelector('#cfg-graph-meta');
+  const graphHighlightInput = sec.querySelector('#cfg-graph-highlight');
+
+  function computedVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#000000';
+  }
+
+  async function loadSearchModelOptions() {
+    searchModelSel.innerHTML = '<option value="">(auto -- probar en orden)</option>';
+    const r = await call('GET', '/api/model-config?provider=' + searchProviderSel.value);
+    for (const m of r.fallbackOrder ?? []) {
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = m;
+      searchModelSel.appendChild(opt);
+    }
+    searchModelSel.value = settings.searchSynthModel || '';
+  }
+
+  function syncControlsFromSettings() {
+    themeSel.value = settings.theme;
+    densitySel.value = settings.density;
+    motionSel.value = settings.reduceMotion;
+    searchProviderSel.value = settings.searchSynthProvider;
+    const hc = isHighContrastTheme();
+    hcNotice.style.display = hc ? 'block' : 'none';
+    accentInput.disabled = graphNormalInput.disabled = graphMetaInput.disabled = graphHighlightInput.disabled = hc;
+    sec.querySelector('#cfg-accent-reset').disabled = sec.querySelector('#cfg-graph-reset').disabled = hc;
+    accentInput.value = settings.accent || computedVar('--accent');
+    graphNormalInput.value = settings.graphNormal || computedVar('--accent');
+    graphMetaInput.value = settings.graphMeta || computedVar('--warn');
+    graphHighlightInput.value = settings.graphHighlight || computedVar('--err');
+  }
+
+  function update(patch) {
+    Object.assign(settings, patch);
+    saveSettings();
+    applySettings();
+    syncControlsFromSettings();
+  }
+
+  themeSel.addEventListener('change', () => update({ theme: themeSel.value }));
+  densitySel.addEventListener('change', () => update({ density: densitySel.value }));
+  motionSel.addEventListener('change', () => update({ reduceMotion: motionSel.value }));
+  searchProviderSel.addEventListener('change', async () => {
+    update({ searchSynthProvider: searchProviderSel.value, searchSynthModel: '' });
+    await loadSearchModelOptions();
+  });
+  searchModelSel.addEventListener('change', () => update({ searchSynthModel: searchModelSel.value }));
+  accentInput.addEventListener('input', () => update({ accent: accentInput.value }));
+  graphNormalInput.addEventListener('input', () => update({ graphNormal: graphNormalInput.value }));
+  graphMetaInput.addEventListener('input', () => update({ graphMeta: graphMetaInput.value }));
+  graphHighlightInput.addEventListener('input', () => update({ graphHighlight: graphHighlightInput.value }));
+  sec.querySelector('#cfg-accent-reset').addEventListener('click', () => update({ accent: '' }));
+  sec.querySelector('#cfg-graph-reset').addEventListener('click', () => update({ graphNormal: '', graphMeta: '', graphHighlight: '' }));
+  sec.querySelector('#cfg-reset-all').addEventListener('click', async () => {
+    update({ ...DEFAULT_SETTINGS });
+    await loadSearchModelOptions();
+  });
+
+  syncControlsFromSettings();
+  loadSearchModelOptions();
+}
+
+show('search');
+</script>
+</body>
+</html>

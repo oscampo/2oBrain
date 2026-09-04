@@ -1,0 +1,20 @@
+#!/bin/sh
+# Post-commit: recarga automatica de pages/embeddings cuando un commit toca
+# un .md dentro de la taxonomia indexada (daily/, guides/, people/,
+# projects/, wiki/). Cualquier .md fuera de esas carpetas (ej. notas de
+# traspaso entre maquinas) nunca se carga a la base de datos.
+#
+# Vive en scripts/hooks/git/ (versionado, no en .git/hooks/) para que viaje
+# con git. Requiere correr una vez por maquina:
+#   git config core.hooksPath scripts/hooks/git
+
+changed=$(git diff-tree --no-commit-id --name-only -r HEAD -- \
+  daily guides people projects wiki | grep '\.md$')
+
+if [ -z "$changed" ]; then
+  exit 0
+fi
+
+echo "post-commit: paginas cambiadas, recargando pages/embeddings..."
+cd "$(git rev-parse --show-toplevel)/scripts/db" || exit 0
+node load-pages.mjs && node embed-pages.mjs

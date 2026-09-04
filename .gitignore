@@ -1,0 +1,41 @@
+# Credentials and secrets — never committed
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+.netrc
+.npmrc
+
+# Local databases and engine state — derived, machine-local
+*.pglite
+*.sqlite
+*.sqlite3
+*.db
+
+# Machine-local state (delta watermark, hook cooldown, etc.)
+state/*.local
+state/*.local.json
+
+# Hook + harness wiring (machine-specific)
+.claude/settings.local.json
+.claude/*.bak
+.claude/*.broken-*
+.mcp.json
+
+# Caches, logs, scratch
+logs/
+.cache/
+node_modules/
+.DS_Store
+Thumbs.db
+
+# Personal content: this scaffold ships empty — your own notes/facts/daily
+# logs are yours to keep out of git, or in a private fork.
+daily/
+guides/
+people/
+projects/
+wiki/

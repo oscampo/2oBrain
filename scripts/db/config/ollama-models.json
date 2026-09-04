@@ -1,0 +1,6 @@
+{
+  "fallbackOrder": [
+    "gpt-oss:120b-cloud",
+    "gpt-oss:20b-cloud"
+  ]
+}
