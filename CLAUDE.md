@@ -414,6 +414,12 @@ pidas al usuario que lo revise él salvo que no tengas esa herramienta.
 
 ## Fase 8: Servidor MCP (opcional)
 
+Esto es para el USO diario de `search`/`remember` desde esos clientes una
+vez instalado (una llamada a herramienta MCP por HTTP, no requiere shell
+ni sistema de archivos del lado del cliente), no para instalar 2oBrain
+desde ahí -- la instalación en sí (todas las fases anteriores) solo puede
+correr desde Claude Code, ver README.
+
 **PREGUNTA**: ¿Quieres que `search`/`remember` estén disponibles para
 otros clientes MCP (Claude Desktop, Claude Chat/Cowork, cualquier app que
 hable MCP), no solo el dashboard/CLI de este repo?
