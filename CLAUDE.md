@@ -246,6 +246,17 @@ manual ("guarda este hecho")?
 → Anota la respuesta, se aplica en la Fase 8 (tú activas el hook, no el
 usuario).
 
+**PREGUNTA**: `HEARTBEAT.md` trae 5 chequeos ya construidos (ambient-delta,
+brain-hygiene, commitments-check, memory-prune, morning-briefing), todos
+apagados por defecto, cada uno como un switch independiente. Recórrelos
+uno por uno con el usuario, mostrándole qué hace cada uno en una línea
+(no le pidas que lea la tabla él solo), y para cada uno que le interese,
+corre el comando manualmente ahí mismo para que vea el resultado real
+antes de decidir, nunca lo actives a ciegas. Solo pasa `Enabled` a `yes`
+en los que el usuario confirme después de ver la salida real, respetando
+el ritual de activación del propio archivo (una activación no presta
+evidencia a otra).
+
 Con las respuestas, reescribe tú los tres archivos. Estructura de
 referencia (no la cambies, es la que el resto del sistema espera;
 `MEMORY.md` en particular es lo que se carga en cada sesión):

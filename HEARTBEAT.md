@@ -6,11 +6,14 @@ runs while the laptop sleeps or the app is closed. (Always-on 24/7
 schedules are what a hosted service provides; this file is the honest
 desktop contract.)
 
-This file ships empty of real jobs, on purpose, same as
-`SOUL.md`/`USER.md`/`MEMORY.md`: it's a template for a pattern, not a
-worked example. Add jobs here as you find real recurring checks worth
-running (a delta pull, a health check, a briefing), never invent one
-speculatively.
+This file ships with the jobs the scaffold's own scripts already support,
+every one of them DISABLED by default (see the enable ritual below) so
+nothing runs until you've actually chosen it, same spirit as
+`SOUL.md`/`USER.md`/`MEMORY.md` shipping blank: this is a menu of
+switches, not a worked example of what your day should look like. The
+install interview (`CLAUDE.md`, Fase 5) walks through them with you. Add
+more rows here as you find other real recurring checks worth running,
+never invent one speculatively.
 
 Deliberately separate from `MEMORY.md`: that file is meant to be pruned
 and rewritten as it goes stale ("cut what no longer earns its place"), a
@@ -44,7 +47,11 @@ evidence, never flip one on the strength of another's test.
 
 | Job | Cadence (session-triggered) | Enabled | What |
 | --- | --- | --- | --- |
-| _(none yet, add your own)_ | | no | |
+| ambient-delta | every session start + turn boundary | no | `node scripts/db/delta.mjs --quiet`, pull "what changed since my last wake" (new facts/pages) since the last run on this machine (`state/delta-state.local.json`). Zero-LLM. Stay silent when empty. |
+| brain-hygiene | weekly-equivalent | no | `node scripts/db/doctor.mjs`; relay anything not OK. |
+| commitments-check | first session of the day | no | Scan `MEMORY.md` open commitments; surface anything due or overdue. |
+| memory-prune | weekly-equivalent | no | The `MEMORY.md` maintenance ritual (promote / demote / cut). |
+| morning-briefing | first session of the day | no | One screen: due today, waiting on, worth knowing. No filler, a skipped briefing costs less than an empty one. If you've connected mail/calendar tools, use them to complement it; if not, skip that part rather than guessing. |
 
 Cadence bookkeeping lives in `state/heartbeat-state.local.json`
 (machine-local, not committed).
