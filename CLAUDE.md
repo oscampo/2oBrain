@@ -25,8 +25,12 @@ Si estás leyendo este archivo sin haber clonado el repo todavía (ej. lo
 leíste en remoto de la URL que te pasaron, antes de tener una carpeta
 local), clónalo tú primero -- `git clone
 https://github.com/oscampo/2oBrain.git`, instalando `git` primero si hace
-falta, mismo criterio de la Fase 1 -- y sigue desde ahí. Todo lo que sigue
-en este archivo asume que ya estás dentro de la carpeta clonada.
+falta, mismo criterio de la Fase 1 -- y desconéctalo de este repo
+(`git remote remove origin`, dentro de la carpeta nueva): un clon queda
+apuntando a `oscampo/2oBrain` por defecto, y esta copia es del usuario,
+no debería quedar como una tentación de empujar de vuelta aquí. Sigue
+desde ahí. Todo lo que sigue en este archivo asume que ya estás dentro de
+la carpeta clonada y ya desconectada.
 
 ## Fase 0: Detección de estado
 
