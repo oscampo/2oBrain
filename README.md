@@ -49,7 +49,14 @@ or a degraded one; the MCP server is the same thin layer for all of them.
 
 ## Quick start
 
-Tell your coding agent (Claude Code, or anything similarly capable):
+**Requires Claude Code** (terminal, the desktop app's Code tab, or a VS
+Code/JetBrains extension), anywhere with real file system and shell
+access. This will not work from Claude Chat (claude.ai web/mobile) or
+Cowork: neither has the tools to clone a repo, write `.env`, or keep a
+local server running, and pasting the message below into one of those
+will just fail or stall with no real progress.
+
+In Claude Code, tell it:
 
 ```
 Sigue las instrucciones definidas aquí: https://github.com/oscampo/2oBrain
