@@ -439,10 +439,12 @@ hable MCP), no solo el dashboard/CLI de este repo?
   - **Supabase Edge Function** (`supabase/functions/mcp-server/`): si
     tienes el MCP de Supabase conectado (Fase 2), despliégala tú
     directamente con la herramienta `deploy_edge_function` de ese MCP,
-    el usuario no necesita instalar nada. Sin ese MCP, necesita la
-    Supabase CLI (`supabase functions deploy mcp-server`), que sí tiene
-    que correr él si tú no puedes instalarla de forma confiable en su
-    sistema.
+    el usuario no necesita instalar nada. Pásale `import_map_path:
+    "deno.json"` explícito -- la detección automática del import map está
+    rota (falla con "import map path does not exist" si no se pasa a
+    mano, ya verificado en vivo). Sin ese MCP, necesita la Supabase CLI
+    (`supabase functions deploy mcp-server`), que sí tiene que correr él
+    si tú no puedes instalarla de forma confiable en su sistema.
   - **Deno Deploy** (`deno-deploy/mcp-server/`): el usuario necesita
     cuenta en dash.deno.com y generar `DENO_DEPLOY_TOKEN`
     (dash.deno.com/account#access-tokens), eso sí es solo suyo. Una vez
