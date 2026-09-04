@@ -28,6 +28,10 @@ from what was actually written down.
 - **`scripts/hooks/`** — a Claude Code `Stop` hook (nudges you to capture a
   fact before closing a turn) and a git `post-commit` hook (reloads
   page embeddings when you commit a `.md` file).
+- **`skills/`** — `segundo-cerebro-capture` (when/how to save a fact from
+  a session that has DB access) and `extract-code-facts` (extract facts
+  from a session that has *no* access to this repo — another project,
+  a remote container — as JSON you bring back and ingest later).
 
 ## Quick start
 

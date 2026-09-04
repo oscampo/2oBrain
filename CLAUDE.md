@@ -332,7 +332,9 @@ Instalación completa. Desde ahora:
 - http://localhost:4287 — dashboard (búsqueda, grafo, mantenimiento)
 - node scripts/db/doctor.mjs — chequeo de salud, cuando quieras
 Ver skills/segundo-cerebro-capture/SKILL.md para el detalle de cómo y
-cuándo capturar hechos.
+cuándo capturar hechos. Si alguna vez trabajas en OTRO repo/sesión sin
+acceso a esta base, usa skills/extract-code-facts/SKILL.md ("/extract-code-facts")
+para extraer los hechos de esa sesión como JSON y traerlos aquí después.
 ```
 
 De aquí en adelante, tu comportamiento diario lo definen
