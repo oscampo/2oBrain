@@ -150,22 +150,30 @@ exacta de cada proveedor** en vez de solo nombrarla, para que no tenga que
 buscarla:
 
 1. **Voyage AI** (`VOYAGE_API_KEY`, dash.voyageai.com), embeddings
-   (`voyage-4-lite`). Sin esto, `search.mjs` no puede hacer búsqueda
-   semántica (solo texto completo).
+   (`voyage-4-lite`). **Obligatoria, no opcional**: `search.mjs`,
+   `remember.mjs`, `create-node.mjs` y varios más llaman a `embed()` sin
+   ningún manejo de error ni camino alterno de "solo texto completo" (no
+   existe ese fallback en el código, aunque el nombre pueda sonar a
+   búsqueda híbrida) -- sin esta llave el sistema no arranca, punto.
 2. **Ollama Cloud** (`OLLAMA_API_KEY`, ollama.com/settings/keys),
    clasificación barata (duplicados, alias, menciones) y extracción de
-   hechos.
+   hechos. Opcional de verdad: cada clasificador chequea la llave primero
+   (`classifierEnabled`) y cae a revisión manual si falta, sin romper nada.
 3. **Gemini** (`GEMINI_API_KEY`, aistudio.google.com/apikey), fallback de
    mayor calidad para síntesis y clasificación de relaciones; algunos
    clasificadores lo usan como único proveedor cuando la tarea es de
-   juicio, no de extracción (ver comentarios en `scripts/db/lib/`).
+   juicio, no de extracción (ver comentarios en `scripts/db/lib/`). También
+   opcional, mismo criterio de degradación explícita que Ollama Cloud.
 
-**PREGUNTA**: ¿Tienes ya alguna de estas tres, o las creamos ahora las
-tres? Todas tienen capa gratis funcional para empezar. Si el usuario
-prefiere arrancar con menos de las tres, dile explícitamente qué deja de
-funcionar sin cada una (búsqueda semántica sin Voyage, sin clasificadores
-automáticos de duplicados/alias sin ninguna de las dos de LLM) y sigue,
-no lo bloquees a tener las tres para poder probar el sistema.
+**PREGUNTA**: pide la llave de Voyage AI primero y no avances de esta fase
+sin ella -- explica por qué es la única de las tres que no se puede saltar
+("es la que convierte tus hechos en vectores para poder buscarlos y
+compararlos; sin ella el sistema no funciona, no es una función de menos").
+Después pregunta por Ollama Cloud y Gemini juntas: ¿las tienen ya, o las
+creamos ahora? Si el usuario prefiere arrancar sin alguna de esas dos, dile
+explícitamente qué deja de funcionar (sin clasificadores automáticos de
+duplicados/alias/menciones sin ninguna de las dos) y sigue, esas sí no
+bloquean el resto de la instalación.
 
 Cada vez que te pase una llave, escríbela tú mismo en `.env`, nunca le
 pidas que edite el archivo él.
@@ -179,9 +187,13 @@ node doctor.mjs
 ```
 
 `search.mjs` debe correr sin error (aunque no haya resultados, la base está
-vacía). `doctor.mjs` debe salir "Todo limpio." Si algo falla, diagnostica y
-corrige tú antes de seguir, no avances con el motor roto, y no le pidas al
-usuario que lo revise él.
+vacía) -- si falla, lo primero que hay que descartar es `VOYAGE_API_KEY`
+faltante o mal pegada (`grep VOYAGE_API_KEY .env`), es la causa más
+probable dado que `embed()` no tiene manejo de error propio; no avances a
+la Fase 5 hasta que esto corra limpio, cualquier fase después de esta
+depende de que `embed()` funcione. `doctor.mjs` debe salir "Todo limpio."
+Si algo falla, diagnostica y corrige tú antes de seguir, no avances con el
+motor roto, y no le pidas al usuario que lo revise él.
 
 **Fase 4 completada.**
 
@@ -284,27 +296,10 @@ duplicados/colisión de nombre) y `scripts/db/list-supernode-candidates.mjs`
 resto del sistema de nodos; esta fase solo les da un arranque, no reemplaza
 esa protección.
 
-Antes de crear nada, revisa si `VOYAGE_API_KEY` quedó configurado en la
-Fase 3:
-
-```bash
-grep -q '^VOYAGE_API_KEY=.\+' .env && echo "VOYAGE_OK" || echo "SIN_VOYAGE"
-```
-
-**SIN_VOYAGE**: `create-node.mjs` usa Voyage AI (`embed()`) para su chequeo
-de desambiguación semántica, y esa llamada no tiene manejo de error --
-sin la llave, revienta con un error de Voyage sin explicación en vez de
-fallar con gracia. Agrega `--force` a TODOS los `create-node.mjs` de esta
-fase (salta ese chequeo en vez de intentarlo y romper) y dile al usuario
-antes de seguir: *"Como no configuraste Voyage AI, voy a crear la
-estructura de nodos igual, pero sin el chequeo automático de duplicados --
-y guardar hechos con `remember.mjs` tampoco va a funcionar todavía hasta
-que agregues esa llave (usa la misma llamada de embeddings sin ningún
-guard), así que por ahora me salto el paso de enriquecer con hechos
-reales."* Sáltate directo la segunda PREGUNTA de esta fase (la de
-enriquecer con hechos) en ese caso.
-
-**VOYAGE_OK**: sigue normal, sin `--force`.
+Voyage AI ya quedó garantizado desde la Fase 4 (no se avanza sin eso), así
+que el chequeo de desambiguación semántica de `create-node.mjs` corre
+siempre, sin `--force` -- si bloquea, es una señal real (nombre parecido a
+un nodo existente), no un problema de configuración.
 
 Antes de cualquier comando con `--date`, calcula la fecha real (nunca de
 memoria, mismo motivo que obliga `--confirm-date` en `remember.mjs`):
@@ -336,18 +331,17 @@ después con el mismo comando:
 - **Vida personal** → `habitos`, `rutinas`, `espiritualidad`, `salud`
 
 ```bash
-node scripts/db/create-node.mjs --name trabajo [--force]
-node scripts/db/create-node.mjs --name proyectos --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación" [--force]
-node scripts/db/create-node.mjs --name contactos --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación" [--force]
-node scripts/db/create-node.mjs --name reuniones --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación" [--force]
+node scripts/db/create-node.mjs --name trabajo
+node scripts/db/create-node.mjs --name proyectos --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name contactos --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name reuniones --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
 
-node scripts/db/create-node.mjs --name vida-personal [--force]
-node scripts/db/create-node.mjs --name habitos --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación" [--force]
-node scripts/db/create-node.mjs --name rutinas --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación" [--force]
-node scripts/db/create-node.mjs --name espiritualidad --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación" [--force]
-node scripts/db/create-node.mjs --name salud --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación" [--force]
+node scripts/db/create-node.mjs --name vida-personal
+node scripts/db/create-node.mjs --name habitos --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name rutinas --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name espiritualidad --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name salud --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
 ```
-(`[--force]` solo si SIN_VOYAGE, ver arriba.)
 
 (Solo crea los de la rama que el usuario marcó -- si marcó únicamente
 "Trabajo", no crees `vida-personal` ni sus hijos.)
