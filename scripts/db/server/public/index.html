@@ -171,6 +171,20 @@
 // Agrupado por lo que cada sección hace, no por cuándo se construyó
 // (discutido y acordado con el usuario, 2026-09-03). "group" cambia entre
 // entradas consecutivas dispara un encabezado nuevo en el nav.
+// "advanced" (2026-09-05, acordado con el usuario): secciones de
+// mantenimiento/estructura que un usuario nuevo de 2oBrain no necesita a
+// diario (fusionar, alias, relaciones, categorías, modelos, recategorizar,
+// y los dos borrados reales), ocultas del nav por defecto. Un checkbox por
+// función, no un interruptor único "todo o nada" (primer diseño, corregido
+// tras feedback del usuario: quería control por función): cada una se
+// activa por separado desde la sección "Opciones avanzadas" (abajo), con su
+// propia entrada en localStorage -- así alguien puede querer solo "Borrar
+// registro" sin destapar Fusionar/Alias/Relaciones a la vez. Es solo un
+// filtro visual del nav -- las rutas /api/* siguen respondiendo igual estén
+// o no visibles aquí, esto reduce ruido, no restringe acceso (el dashboard
+// ya es solo-localhost). Grafo y Doctor se quedan siempre visibles a
+// propósito: son de solo lectura y le muestran a alguien nuevo que el
+// sistema tiene coherencia interna, no un riesgo de mantenimiento.
 const SECTIONS = [
   { id: 'search', label: 'Buscar', group: 'Consultar' },
   { id: 'timeline', label: 'Timeline', group: 'Consultar' },
@@ -181,38 +195,59 @@ const SECTIONS = [
   { id: 'remember', label: 'Guardar registro', group: 'registros' },
   { id: 'remember-batch', label: 'Guardar lote', group: 'registros' },
   { id: 'forget', label: 'Retractar', group: 'registros' },
-  { id: 'recategorize', label: 'Recategorizar registro', group: 'registros' },
+  { id: 'recategorize', label: 'Recategorizar registro', group: 'registros', advanced: true },
+  { id: 'purge-record', label: 'Borrar registro', group: 'registros', advanced: true },
 
-  { id: 'merge-memories', label: 'Fusionar recuerdos', group: 'recuerdos' },
-  { id: 'aliases', label: 'Alias', group: 'recuerdos' },
-  { id: 'relations', label: 'Relaciones', group: 'recuerdos' },
-  { id: 'category-candidates', label: 'Candidatos de categoría', group: 'recuerdos' },
+  { id: 'merge-memories', label: 'Fusionar recuerdos', group: 'recuerdos', advanced: true },
+  { id: 'aliases', label: 'Alias', group: 'recuerdos', advanced: true },
+  { id: 'relations', label: 'Relaciones', group: 'recuerdos', advanced: true },
+  { id: 'category-candidates', label: 'Candidatos de categoría', group: 'recuerdos', advanced: true },
+  { id: 'purge-memory', label: 'Borrar recuerdo', group: 'recuerdos', advanced: true },
 
   { id: 'extract-records', label: 'Extraer de sesión', group: 'Extraer' },
   { id: 'extract-page-records', label: 'Extraer de página', group: 'Extraer' },
 
   { id: 'doctor', label: 'Doctor', group: 'Sistema' },
-  { id: 'models', label: 'Modelos', group: 'Sistema' },
+  { id: 'models', label: 'Modelos', group: 'Sistema', advanced: true },
   { id: 'settings', label: 'Configuración', group: 'Sistema' },
+  { id: 'advanced-options', label: 'Opciones avanzadas', group: 'Sistema' },
 ];
 
 const nav = document.getElementById('nav');
 const main = document.getElementById('main');
 
-let lastGroup = null;
-for (const s of SECTIONS) {
-  if (s.group !== lastGroup) {
-    const h = document.createElement('div');
-    h.className = 'nav-group';
-    h.textContent = s.group;
-    nav.appendChild(h);
-    lastGroup = s.group;
+function isFeatureEnabled(id) {
+  return localStorage.getItem('advFeature:' + id) === '1';
+}
+
+function setFeatureEnabled(id, enabled) {
+  localStorage.setItem('advFeature:' + id, enabled ? '1' : '0');
+}
+
+function renderNav() {
+  const previouslyActive = nav.querySelector('button.active')?.dataset.target;
+  nav.innerHTML = '';
+  let lastGroup = null;
+  for (const s of SECTIONS) {
+    if (s.advanced && !isFeatureEnabled(s.id)) continue;
+    if (s.group !== lastGroup) {
+      const h = document.createElement('div');
+      h.className = 'nav-group';
+      h.textContent = s.group;
+      nav.appendChild(h);
+      lastGroup = s.group;
+    }
+    const btn = document.createElement('button');
+    btn.textContent = s.label;
+    btn.dataset.target = s.id;
+    btn.addEventListener('click', () => show(s.id));
+    nav.appendChild(btn);
   }
-  const btn = document.createElement('button');
-  btn.textContent = s.label;
-  btn.dataset.target = s.id;
-  btn.addEventListener('click', () => show(s.id));
-  nav.appendChild(btn);
+  // Si la sección visible antes de desactivar una función era esa misma
+  // función avanzada, no dejarla "activa" sin botón que la respalde --
+  // vuelve a la primera sección visible (Buscar).
+  const stillVisible = previouslyActive && nav.querySelector(`button[data-target="${previouslyActive}"]`);
+  show(stillVisible ? previouslyActive : SECTIONS[0].id);
 }
 
 function show(id) {
@@ -1525,7 +1560,7 @@ function section(id, title, hint, bodyHtml) {
 
 // --- Retractar ---
 {
-  const sec = section('forget', 'Retractar', 'Invalida un registro vigente sin reemplazarlo ("forget.mjs"). Nunca borra la fila, el motivo queda anotado y sigue consultable con --all en Timeline. Para borrar de verdad basura sin ningún valor histórico (pruebas, duplicados de debugging), existe forget.mjs --id <id> --purge (o --memory <nombre> --purge) por CLI, deliberadamente fuera de este panel, solo borra lo ya retractado, nunca un registro vigente en un solo paso.',
+  const sec = section('forget', 'Retractar', 'Invalida un registro vigente sin reemplazarlo ("forget.mjs"). Nunca borra la fila, el motivo queda anotado y sigue consultable con --all en Timeline. Para borrar de verdad basura sin ningún valor histórico (pruebas, duplicados de debugging), usa "Borrar registro" (Opciones avanzadas): solo borra lo ya retractado, nunca un registro vigente en un solo paso.',
     `<label>Id(s) (separados por coma)</label><input type="text" id="fg-id" placeholder="159,160">
      <button class="run secondary" id="fg-preview" style="margin-top:8px">Ver registro(s)</button>
      <label style="margin-top:16px">Motivo</label><input type="text" id="fg-reason" placeholder="ej. aprobado por error, ruido de desarrollo interno">
@@ -1577,6 +1612,96 @@ function section(id, title, hint, bodyHtml) {
 
     out(sec, await call('POST', '/api/forget', { id, reason }));
     invalidatePreview();
+  });
+}
+
+// --- Borrar registro (Opciones avanzadas) ---
+// Borrado real, no retracción: la fila desaparece de la base. forget.mjs
+// --purge es el gate de verdad (nunca borra un registro vigente, exige que
+// ya esté retractado primero), esto solo repite el mismo patrón
+// "previsualizar antes de habilitar el botón" que Retractar, con un
+// confirm() que dice explícitamente que es irreversible.
+{
+  const sec = section('purge-record', 'Borrar registro', 'Borra de verdad un registro ya retractado ("forget.mjs --id <id> --purge"). Irreversible: no queda fila, no aparece ni con --all en Timeline. Solo para basura real sin valor histórico (pruebas, duplicados de una sesión de debugging), nunca para una corrección real, que debe quedar auditable como retracción. forget.mjs se niega si el id sigue vigente.',
+    `<label>Id(s) (separados por coma)</label><input type="text" id="pr-id" placeholder="159,160">
+     <button class="run secondary" id="pr-preview" style="margin-top:8px">Ver registro(s)</button>
+     <button class="run" id="pr-run" disabled style="margin-top:16px">Borrar para siempre</button>
+     <div class="status" id="pr-status">Primero pulsa "Ver registro(s)" para confirmar qué vas a borrar.</div>`);
+
+  const idInput = sec.querySelector('#pr-id');
+  const runBtn = sec.querySelector('#pr-run');
+  const statusEl = sec.querySelector('#pr-status');
+  let previewedFor = null;
+  let previewedFacts = [];
+
+  function invalidatePreview() {
+    previewedFor = null;
+    previewedFacts = [];
+    runBtn.disabled = true;
+    statusEl.textContent = 'El id cambió, vuelve a pulsar "Ver registro(s)" antes de borrar.';
+  }
+  idInput.addEventListener('input', invalidatePreview);
+
+  sec.querySelector('#pr-preview').addEventListener('click', async () => {
+    const id = idInput.value.trim();
+    if (!id) { out(sec, { ok: false, stdout: '', stderr: 'Falta el id.' }); return; }
+    const r = await call('GET', '/api/records?id=' + encodeURIComponent(id));
+    out(sec, r);
+    if (r.ok && !/^Ningún id existe\.?$/.test((r.stdout || '').trim())) {
+      previewedFor = id;
+      previewedFacts = [...(r.stdout || '').matchAll(/#(\d+) \[[\d-]+\] \[([^\]]+)\] (.+)/g)]
+        .map((m) => ({ id: m[1], status: m[2], claim: m[3] }));
+      runBtn.disabled = false;
+      statusEl.textContent = `Contenido verificado para el id "${id}", ya puedes borrar.`;
+    } else {
+      invalidatePreview();
+      statusEl.textContent = 'No se pudo previsualizar, revisa el id.';
+    }
+  });
+
+  runBtn.addEventListener('click', async () => {
+    const id = idInput.value.trim();
+    if (previewedFor !== id) { out(sec, { ok: false, stdout: '', stderr: 'Vuelve a pulsar "Ver registro(s)", el id no coincide con el último previsualizado.' }); return; }
+
+    const summary = previewedFacts.map((f) => `#${f.id} [${f.status}]: ${f.claim.slice(0, 100)}${f.claim.length > 100 ? '…' : ''}`).join('\n');
+    const confirmed = window.confirm(
+      `IRREVERSIBLE: esto borra ${previewedFacts.length} registro(s) para siempre, no queda ni en el historial.\n\n${summary}\n\n¿Confirmas?`,
+    );
+    if (!confirmed) { statusEl.textContent = 'Borrado cancelado por el usuario.'; return; }
+
+    out(sec, await call('POST', '/api/purge-record', { id }));
+    invalidatePreview();
+  });
+}
+
+// --- Borrar recuerdo (Opciones avanzadas) ---
+// forget.mjs --memory --purge ya es el gate real: se niega si el recuerdo
+// tiene cualquier registro ligado (vigente o retractado), si otro recuerdo
+// lo referencia con merged_into, o si tiene filas en memory_links/
+// memory_pair_checks -- por eso este panel no necesita paso de
+// previsualización propio, el error de forget.mjs explica exactamente qué
+// falta desligar primero.
+{
+  const sec = section('purge-memory', 'Borrar recuerdo', 'Borra de verdad un recuerdo vacío ("forget.mjs --memory <nombre> --purge"). Irreversible. Solo funciona si el recuerdo no tiene ningún registro ligado, ninguna relación en "Relaciones", y ningún otro recuerdo fusionado hacia él -- si algo de eso existe, forget.mjs se niega y explica qué desligar primero.',
+    `<label>Nombre del recuerdo</label><input type="text" id="pm-name" placeholder="ej. prueba-recuerdo-dashboard" list="pm-memories-list">
+     <datalist id="pm-memories-list"></datalist>
+     <button class="run" id="pm-run" style="margin-top:16px">Borrar para siempre</button>`);
+
+  call('GET', '/api/memories').then((r) => {
+    const list = sec.querySelector('#pm-memories-list');
+    for (const n of r.memories ?? []) {
+      const opt = document.createElement('option');
+      opt.value = n.name;
+      list.appendChild(opt);
+    }
+  });
+
+  sec.querySelector('#pm-run').addEventListener('click', async () => {
+    const name = sec.querySelector('#pm-name').value.trim();
+    if (!name) { out(sec, { ok: false, stdout: '', stderr: 'Falta el nombre.' }); return; }
+    const confirmed = window.confirm(`IRREVERSIBLE: esto borra el recuerdo "${name}" para siempre, si tiene cualquier registro o relación ligada, forget.mjs se va a negar (revisa el mensaje).\n\n¿Confirmas?`);
+    if (!confirmed) return;
+    out(sec, await call('POST', '/api/purge-memory', { name }));
   });
 }
 
@@ -1979,7 +2104,33 @@ function section(id, title, hint, bodyHtml) {
   loadSearchModelOptions();
 }
 
-show('search');
+// --- Opciones avanzadas ---
+// Un checkbox por función, no un interruptor único "todo o nada" (primer
+// diseño, corregido tras feedback del usuario 2026-09-05): alguien puede
+// querer solo "Borrar registro" sin destapar Fusionar/Alias/Relaciones a
+// la vez. Cada checkbox controla si su sección aparece en el nav
+// (isFeatureEnabled()/setFeatureEnabled() arriba); nunca restringe acceso a
+// las rutas /api/*, que responden igual estén o no visibles.
+{
+  const advancedSections = SECTIONS.filter((s) => s.advanced);
+  const rows = advancedSections
+    .map((s) => `<div class="checkline"><input type="checkbox" id="adv-${s.id}" data-target="${s.id}"><label for="adv-${s.id}">${s.label} <span class="hint" style="display:inline">(${s.group})</span></label></div>`)
+    .join('');
+  const sec = section('advanced-options', 'Opciones avanzadas', 'Cada función de mantenimiento/estructura se activa por separado -- ninguna es necesaria para el uso diario del dashboard. Esto solo cambia qué aparece en el menú de la izquierda, las rutas del servidor siguen respondiendo igual esté o no visible aquí.',
+    rows);
+
+  for (const s of advancedSections) {
+    const cb = sec.querySelector(`#adv-${s.id}`);
+    cb.checked = isFeatureEnabled(s.id);
+    cb.addEventListener('change', () => {
+      setFeatureEnabled(s.id, cb.checked);
+      renderNav();
+      show('advanced-options');
+    });
+  }
+}
+
+renderNav();
 </script>
 </body>
 </html>
