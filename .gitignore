@@ -39,3 +39,8 @@ guides/
 people/
 projects/
 wiki/
+
+# Feedback contact address: personal, not a generic default like the model
+# config JSON files above — never commit it, same reasoning as .env.
+scripts/db/config/feedback.json
+!scripts/db/config/feedback.json.example

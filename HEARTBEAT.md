@@ -49,6 +49,7 @@ evidence, never flip one on the strength of another's test.
 | --- | --- | --- | --- |
 | ambient-delta | every session start + turn boundary | no | `node scripts/db/delta.mjs --quiet`, pull "what changed since my last wake" (new records/pages) since the last run on this machine (`state/delta-state.local.json`). Zero-LLM. Stay silent when empty. |
 | brain-hygiene | weekly-equivalent | no | `node scripts/db/doctor.mjs`; relay anything not OK. |
+| check-2obrain-updates | weekly-equivalent | no | `node scripts/db/check-for-updates.mjs --json`; about the tool itself (2oBrain), not the user's own data -- compares the local `VERSION` against the latest tag on `oscampo/2oBrain` (`git ls-remote --tags`, no remote/token needed). Only surface if `hasUpdate` is true; never applies anything by itself, see CLAUDE.md "Mantenimiento: revisar e instalar actualizaciones". |
 | commitments-check | first session of the day | no | `node scripts/db/list-commitments.mjs` (query against `records`, not `MEMORY.md` prose); surface anything due or overdue. |
 | memory-prune | weekly-equivalent | no | The `MEMORY.md` maintenance ritual (promote / demote / cut). |
 | morning-briefing | first session of the day | no | One screen: due today, waiting on, worth knowing. No filler, a skipped briefing costs less than an empty one. If you've connected mail/calendar tools, use them to complement it; if not, skip that part rather than guessing. |

@@ -25,11 +25,15 @@ import { synthesize } from '../lib/synthesize.mjs';
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const DB_DIR = join(SERVER_DIR, '..');
+const REPO_DIR = join(DB_DIR, '..', '..');
 const INDEX_HTML_PATH = join(SERVER_DIR, 'public', 'index.html');
+const VERSION_PATH = join(REPO_DIR, 'VERSION');
 const MODEL_CONFIG_PATHS = {
   gemini: join(DB_DIR, 'config', 'gemini-models.json'),
   ollama: join(DB_DIR, 'config', 'ollama-models.json'),
 };
+const FEEDBACK_CONFIG_PATH = join(DB_DIR, 'config', 'feedback.json');
+const FEEDBACK_CONFIG_EXAMPLE_PATH = join(DB_DIR, 'config', 'feedback.json.example');
 
 function parseArgs(argv) {
   const out = {};
@@ -295,6 +299,54 @@ app.post('/api/model-config', async (c) => {
   try {
     writeFileSync(path, JSON.stringify({ fallbackOrder }, null, 2) + '\n', 'utf8');
     return c.json({ ok: true, fallbackOrder });
+  } catch (err) {
+    return c.json({ ok: false, error: err.message }, 500);
+  }
+});
+
+// Sección "Acerca de": versión instalada, chequeo de actualizaciones
+// (check-for-updates.mjs, ver CLAUDE.md "Mantenimiento: revisar e instalar
+// actualizaciones" para el procedimiento real de traer una versión nueva --
+// esto solo informa) y la dirección de contacto para el botón "Enviar
+// comentarios" del frontend.
+app.get('/api/version', (c) => {
+  let version = '0.0.0';
+  try {
+    version = readFileSync(VERSION_PATH, 'utf8').trim();
+  } catch { /* sin VERSION, queda el default */ }
+  return c.json({ ok: true, version });
+});
+
+app.get('/api/check-for-updates', (c) => {
+  const result = runScript('check-for-updates.mjs', ['--json']);
+  try {
+    return c.json(JSON.parse(result.stdout));
+  } catch {
+    return c.json({ ok: false, error: result.stderr || 'check-for-updates.mjs no devolvió JSON válido' }, 422);
+  }
+});
+
+// feedback.json nunca se commitea (contiene una dirección de contacto real,
+// ver .gitignore) -- si todavía no existe, se lee el .example como default
+// (email vacío) sin escribir nada todavía, igual que .env/.env.example.
+app.get('/api/feedback-config', (c) => {
+  try {
+    return c.json({ ok: true, ...JSON.parse(readFileSync(FEEDBACK_CONFIG_PATH, 'utf8')) });
+  } catch {
+    try {
+      return c.json({ ok: true, ...JSON.parse(readFileSync(FEEDBACK_CONFIG_EXAMPLE_PATH, 'utf8')) });
+    } catch {
+      return c.json({ ok: true, email: '' });
+    }
+  }
+});
+
+app.post('/api/feedback-config', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (typeof body?.email !== 'string') return c.json({ ok: false, error: 'falta email (puede ser cadena vacía)' }, 400);
+  try {
+    writeFileSync(FEEDBACK_CONFIG_PATH, JSON.stringify({ email: body.email.trim() }, null, 2) + '\n', 'utf8');
+    return c.json({ ok: true, email: body.email.trim() });
   } catch (err) {
     return c.json({ ok: false, error: err.message }, 500);
   }
