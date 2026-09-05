@@ -241,6 +241,23 @@ app.post('/api/forget', async (c) => {
   return respond(c, runScript('forget.mjs', ['--id', String(body.id), '--reason', body.reason]));
 });
 
+// Borrado real (Opciones avanzadas, 2026-09-05): forget.mjs --purge es el
+// único gate de verdad (nunca borra un registro vigente, nunca un recuerdo
+// con algo ligado), esto solo lo expone como subproceso igual que el resto
+// de las rutas -- ningún chequeo propio aquí que pueda desincronizarse del
+// que ya vive en el script.
+app.post('/api/purge-record', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body?.id) return c.json({ ok: false, error: 'falta id' }, 400);
+  return respond(c, runScript('forget.mjs', ['--id', String(body.id), '--purge']));
+});
+
+app.post('/api/purge-memory', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body?.name) return c.json({ ok: false, error: 'falta name' }, 400);
+  return respond(c, runScript('forget.mjs', ['--memory', body.name, '--purge']));
+});
+
 // Vista previa de registro(s) por id, usada por "Retractar" antes de dejar
 // confirmar: sin esto, retractar era escribir un id a ciegas y confiar en
 // que era el correcto. No modifica nada (get-records.mjs es de solo lectura).
