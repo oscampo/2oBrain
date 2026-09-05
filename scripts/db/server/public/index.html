@@ -620,7 +620,7 @@ function section(id, title, hint, bodyHtml) {
 {
   const sec = section('timeline', 'Timeline', 'Lista registros en orden cronológico ("timeline.mjs"). No es un buscador. Déjalo vacío para ver los más recientes de todo el sistema. Escribe un recuerdo para ver solo sus registros, empieza a teclear para ver los recuerdos existentes. No acepta términos de búsqueda libres; para eso usa "Buscar".',
     `<label>recuerdo (opcional, empieza a escribir para ver sugerencias)</label>
-     <input type="text" id="tl-node" placeholder="ej. segundo-cerebro" list="tl-memories-list">
+     <input type="text" id="tl-memory" placeholder="ej. segundo-cerebro" list="tl-memories-list">
      <datalist id="tl-memories-list"></datalist>
      <div class="checkline"><input type="checkbox" id="tl-all"><label for="tl-all">Incluir reemplazados (--all)</label></div>
      <button class="run" id="tl-run">Ver</button>`);
@@ -635,7 +635,7 @@ function section(id, title, hint, bodyHtml) {
   });
 
   sec.querySelector('#tl-run').addEventListener('click', async () => {
-    const node = sec.querySelector('#tl-node').value.trim();
+    const node = sec.querySelector('#tl-memory').value.trim();
     const all = sec.querySelector('#tl-all').checked;
     const params = new URLSearchParams();
     if (node) params.set('node', node);
@@ -649,7 +649,7 @@ function section(id, title, hint, bodyHtml) {
 {
   const sec = section('memory-status', 'Estado de recuerdo', 'Resume en prosa el estado actual de un recuerdo ("memory-status.mjs"). Genera el resumen al momento, a partir de sus registros vigentes. Así ya no necesitas mantener una página narrativa a mano.',
     `<label>recuerdo (empieza a escribir para ver sugerencias)</label>
-     <input type="text" id="ns-node" placeholder="ej. segundo-cerebro" list="ns-memories-list">
+     <input type="text" id="ns-memory" placeholder="ej. segundo-cerebro" list="ns-memories-list">
      <datalist id="ns-memories-list"></datalist>
      <div class="row">
        <div><label style="margin-top:10px">Sintetizar con</label>
@@ -689,7 +689,7 @@ function section(id, title, hint, bodyHtml) {
   });
 
   sec.querySelector('#ns-run').addEventListener('click', async () => {
-    const node = sec.querySelector('#ns-node').value.trim();
+    const node = sec.querySelector('#ns-memory').value.trim();
     if (!node) { outMarkdown(sec, { ok: false }, 'Falta el recuerdo.'); return; }
     const provider = nsProviderSel.value;
     const model = nsModelSel.value;
@@ -1023,11 +1023,11 @@ function section(id, title, hint, bodyHtml) {
       hideCtxMenu();
       if (btn.dataset.action === 'timeline') {
         show('timeline');
-        document.querySelector('#tl-node').value = memoryName;
+        document.querySelector('#tl-memory').value = memoryName;
         document.querySelector('#tl-run').click();
       } else {
         show('memory-status');
-        document.querySelector('#ns-node').value = memoryName;
+        document.querySelector('#ns-memory').value = memoryName;
         document.querySelector('#ns-run').click();
       }
     });
@@ -1207,19 +1207,19 @@ function section(id, title, hint, bodyHtml) {
 {
   const sec = section('aliases', 'Alias', 'Un alias es una forma natural de nombrar un recuerdo (nombre de pila, sigla), sin alias, el name interno (kebab-case) casi nunca aparece tal cual en prosa, y el sistema no puede reconocer menciones futuras. "Buscar candidatos" propone formas extraídas de los propios registros del recuerdo (verificadas contra el texto real, nunca inventadas). Nada se aplica solo: revisa y aplica/quita abajo.',
     `<label>recuerdo (opcional, vacío = revisa todos los que tengan alias vacío)</label>
-     <input type="text" id="al-scan-node" list="al-memories-list">
+     <input type="text" id="al-scan-memory" list="al-memories-list">
      <datalist id="al-memories-list"></datalist>
      <button class="run" id="al-scan">Buscar candidatos</button>
 
      <label style="margin-top:22px">Aplicar alias</label>
-     <input type="text" id="al-add-node" placeholder="recuerdo" list="al-memories-list">
+     <input type="text" id="al-add-memory" placeholder="recuerdo" list="al-memories-list">
      <label>Alias a agregar (separados por coma)</label>
      <input type="text" id="al-add-values" placeholder="ej. Pedro Pérea, pedro-perez">
      <label>Motivo</label><input type="text" id="al-add-reason" placeholder="ej. backfill guiado, aprobado por el usuario">
      <button class="run secondary" id="al-add">Aplicar</button>
 
      <label style="margin-top:22px">Quitar alias</label>
-     <input type="text" id="al-rm-node" placeholder="recuerdo" list="al-memories-list">
+     <input type="text" id="al-rm-memory" placeholder="recuerdo" list="al-memories-list">
      <label>Alias a quitar (separados por coma)</label>
      <input type="text" id="al-rm-values" placeholder="ej. Diseño Biomédico 2, DB2">
      <label>Motivo</label><input type="text" id="al-rm-reason" placeholder="ej. forma genérica, colisiona con otro recuerdo">
@@ -1235,12 +1235,12 @@ function section(id, title, hint, bodyHtml) {
   });
 
   sec.querySelector('#al-scan').addEventListener('click', async () => {
-    const node = sec.querySelector('#al-scan-node').value.trim();
+    const node = sec.querySelector('#al-scan-memory').value.trim();
     out(sec, await call('GET', '/api/alias-candidates' + (node ? '?memory=' + encodeURIComponent(node) : '')));
   });
 
   sec.querySelector('#al-add').addEventListener('click', async () => {
-    const node = sec.querySelector('#al-add-node').value.trim();
+    const node = sec.querySelector('#al-add-memory').value.trim();
     const aliases = sec.querySelector('#al-add-values').value.trim();
     const reason = sec.querySelector('#al-add-reason').value.trim();
     if (!node || !aliases || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan recuerdo/alias/motivo.' }); return; }
@@ -1256,7 +1256,7 @@ function section(id, title, hint, bodyHtml) {
   });
 
   sec.querySelector('#al-rm').addEventListener('click', async () => {
-    const node = sec.querySelector('#al-rm-node').value.trim();
+    const node = sec.querySelector('#al-rm-memory').value.trim();
     const remove = sec.querySelector('#al-rm-values').value.trim();
     const reason = sec.querySelector('#al-rm-reason').value.trim();
     if (!node || !remove || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan recuerdo/alias/motivo.' }); return; }
@@ -1283,7 +1283,7 @@ function section(id, title, hint, bodyHtml) {
     `<button class="run" id="rl-scan">Buscar candidatos (histórico completo)</button>
 
      <label style="margin-top:22px">Ver enlaces de un recuerdo</label>
-     <input type="text" id="rl-view-node" placeholder="recuerdo" list="rl-memories-list">
+     <input type="text" id="rl-view-memory" placeholder="recuerdo" list="rl-memories-list">
      <datalist id="rl-memories-list"></datalist>
      <button class="run secondary" id="rl-view">Ver</button>
 
@@ -1321,7 +1321,7 @@ function section(id, title, hint, bodyHtml) {
   sec.querySelector('#rl-scan').addEventListener('click', async () => out(sec, await call('GET', '/api/mention-candidates')));
 
   sec.querySelector('#rl-view').addEventListener('click', async () => {
-    const node = sec.querySelector('#rl-view-node').value.trim();
+    const node = sec.querySelector('#rl-view-memory').value.trim();
     if (!node) { out(sec, { ok: false, stdout: '', stderr: 'Falta el recuerdo.' }); return; }
     out(sec, await call('GET', '/api/memory-links?memory=' + encodeURIComponent(node)));
   });
@@ -1370,7 +1370,7 @@ function section(id, title, hint, bodyHtml) {
 // pertenece.
 {
   const sec = section('recategorize', 'Recategorizar registro', 'Reasigna UN registro a otro recuerdo, sin tocar el resto del recuerdo original ("recategorize-record.mjs"), para cuando la desambiguación automática se equivocó, o se guardó con --memory a mano sin pensarlo. Usa "Retractar → Ver registro(s)" si primero quieres confirmar el texto del id.',
-    `<label>Id del registro</label><input type="text" id="rc-fact" placeholder="412">
+    `<label>Id del registro</label><input type="text" id="rc-record" placeholder="412">
      <div class="row">
        <div><label>recuerdo actual</label><input type="text" id="rc-from" list="rc-memories-list"></div>
        <div><label>recuerdo correcto</label><input type="text" id="rc-to" list="rc-memories-list"></div>
@@ -1389,7 +1389,7 @@ function section(id, title, hint, bodyHtml) {
   });
 
   sec.querySelector('#rc-run').addEventListener('click', async () => {
-    const fact = sec.querySelector('#rc-fact').value.trim();
+    const fact = sec.querySelector('#rc-record').value.trim();
     const from = sec.querySelector('#rc-from').value.trim();
     const to = sec.querySelector('#rc-to').value.trim();
     const reason = sec.querySelector('#rc-reason').value.trim();
@@ -1425,7 +1425,7 @@ function section(id, title, hint, bodyHtml) {
      </div>
      <label>Fuente</label><input type="text" id="rm-source" placeholder="ej. conversación Claude Code, sesión de trabajo">
      <label>recuerdo(s) (opcional, separados por coma, empieza a escribir para ver sugerencias)</label>
-     <input type="text" id="rm-node" placeholder="ej. segundo-cerebro" list="rm-memories-list">
+     <input type="text" id="rm-memory" placeholder="ej. segundo-cerebro" list="rm-memories-list">
      <datalist id="rm-memories-list"></datalist>
      <div class="checkline"><input type="checkbox" id="rm-create-memory"><label for="rm-create-memory">Crear recuerdo nuevo, requiere escribir el nombre arriba en "recuerdo(s)" (--create-memory)</label></div>
      <label style="margin-top:10px">Alias del recuerdo nuevo (opcional, separados por coma, solo aplica con "Crear recuerdo nuevo" y un único recuerdo)</label>
@@ -1464,7 +1464,7 @@ function section(id, title, hint, bodyHtml) {
       date: sec.querySelector('#rm-date').value,
       source: sec.querySelector('#rm-source').value.trim(),
       kind: sec.querySelector('#rm-kind').value,
-      node: sec.querySelector('#rm-node').value.trim() || undefined,
+      node: sec.querySelector('#rm-memory').value.trim() || undefined,
       createNode: sec.querySelector('#rm-create-memory').checked || undefined,
       aliases: sec.querySelector('#rm-aliases').value.trim() || undefined,
       supersedes: sec.querySelector('#rm-supersedes').value.trim() || undefined,
