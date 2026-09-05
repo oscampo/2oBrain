@@ -37,11 +37,11 @@ a real correction.)*
 
 ## Open commitments
 
-Things Claude said it would do and has not finished, and things others owe
-the principal. A promise not in this file will be forgotten, and being
-forgotten is how an agent loses trust.
-
-*(Empty.)*
+`node scripts/db/list-commitments.mjs`, a live query against `facts`
+(`kind: commitment`, `valid_until is null`), not prose maintained by hand
+here. Keeping a duplicate list in this file is exactly the kind of thing
+that goes stale silently and defeats the point of a structured backend,
+close a commitment via `forget.mjs`, never by editing this section.
 
 ## Critical events
 
