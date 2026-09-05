@@ -49,7 +49,7 @@ evidence, never flip one on the strength of another's test.
 | --- | --- | --- | --- |
 | ambient-delta | every session start + turn boundary | no | `node scripts/db/delta.mjs --quiet`, pull "what changed since my last wake" (new facts/pages) since the last run on this machine (`state/delta-state.local.json`). Zero-LLM. Stay silent when empty. |
 | brain-hygiene | weekly-equivalent | no | `node scripts/db/doctor.mjs`; relay anything not OK. |
-| commitments-check | first session of the day | no | Scan `MEMORY.md` open commitments; surface anything due or overdue. |
+| commitments-check | first session of the day | no | `node scripts/db/list-commitments.mjs` (query against `facts`, not `MEMORY.md` prose); surface anything due or overdue. |
 | memory-prune | weekly-equivalent | no | The `MEMORY.md` maintenance ritual (promote / demote / cut). |
 | morning-briefing | first session of the day | no | One screen: due today, waiting on, worth knowing. No filler, a skipped briefing costs less than an empty one. If you've connected mail/calendar tools, use them to complement it; if not, skip that part rather than guessing. |
 
