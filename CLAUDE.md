@@ -484,6 +484,19 @@ similar), ábrelo en `http://localhost:4287` y confirma en vivo que carga
 el dashboard con sus secciones (Buscar/Timeline/Grafo/Doctor/etc.), no le
 pidas al usuario que lo revise él salvo que no tengas esa herramienta.
 
+**PREGUNTA**: la sección "Acerca de" del dashboard trae un botón de
+"Enviar comentarios" (mailto:, nunca un issue de GitHub -- ninguna fase de
+esta instalación exige cuenta de GitHub, y forzarla acá reintroduciría esa
+barrera). Necesita una dirección de contacto configurada, que no viene
+hardcodeada en el repo (es personal, no un default genérico): *"¿A qué
+correo te gustaría que lleguen los comentarios de quien use esto? Puedes
+dejarlo en blanco y configurarlo después desde la misma sección."*
+Guárdalo tú mismo:
+
+```bash
+curl -s -X POST http://localhost:4287/api/feedback-config -H "content-type: application/json" -d "{\"email\":\"<correo>\"}"
+```
+
 ## Fase 8: Servidor MCP (opcional)
 
 Esto es para el USO diario de `search`/`remember` desde esos clientes una
@@ -553,6 +566,7 @@ Instalación completa. Desde ahora:
 - node scripts/db/search.mjs "pregunta", busca
 - http://localhost:4287, dashboard (búsqueda, grafo, mantenimiento)
 - node scripts/db/doctor.mjs, chequeo de salud, cuando quieras
+- Dashboard -> Acerca de: versión instalada, buscar actualizaciones, enviar comentarios
 Ver skills/segundo-cerebro-capture/SKILL.md para el detalle de cómo y
 cuándo capturar registros. Si alguna vez trabajas en OTRO repo/sesión sin
 acceso a esta base, usa skills/extract-code-records/SKILL.md ("/extract-code-records")
@@ -563,3 +577,47 @@ De aquí en adelante, tu comportamiento diario lo definen
 `SOUL.md`/`USER.md`/`MEMORY.md` (recién escritos en la Fase 5), no este
 archivo, la Fase 0 es la que decide, en cada sesión futura, que ya no hay
 que repetir nada de esto.
+
+## Mantenimiento: revisar e instalar actualizaciones
+
+Esto no es parte de la entrevista (ya terminó arriba) -- es comportamiento
+de todos los días, igual que `SOUL.md`/`USER.md`/`MEMORY.md`, así que este
+archivo lo sigue cubriendo.
+
+**Detección** (job `check-2obrain-updates` de `HEARTBEAT.md`, apagado por
+defecto como los demás): `node scripts/db/check-for-updates.mjs` compara
+el archivo `VERSION` local contra el último tag publicado en
+`oscampo/2oBrain` vía `git ls-remote --tags` -- no necesita ningún remote
+configurado (este clon no tiene `origin`, a propósito, ver el inicio de
+este archivo) ni token (repo público). Solo informa, nunca aplica nada
+sola.
+
+**Aplicar una actualización, si el usuario la pide:**
+
+1. Trae solo el tag de la versión nueva, sin agregar un remote permanente
+   (evita reabrir la tentación de push que se cerró al quitar `origin`):
+   ```bash
+   git fetch https://github.com/oscampo/2oBrain.git tag vX.Y.Z
+   ```
+2. Mira qué cambió antes de tocar nada:
+   ```bash
+   git diff HEAD FETCH_HEAD -- scripts skills CLAUDE.md README.md HEARTBEAT.md CHANGELOG.md VERSION
+   ```
+   Nota el `--`: deja fuera a propósito `SOUL.md`, `USER.md`, `MEMORY.md`,
+   `.env` y cualquier dato real del usuario -- eso nunca viene de upstream,
+   nunca lo toques con este diff.
+3. Si el diff toca `scripts/db/schema.sql`: **para**. Nunca reapliques el
+   esquema solo contra la base real del usuario -- muéstrale exactamente
+   qué cambió y qué comando correrías, y espera su confirmación explícita
+   antes de tocar su base de datos en producción. Todo lo demás (código de
+   `scripts/`, `skills/`, el propio `CLAUDE.md`) sí lo puedes aplicar sin
+   tanta ceremonia, mismo criterio de "el trabajo lo haces tú" de siempre
+   -- pero avísale qué vas a actualizar antes de hacerlo.
+4. Aplica los cambios seguros (`git checkout FETCH_HEAD -- <rutas>` o un
+   merge si el histórico diverge poco, tu criterio según qué tan limpio
+   salga), corre `npm install` de nuevo por si hay dependencias nuevas, y
+   verifica con `node scripts/db/doctor.mjs` antes de darlo por
+   completado.
+
+`CHANGELOG.md` documenta qué trae cada versión etiquetada -- léelo antes
+de aplicar para saber qué esperar, no asumas que es solo un número.

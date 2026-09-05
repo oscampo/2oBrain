@@ -211,6 +211,7 @@ const SECTIONS = [
   { id: 'models', label: 'Modelos', group: 'Sistema', advanced: true },
   { id: 'settings', label: 'Configuración', group: 'Sistema' },
   { id: 'advanced-options', label: 'Opciones avanzadas', group: 'Sistema' },
+  { id: 'about', label: 'Acerca de', group: 'Sistema' },
 ];
 
 const nav = document.getElementById('nav');
@@ -2128,6 +2129,87 @@ function section(id, title, hint, bodyHtml) {
       show('advanced-options');
     });
   }
+}
+
+// --- Acerca de ---
+// Versión instalada + chequeo de actualizaciones (check-for-updates.mjs,
+// solo informa, ver CLAUDE.md "Mantenimiento: revisar e instalar
+// actualizaciones" para aplicarla de verdad) y feedback vía mailto: --
+// nunca vía GitHub Issues, a propósito (ninguna fase de la instalación
+// exige cuenta de GitHub, forzarla acá por la puerta de atrás la
+// reintroduciría). La dirección de contacto es configurable (no viene
+// hardcodeada en el repo, ver feedback.json/.gitignore) porque quien
+// administra una instalación de 2oBrain no siempre es Oscar.
+{
+  const sec = section('about', 'Acerca de',
+    '2oBrain es un segundo cerebro personal: búsqueda semántica + captura de hechos con memoria estructurada, pensado para instalarse en tu propia base de datos.',
+    `<p><strong>Versión instalada:</strong> <span id="about-version">cargando…</span></p>
+     <button class="run secondary" id="about-check-updates">Buscar actualizaciones</button>
+     <div id="about-update-result" style="margin-top:8px"></div>
+
+     <p style="margin-top:20px">Construido por Oscar Campo (Universidad Autónoma de Occidente).
+     Repositorio: <a href="https://github.com/oscampo/2oBrain" target="_blank" rel="noopener">github.com/oscampo/2oBrain</a>.</p>
+
+     <h3 style="margin-top:24px">Enviar comentarios</h3>
+     <label>Tu comentario</label>
+     <textarea id="about-feedback-text" rows="4" placeholder="Qué encontraste confuso, qué te gustaría que hiciera, qué se rompió..."></textarea>
+     <button class="run" id="about-feedback-send" style="margin-top:8px">Enviar comentarios</button>
+     <div id="about-feedback-result" style="margin-top:8px"></div>
+
+     <details style="margin-top:20px">
+       <summary>Configurar dirección de contacto (quien administra esta instalación)</summary>
+       <div style="margin-top:8px">
+         <label>Correo donde llegan los comentarios</label>
+         <input type="text" id="about-feedback-email" placeholder="tu-correo@ejemplo.com">
+         <button class="run secondary" id="about-feedback-email-save" style="margin-top:8px">Guardar</button>
+         <div id="about-feedback-email-result" style="margin-top:8px"></div>
+       </div>
+     </details>`);
+
+  call('GET', '/api/version').then((r) => {
+    sec.querySelector('#about-version').textContent = r.ok ? r.version : '(desconocida)';
+  });
+
+  let feedbackEmail = '';
+  call('GET', '/api/feedback-config').then((r) => {
+    feedbackEmail = r.ok ? (r.email || '') : '';
+    sec.querySelector('#about-feedback-email').value = feedbackEmail;
+  });
+
+  sec.querySelector('#about-check-updates').addEventListener('click', async () => {
+    const box = sec.querySelector('#about-update-result');
+    box.textContent = 'Revisando...';
+    const r = await call('GET', '/api/check-for-updates');
+    if (!r.ok) { box.textContent = 'No se pudo revisar: ' + (r.error || 'error desconocido'); return; }
+    box.innerHTML = r.hasUpdate
+      ? `Hay una versión nueva: <strong>${escapeHtml(r.latestVersion)}</strong> (tienes ${escapeHtml(r.currentVersion)}). Pídele a tu agente que revise "Mantenimiento: revisar e instalar actualizaciones" en CLAUDE.md.`
+      : `Estás al día (versión ${escapeHtml(r.currentVersion)}).`;
+  });
+
+  sec.querySelector('#about-feedback-send').addEventListener('click', () => {
+    const box = sec.querySelector('#about-feedback-result');
+    const text = sec.querySelector('#about-feedback-text').value.trim();
+    if (!text) { box.textContent = 'Escribe algo primero.'; return; }
+    if (!feedbackEmail) {
+      box.textContent = 'No hay una dirección de contacto configurada todavía -- pídele a quien te compartió esto que la configure abajo, en "Configurar dirección de contacto".';
+      return;
+    }
+    const version = sec.querySelector('#about-version').textContent;
+    const subject = encodeURIComponent(`2oBrain -- comentario (v${version})`);
+    const body = encodeURIComponent(text);
+    const a = document.createElement('a');
+    a.href = `mailto:${feedbackEmail}?subject=${subject}&body=${body}`;
+    a.click();
+    box.textContent = 'Se abrió tu cliente de correo con el comentario ya escrito -- solo falta que le des enviar ahí.';
+  });
+
+  sec.querySelector('#about-feedback-email-save').addEventListener('click', async () => {
+    const box = sec.querySelector('#about-feedback-email-result');
+    const email = sec.querySelector('#about-feedback-email').value.trim();
+    const r = await call('POST', '/api/feedback-config', { email });
+    if (r.ok) { feedbackEmail = r.email; box.textContent = 'Guardado.'; }
+    else box.textContent = 'Error: ' + (r.error || 'desconocido');
+  });
 }
 
 renderNav();
