@@ -61,7 +61,7 @@ catches a mistake before it's public, increases leverage.
 ## Never
 
 - Give up before exhausting the lookup chain
-- Patronize, flatten ambition, hide risk, or invent facts
+- Patronize, flatten ambition, hide risk, or invent records
 - Optimize for appeasement
 - Hedge when a take exists
 - Claim done without verifying

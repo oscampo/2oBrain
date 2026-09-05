@@ -1,8 +1,8 @@
-// Etapa 3 (PLAN-nodos.md, 2026-08-30): extrae hechos candidatos del
-// contenido de una página (`pages`) para migrarla a `facts`/`fact_nodes`.
-// Mismo patrón que extract-facts.mjs (que lee .jsonl de sesión), adaptado
+// Etapa 3 (PLAN-recuerdos.md, 2026-08-30): extrae registros candidatos del
+// contenido de una página (`pages`) para migrarla a `records`/`record_memories`.
+// Mismo patrón que extract-records.mjs (que lee .jsonl de sesión), adaptado
 // para leer una página en vez de una transcripción:
-//   - Contexto negativo: los hechos ya vigentes del nodo asociado a la
+//   - Contexto negativo: los registros ya vigentes del recuerdo asociado a la
 //     página se le pasan al LLM para que no proponga de nuevo lo que ya
 //     existe.
 //   - Cada candidato trae un `node` propuesto (default: el slug sin el
@@ -11,37 +11,37 @@
 //     excepción) pueda verificar contra el original sin releer toda la
 //     página.
 //
-// Dos modos, igual que extract-facts.mjs:
+// Dos modos, igual que extract-records.mjs:
 //   - Sin --review: solo IMPRIME los candidatos, no toca la base.
 //   - Con --review: revisión interactiva (requiere TTY real) por cada
-//     candidato -- aprobar tal cual, editar (claim/fecha/tipo/nodo), o
+//     candidato -- aprobar tal cual, editar (claim/fecha/tipo/recuerdo), o
 //     saltar. Los aprobados se acumulan y se insertan TODOS JUNTOS al
-//     final vía remember-batch.mjs (no uno por uno como extract-facts.mjs
+//     final vía remember-batch.mjs (no uno por uno como extract-records.mjs
 //     -- decisión explícita de la planeación de Etapa 3, reusa el gate de
 //     contradicciones existente sin construir nada nuevo ahí).
 //
 // Proveedor por defecto: Gemini. Ollama Cloud gratuito quedó por debajo de
 // la calidad necesaria para extracción en pruebas comparativas (mismo
-// hallazgo que extract-facts.mjs, ver su cabecera) -- se deja como opción,
+// hallazgo que extract-records.mjs, ver su cabecera) -- se deja como opción,
 // no como default.
 //
 // --page acepta DOS formas (2026-08-31, generalización pedida por el usuario):
 //   - un slug ya existente en la tabla `pages` (comportamiento original), o
 //   - la ruta a cualquier archivo .md en disco, esté o no en `pages`;
-//     permite extraer hechos de una nota nueva, todavía sin cargar/commitear,
+//     permite extraer registros de una nota nueva, todavía sin cargar/commitear,
 //     o de un .md fuera del vault indexado (ej. D:\Notes\otra-carpeta\...). Se
 //     prueba primero como slug; si no existe, se trata como ruta de archivo.
 //     Rutas relativas se resuelven contra la raíz del repo, no contra el
 //     directorio desde el que se corra el comando.
 //
 // Uso:
-//   node extract-page-facts.mjs --page people/jane-doe [--review]
-//   node extract-page-facts.mjs --page D:\Notes\otra-carpeta\alguna-nota.md [--review]
+//   node extract-page-records.mjs --page people/jane-doe [--review]
+//   node extract-page-records.mjs --page D:\Notes\otra-carpeta\alguna-nota.md [--review]
 //     [--provider gemini|ollama] [--model <id>] [--dump-prompt <archivo>]
 //     [--system-prompt-file <ruta>]
 // --json   En vez de --review o el listado en texto, entrega los candidatos
 //          en un solo objeto JSON por stdout (page, defaultNode, liveNode,
-//          facts con similarNodes ya calculado por cada uno). No pregunta
+//          records con similarNodes ya calculado por cada uno). No pregunta
 //          nada por stdin -- pensado para que un frontend (el dashboard)
 //          arme su propia revisión interactiva sin terminal real.
 import { readFileSync, writeFileSync, existsSync, statSync } from 'node:fs';
@@ -78,7 +78,7 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv.slice(2));
 
 if (!args.page) {
-  console.error('Uso: node extract-page-facts.mjs --page <slug o ruta .md> [--review] [--provider gemini|ollama] [--model <id>]');
+  console.error('Uso: node extract-page-records.mjs --page <slug o ruta .md> [--review] [--provider gemini|ollama] [--model <id>]');
   process.exit(1);
 }
 
@@ -167,21 +167,21 @@ if (pageRows.length > 0) {
   console.error(`Archivo .md fuera de "pages" (ad hoc): ${mdPath}`);
 }
 
-// Convención confirmada en la clasificación de Etapa 3 (PLAN-nodos.md): el
-// nodo de una página es su slug sin el primer segmento de ruta (el tipo),
+// Convención confirmada en la clasificación de Etapa 3 (PLAN-recuerdos.md): el
+// recuerdo de una página es su slug sin el primer segmento de ruta (el tipo),
 // ej. "people/x" -> "x". Excepción conocida: "projects/curso-admin" no
-// mapea a un nodo propio (se dividió en DB1/DB2-gestion-github en la
+// mapea a un recuerdo propio (se dividió en DB1/DB2-gestion-github en la
 // Etapa 1) -- si el slug es ese, avisa en vez de adivinar mal.
 const defaultNode = page.slug.split('/').slice(1).join('/') || page.slug;
 if (page.slug === 'projects/curso-admin') {
   console.error(
-    'Aviso: "projects/curso-admin" no tiene un nodo propio -- se dividió en DB1-gestion-github/DB2-gestion-github en la Etapa 1. ' +
-      'El nodo sugerido por defecto ("curso-admin") probablemente no existe; revisa/edita el nodo de cada candidato a mano.',
+    'Aviso: "projects/curso-admin" no tiene un recuerdo propio -- se dividió en DB1-gestion-github/DB2-gestion-github en la Etapa 1. ' +
+      'El recuerdo sugerido por defecto ("curso-admin") probablemente no existe; revisa/edita el recuerdo de cada candidato a mano.',
   );
 }
 
 // Resuelve merged_into como el resto del sistema, para el contexto
-// negativo -- si el nodo por defecto fue fusionado a otro, los hechos
+// negativo -- si el recuerdo por defecto fue fusionado a otro, los registros
 // "ya existentes" viven bajo el nombre vigente, no el original.
 async function resolveLive(name) {
   let current = name;
@@ -189,7 +189,7 @@ async function resolveLive(name) {
   while (true) {
     if (seen.has(current)) return null; // ciclo: no debería pasar, cae a "no existe"
     seen.add(current);
-    const { rows } = await client.query(`select name, merged_into from nodes where name = $1`, [current]);
+    const { rows } = await client.query(`select name, merged_into from memories where name = $1`, [current]);
     if (rows.length === 0) return null;
     if (!rows[0].merged_into) return rows[0].name;
     current = rows[0].merged_into;
@@ -198,52 +198,52 @@ async function resolveLive(name) {
 
 const liveNode = await resolveLive(defaultNode);
 
-// Contexto negativo: hechos vigentes ya ligados al nodo (vía fact_nodes,
+// Contexto negativo: registros vigentes ya ligados al recuerdo (vía record_memories,
 // la fuente autoritativa desde la Etapa 1) + cualquier residuo aún bajo el
 // page_slug legado (red de seguridad, no debería aportar nada nuevo si la
 // migración de Etapa 1 quedó completa).
 const { rows: existingByNode } = liveNode
   ? await client.query(
-      `select f.id, f.claim, f.date from facts f
-       join fact_nodes fn on fn.fact_id = f.id
-       where fn.node_name = $1 and f.valid_until is null
+      `select f.id, f.claim, f.date from records f
+       join record_memories fn on fn.record_id = f.id
+       where fn.memory_name = $1 and f.valid_until is null
        order by f.date`,
       [liveNode],
     )
   : { rows: [] };
 const { rows: existingByLegacySlug } = await client.query(
-  `select id, claim, date from facts where page_slug = $1 and valid_until is null order by date`,
+  `select id, claim, date from records where page_slug = $1 and valid_until is null order by date`,
   [page.slug],
 );
 const existingIds = new Set(existingByNode.map((r) => r.id));
 const existingFacts = [...existingByNode, ...existingByLegacySlug.filter((r) => !existingIds.has(r.id))];
 
-// El nodo por defecto sale del nombre del slug/archivo -- una suposición
+// El recuerdo por defecto sale del nombre del slug/archivo -- una suposición
 // léxica, no de contenido. Para que no dependa solo de acertar el nombre a
-// mano (hallazgo del usuario 2026-08-31: qué pasa si el nodo que uno cree que
+// mano (hallazgo del usuario 2026-08-31: qué pasa si el recuerdo que uno cree que
 // existe en realidad debería ser otro), cada candidato se compara por
-// embedding contra los nodos existentes (nodes_similar, misma función que
+// embedding contra los recuerdos existentes (memories_similar, misma función que
 // usa la desambiguación de remember.mjs/remember-batch.mjs) y se muestran
-// los más parecidos como sugerencia -- no reemplaza al nodo por defecto,
+// los más parecidos como sugerencia -- no reemplaza al recuerdo por defecto,
 // solo informa antes de que el usuario decida.
 async function suggestSimilarNodes(claim) {
   try {
     const embedding = await embed(claim, 'query');
-    const { rows } = await client.query(`select * from nodes_similar($1, 3, 1)`, [toVectorLiteral(embedding)]);
+    const { rows } = await client.query(`select * from memories_similar($1, 3, 1)`, [toVectorLiteral(embedding)]);
     return rows;
   } catch (err) {
-    console.error(`  (no se pudo sugerir nodos parecidos: ${err.message})`);
+    console.error(`  (no se pudo sugerir recuerdos parecidos: ${err.message})`);
     return [];
   }
 }
 function formatNodeSuggestions(rows) {
   if (rows.length === 0) return '(sin sugerencias)';
-  return rows.map((r) => `${r.node_name} (${r.similarity.toFixed(2)})`).join(', ');
+  return rows.map((r) => `${r.memory_name} (${r.similarity.toFixed(2)})`).join(', ');
 }
 
 console.error(`Página: ${page.slug} (${page.type}), "${page.title}"`);
-console.error(`Nodo sugerido por defecto: "${defaultNode}"${liveNode && liveNode !== defaultNode ? ` (fusionado, vigente: "${liveNode}")` : liveNode ? ' (ya existe)' : ' (no existe todavía, se creará si se aprueba algún hecho)'}`);
-console.error(`Contexto negativo: ${existingFacts.length} hecho(s) ya vigente(s) para este nodo/slug.`);
+console.error(`recuerdo sugerido por defecto: "${defaultNode}"${liveNode && liveNode !== defaultNode ? ` (fusionado, vigente: "${liveNode}")` : liveNode ? ' (ya existe)' : ' (no existe todavía, se creará si se aprueba algún registro)'}`);
+console.error(`Contexto negativo: ${existingFacts.length} registro(s) ya vigente(s) para este recuerdo/slug.`);
 const candidatesForStatus = provider === 'gemini' ? geminiCandidates : ollamaCandidates;
 console.error(
   candidatesForStatus.length > 1
@@ -262,12 +262,12 @@ console.error(`${page.content.length} caracteres de contenido${truncated ? ' (TR
 
 const negativeContextBlock =
   existingFacts.length === 0
-    ? '(ninguno todavía -- esta es la primera extracción para este nodo)'
+    ? '(ninguno todavía -- esta es la primera extracción para este recuerdo)'
     : existingFacts.map((f) => `  - [${f.date.toISOString().slice(0, 10)}] ${f.claim}`).join('\n');
 
-const userPrompt = `Nodo sugerido por defecto para esta página: "${defaultNode}"
+const userPrompt = `recuerdo sugerido por defecto para esta página: "${defaultNode}"
 
-Hechos que YA existen para este nodo (contexto negativo, no los repitas):
+registros que YA existen para este recuerdo (contexto negativo, no los repitas):
 ${negativeContextBlock}
 
 Contenido de la página "${page.slug}" (título: "${page.title}"):
@@ -288,7 +288,7 @@ if (args['dump-prompt']) {
   process.exit(0);
 }
 
-// Mismo motivo que extract-facts.mjs: process.exit() forzado con sockets
+// Mismo motivo que extract-records.mjs: process.exit() forzado con sockets
 // keep-alive de undici aún abiertos crashea libuv en Windows. Los errores
 // de red/API fijan process.exitCode y devuelven null en vez de exit().
 async function fetchWithTimeout(url, options, timeoutMs) {
@@ -445,19 +445,19 @@ if (rawResponse == null) {
   }
 
   if (parsed) {
-    const facts = parsed.facts ?? [];
+    const records = parsed.records ?? [];
     const source = `Extracción automática de página (${provider}/${model}), ${page.slug}, revisado y aprobado por el usuario`;
 
     if (args.json) {
       // Modo sin prosa, para el dashboard (2026-08-31): la revisión
       // interactiva pasa a vivir en el navegador en vez de una terminal,
       // así que en vez de imprimir/preguntar por stdin, esto entrega los
-      // candidatos ya con sus nodos parecidos precalculados, listos para
+      // candidatos ya con sus recuerdos parecidos precalculados, listos para
       // que el frontend arme sus propias tarjetas de aprobar/editar/saltar
       // y los inserte via /api/remember-batch (mismo remember-batch.mjs de
       // siempre, sin código nuevo de inserción).
       const factsWithSuggestions = [];
-      for (const f of facts) {
+      for (const f of records) {
         factsWithSuggestions.push({
           claim: f.claim,
           date: f.date ?? null,
@@ -475,33 +475,33 @@ if (rawResponse == null) {
         provider,
         model,
         source,
-        facts: factsWithSuggestions,
+        records: factsWithSuggestions,
       }));
     } else if (!args.review) {
-      console.log(`\n${facts.length} hecho(s) candidato(s) para "${page.slug}":\n`);
-      for (const f of facts) {
-        console.log(`- [${f.date ?? 'sin fecha'}] (${f.kind}) nodo:${f.node ?? defaultNode} ${f.claim}`);
+      console.log(`\n${records.length} registro(s) candidato(s) para "${page.slug}":\n`);
+      for (const f of records) {
+        console.log(`- [${f.date ?? 'sin fecha'}] (${f.kind}) recuerdo:${f.node ?? defaultNode} ${f.claim}`);
         console.log(`    fragmento: "${f.source_fragment}"`);
-        console.log(`    nodos existentes parecidos: ${formatNodeSuggestions(await suggestSimilarNodes(f.claim))}`);
+        console.log(`    recuerdos existentes parecidos: ${formatNodeSuggestions(await suggestSimilarNodes(f.claim))}`);
       }
       console.log('\nEsto NO se insertó en la base. Corre con --review para revisar e insertar.');
-    } else if (facts.length === 0) {
+    } else if (records.length === 0) {
       console.log(`\nNada capturable en "${page.slug}" (o todo ya está cubierto por el contexto negativo).`);
     } else {
       const rlp = createInterfaceAsync({ input: process.stdin, output: process.stdout });
 
-      console.log(`\nRevisión interactiva: ${facts.length} hecho(s) candidato(s) para "${page.slug}".\n`);
+      console.log(`\nRevisión interactiva: ${records.length} registro(s) candidato(s) para "${page.slug}".\n`);
       const approved = [];
       let skipped = 0;
       let quit = false;
 
-      for (let i = 0; i < facts.length && !quit; i++) {
-        const f = { claim: facts[i].claim, date: facts[i].date, kind: facts[i].kind ?? 'fact', node: facts[i].node ?? defaultNode };
-        console.log(`\n[${i + 1}/${facts.length}] (${f.kind}) [${f.date ?? 'sin fecha'}] nodo:${f.node}`);
+      for (let i = 0; i < records.length && !quit; i++) {
+        const f = { claim: records[i].claim, date: records[i].date, kind: records[i].kind ?? 'fact', node: records[i].node ?? defaultNode };
+        console.log(`\n[${i + 1}/${records.length}] (${f.kind}) [${f.date ?? 'sin fecha'}] recuerdo:${f.node}`);
         console.log(f.claim);
-        console.log(`  fragmento de origen: "${facts[i].source_fragment ?? '(sin fragmento)'}"`);
+        console.log(`  fragmento de origen: "${records[i].source_fragment ?? '(sin fragmento)'}"`);
         const similarNodes = await suggestSimilarNodes(f.claim);
-        console.log(`  nodos existentes parecidos: ${formatNodeSuggestions(similarNodes)}`);
+        console.log(`  recuerdos existentes parecidos: ${formatNodeSuggestions(similarNodes)}`);
 
         let decision = null;
         while (decision === null) {
@@ -515,9 +515,9 @@ if (rawResponse == null) {
             if (newDate) f.date = newDate;
             const newKind = (await rlp.question(`Nuevo tipo fact|event|preference|commitment (Enter = dejar ${f.kind}): `)).trim();
             if (newKind) f.kind = newKind;
-            const newNode = (await rlp.question(`Nuevo nodo (parecidos: ${formatNodeSuggestions(similarNodes)}; Enter = dejar "${f.node}"): `)).trim();
+            const newNode = (await rlp.question(`Nuevo recuerdo (parecidos: ${formatNodeSuggestions(similarNodes)}; Enter = dejar "${f.node}"): `)).trim();
             if (newNode) f.node = newNode;
-            console.log(`\nActualizado: [${f.date ?? 'sin fecha'}] (${f.kind}) nodo:${f.node} ${f.claim}`);
+            console.log(`\nActualizado: [${f.date ?? 'sin fecha'}] (${f.kind}) recuerdo:${f.node} ${f.claim}`);
           } else {
             decision = 'approve';
           }
@@ -537,15 +537,15 @@ if (rawResponse == null) {
       rlp.close();
 
       if (approved.length === 0) {
-        console.log(`\nRevisión terminada: 0 aprobado(s), ${skipped} saltado(s) de ${facts.length}. Nada que insertar.`);
+        console.log(`\nRevisión terminada: 0 aprobado(s), ${skipped} saltado(s) de ${records.length}. Nada que insertar.`);
       } else {
-        console.log(`\nRevisión terminada: ${approved.length} aprobado(s), ${skipped} saltado(s) de ${facts.length}. Insertando vía remember-batch.mjs...\n`);
+        console.log(`\nRevisión terminada: ${approved.length} aprobado(s), ${skipped} saltado(s) de ${records.length}. Insertando vía remember-batch.mjs...\n`);
 
-        // createNode: true por defecto -- el nodo viene de una página conocida,
-        // no de un typo. Si el nodo por defecto ya existe (liveNode), lo
+        // createNode: true por defecto -- el recuerdo viene de una página conocida,
+        // no de un typo. Si el recuerdo por defecto ya existe (liveNode), lo
         // normal es que remember-batch.mjs lo resuelva igual sin crear nada
-        // nuevo; createNode solo importa la primera vez que un nodo aparece.
-        const batch = { facts: approved.map((f) => ({ ...f, source, createNode: true })) };
+        // nuevo; createNode solo importa la primera vez que un recuerdo aparece.
+        const batch = { records: approved.map((f) => ({ ...f, source, createNode: true })) };
         const result = spawnSync(process.execPath, [REMEMBER_BATCH_SCRIPT], {
           input: JSON.stringify(batch),
           stdio: ['pipe', 'inherit', 'inherit'],
@@ -554,7 +554,7 @@ if (rawResponse == null) {
           console.error('\nremember-batch.mjs terminó con errores -- revisa la salida arriba.');
           process.exitCode = 1;
         } else {
-          console.log(`\nCerrando "${page.slug}": decide ahora el destino del .md (referencia / redundante) -- no es automático, ver PLAN-nodos.md paso 5.`);
+          console.log(`\nCerrando "${page.slug}": decide ahora el destino del .md (referencia / redundante) -- no es automático, ver PLAN-recuerdos.md paso 5.`);
         }
       }
     }

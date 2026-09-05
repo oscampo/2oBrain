@@ -1,10 +1,10 @@
 // Hook Stop de Claude Code: fuerza una revisión periódica antes de concluir
-// un turno, para que la captura de hechos (segundo cerebro) no dependa solo
+// un turno, para que la captura de registros (segundo cerebro) no dependa solo
 // de que se me ocurra hacerlo en el momento. No reemplaza el juicio de qué
 // es capturable (esa es la vía principal, ver MEMORY.md: captura proactiva
 // durante la conversación): esto es solo la red de seguridad de respaldo.
 //
-// Corrección 2026-08-26 (ver hecho #153/#154): la versión original solo
+// Corrección 2026-08-26 (ver registro #153/#154): la versión original solo
 // usaba `stop_hook_active` (evita el loop infinito DENTRO de un mismo
 // intento de cierre), pero no persistía nada entre turnos: en la práctica
 // bloqueaba en CADA cierre de turno, no una vez por sesión como decía el
@@ -21,9 +21,9 @@
 // bloquear una vez más. Sigue sin cubrir el cierre abrupto de sesión
 // (conexión caída, terminal cerrada a la fuerza).
 //
-// Tercer ajuste, mismo día (el usuario, ver hecho #155): mecanismo principal de
-// captura pasa a ser manual/proactivo (pedir "guarda este hecho" o "genera
-// lista de facts" al cierre de una sesión de trabajo real, mismo patrón que
+// Tercer ajuste, mismo día (el usuario, ver registro #155): mecanismo principal de
+// captura pasa a ser manual/proactivo (pedir "guarda este registro" o "genera
+// lista de records" al cierre de una sesión de trabajo real, mismo patrón que
 // ya usa en Chat/Cowork donde este hook nunca existió), por ser más barato
 // que forzar revisiones periódicas. Este hook queda solo como respaldo poco
 // frecuente, no como mecanismo principal: de ahí el cooldown largo (2h en
@@ -71,10 +71,10 @@ process.stdin.on('end', () => {
 
   const reason =
     'Antes de cerrar el turno: revisa esta conversación. Si hubo una decisión cerrada, ' +
-    'una corrección, o un hecho con fecha que valga la pena recordar, captúralo ' +
+    'una corrección, o un registro con fecha que valga la pena recordar, captúralo ' +
     'ahora con node scripts/db/remember.mjs --claim "..." --date YYYY-MM-DD ' +
-    '--source "..." (agrega --node nombre-de-nodo si aplica, ver scripts/db/list-nodes.mjs; ' +
-    '--create-node si es genuinamente nuevo). ' +
+    '--source "..." (agrega --memory nombre-de-recuerdo si aplica, ver scripts/db/list-memories.mjs; ' +
+    '--create-memory si es genuinamente nuevo). ' +
     'Si no hay nada capturable, dilo explícitamente y continúa.';
 
   console.log(JSON.stringify({ decision: 'block', reason }));

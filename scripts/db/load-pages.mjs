@@ -1,5 +1,5 @@
 // Fase 1: carga las páginas actuales del repo a Supabase, tal cual, sin
-// extracción de facts ni embeddings todavía (eso es Fase 2/3).
+// extracción de records ni embeddings todavía (eso es Fase 2/3).
 //
 // 2026-08-22: antes de esto, cada corrida leía y mandaba un UPSERT a
 // Postgres por los 30 archivos, aunque 29 no hubieran cambiado: barato

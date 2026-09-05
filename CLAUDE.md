@@ -147,7 +147,7 @@ la URL son los errores más comunes) antes de pedirle nada de vuelta al
 usuario.
 
 **Fase 2 completada**, la base existe y tiene el esquema (`pages`,
-`facts`, `nodes`, `fact_nodes`, `node_edges`, `node_pair_checks`).
+`records`, `memories`, `record_memories`, `memory_links`, `memory_pair_checks`).
 
 ## Fase 3: Llaves de IA
 
@@ -162,13 +162,13 @@ buscarla:
 
 1. **Voyage AI** (`VOYAGE_API_KEY`, dash.voyageai.com), embeddings
    (`voyage-4-lite`). **Obligatoria, no opcional**: `search.mjs`,
-   `remember.mjs`, `create-node.mjs` y varios más llaman a `embed()` sin
+   `remember.mjs`, `create-memory.mjs` y varios más llaman a `embed()` sin
    ningún manejo de error ni camino alterno de "solo texto completo" (no
    existe ese fallback en el código, aunque el nombre pueda sonar a
    búsqueda híbrida) -- sin esta llave el sistema no arranca, punto.
 2. **Ollama Cloud** (`OLLAMA_API_KEY`, ollama.com/settings/keys),
    clasificación barata (duplicados, alias, menciones) y extracción de
-   hechos. Opcional de verdad: cada clasificador chequea la llave primero
+   registros. Opcional de verdad: cada clasificador chequea la llave primero
    (`classifierEnabled`) y cae a revisión manual si falta, sin romper nada.
 3. **Gemini** (`GEMINI_API_KEY`, aistudio.google.com/apikey), fallback de
    mayor calidad para síntesis y clasificación de relaciones; algunos
@@ -178,7 +178,7 @@ buscarla:
 
 **PREGUNTA**: pide la llave de Voyage AI primero y no avances de esta fase
 sin ella -- explica por qué es la única de las tres que no se puede saltar
-("es la que convierte tus hechos en vectores para poder buscarlos y
+("es la que convierte tus registros en vectores para poder buscarlos y
 compararlos; sin ella el sistema no funciona, no es una función de menos").
 Después pregunta por Ollama Cloud y Gemini juntas: ¿las tienen ya, o las
 creamos ahora? Si el usuario prefiere arrancar sin alguna de esas dos, dile
@@ -210,7 +210,7 @@ motor roto, y no le pidas al usuario que lo revise él.
 
 ## Fase 5: Identidad (SOUL.md / USER.md / MEMORY.md)
 
-Esta es la parte que hace que el asistente se sienta hecho a la medida, no
+Esta es la parte que hace que el asistente se sienta registro a la medida, no
 un chatbot genérico. `SOUL.md`/`USER.md`/`MEMORY.md` vienen en este repo
 como plantillas, vas a **reescribirlos** con las respuestas de esta
 entrevista, no solo llenar huecos. Esta fase sí es una conversación real,
@@ -241,37 +241,37 @@ explícitamente enriquecer el arranque con una fuente ya escrita, en vez de
   propuestas o ideas guardadas en algún lado -- un archivo (.md, PDF...),
   una app de notas (Evernote, Keep, Notion...), favoritos/marcados
   guardados en el navegador o en una app, un cuaderno físico? Si me dices
-  dónde, lo reviso y te propongo los hechos concretos a guardar antes de
+  dónde, lo reviso y te propongo los registros concretos a guardar antes de
   escribir nada, nunca invento, solo extraigo lo que el material
   realmente dice."* El tratamiento depende del formato, no de la fuente:
-  para un `.md`, usa `scripts/db/extract-page-facts.mjs --page <ruta>
+  para un `.md`, usa `scripts/db/extract-page-records.mjs --page <ruta>
   --json` -- NUNCA `--review`: esa bandera exige una terminal interactiva
   real, el propio script la rechaza de inmediato si no la tiene ("stdin no
   es TTY"), y correrla vos como agente nunca tiene una (mismo motivo por
   el que el dashboard la reemplazó por `--json`, ver comentarios de
-  `extract-page-facts.mjs`). `--json` entrega los candidatos ya
-  estructurados con nodos parecidos calculados; muéstraselos tú mismo al
+  `extract-page-records.mjs`). `--json` entrega los candidatos ya
+  estructurados con recuerdos parecidos calculados; muéstraselos tú mismo al
   usuario en la conversación, uno por uno o en bloque, y aprueba/edita/
   descarta cada uno con él antes de guardar nada. Los aprobados se
   guardan con `remember-batch.mjs --file <archivo>` (o por stdin), nunca
   uno por uno con `remember.mjs`, para reusar el chequeo de contradicción
   del lote completo. Cualquier otro formato (exportación `.enex` de
   Evernote, `.html` de una nota o de favoritos del navegador, PDF, texto
-  pegado directo en el chat) NO pasa por `extract-page-facts.mjs` -- ese
+  pegado directo en el chat) NO pasa por `extract-page-records.mjs` -- ese
   script solo acepta `.md` en disco o un slug ya existente en `pages`.
   Léelo tú mismo con tus herramientas (es texto plano o marcado por
-  dentro, no necesita conversión) y redacta los hechos a mano siguiendo
+  dentro, no necesita conversión) y redacta los registros a mano siguiendo
   el mismo criterio (atómicos, fechados, con fuente), mostrando cada uno
   antes de guardarlo igual que con `--json`. Si son fotos de un cuaderno
   físico, el usuario necesita transcribirlas primero -- esta fase no hace
   OCR. Si son marcadores/favoritos sin contenido propio (solo enlaces),
-  decide con el usuario si vale la pena guardarlos como hechos o dejarlos
+  decide con el usuario si vale la pena guardarlos como registros o dejarlos
   fuera por ser demasiados o poco informativos.
 - **Correo**: si tienes un MCP de correo conectado en esta sesión (Gmail u
   otro), ofrécele buscar antecedentes reales de un proyecto que mencionó
   ("¿busco en tu bandeja los últimos correos sobre [proyecto X] para
   armar la cronología?") en vez de pedirle que la reconstruya de memoria.
-  Muéstrale los hechos candidatos ANTES de guardar nada, el usuario
+  Muéstrale los registros candidatos ANTES de guardar nada, el usuario
   aprueba/edita/descarta, igual que con cualquier extracción automática
   (ver `skills/segundo-cerebro-capture/SKILL.md`).
 
@@ -286,10 +286,10 @@ no tiene preferencia formada todavía, deja el default del template
 (directo, sin relleno, confirma antes de acciones irreversibles) y dilo
 explícitamente, no le fuerces a decidir algo que no le importa todavía.
 
-**PREGUNTA**: ¿Hay alguna captura automática de hechos que quieras activa
+**PREGUNTA**: ¿Hay alguna captura automática de registros que quieras activa
 desde ya? (el hook `Stop` de Claude Code, que revisa al cerrar cada turno
 si hay algo capturable, ver Fase 9) ¿O prefieres empezar solo con captura
-manual ("guarda este hecho")?
+manual ("guarda este registro")?
 → Anota la respuesta, se aplica en la Fase 9 (tú activas el hook, no el
 usuario).
 
@@ -321,20 +321,20 @@ referencia (no la cambies, es la que el resto del sistema espera;
 **Fase 5 completada**, muéstrale al usuario los 3 archivos resultantes
 para que confirme antes de seguir.
 
-## Fase 6: Estructura inicial de nodos
+## Fase 6: Estructura inicial de recuerdos
 
 Un segundo cerebro vacío, sin ningún punto de partida, es más difícil de
 organizar después que uno con un andamiaje simple desde el día uno -- ver
-`scripts/db/create-node.mjs` (creación de nodos con protección contra
-duplicados/colisión de nombre) y `scripts/db/list-supernode-candidates.mjs`
-(detecta después, bajo demanda, nodos que quedaron sin agrupar) para el
-resto del sistema de nodos; esta fase solo les da un arranque, no reemplaza
+`scripts/db/create-memory.mjs` (creación de recuerdos con protección contra
+duplicados/colisión de nombre) y `scripts/db/list-category-candidates.mjs`
+(detecta después, bajo demanda, recuerdos que quedaron sin agrupar) para el
+resto del sistema de recuerdos; esta fase solo les da un arranque, no reemplaza
 esa protección.
 
 Voyage AI ya quedó garantizado desde la Fase 4 (no se avanza sin eso), así
-que el chequeo de desambiguación semántica de `create-node.mjs` corre
+que el chequeo de desambiguación semántica de `create-memory.mjs` corre
 siempre, sin `--force` -- si bloquea, es una señal real (nombre parecido a
-un nodo existente), no un problema de configuración.
+un recuerdo existente), no un problema de configuración.
 
 Antes de cualquier comando con `--date`, calcula la fecha real (nunca de
 memoria, mismo motivo que obliga `--confirm-date` en `remember.mjs`):
@@ -357,19 +357,19 @@ y reemplaza cada `YYYY-MM-DD` de abajo por ese valor.
 ```
 (puede marcar varias, una sola, o ninguna)
 
-Si no marca ninguna, no crees ningún nodo, sigue directo a la Fase 7 -- no
+Si no marca ninguna, no crees ningún recuerdo, sigue directo a la Fase 7 -- no
 es un requisito, el usuario puede pedir esta estructura después.
 
-Con la respuesta, crea tú los supernodos con `create-node.mjs`: un nodo raíz
-por cada opción marcada, y debajo un conjunto fijo de sub-supernodos (salvo
+Con la respuesta, crea tú las categorías con `create-memory.mjs`: un recuerdo raíz
+por cada opción marcada, y debajo un conjunto fijo de subcategorías (salvo
 "Otro", ver abajo). Van fijos a propósito, no se ofrecen como checklist
 aparte -- alargaría la entrevista sin necesidad real, y el usuario siempre
 puede crear otros después con el mismo comando:
 
-Cada sub-supernodo lleva el nombre de su rama como sufijo
-(`<tipo>-<supernodo>`, el mismo esquema que Oscar ya usa en su propio
+Cada subcategoría lleva el nombre de su rama como sufijo
+(`<tipo>-<categoría>`, el mismo esquema que Oscar ya usa en su propio
 segundo cerebro: `proyectos-uao`, `proyectos-personales`) -- no por
-prolijidad, sino porque los nombres de nodo son únicos globalmente, no por
+prolijidad, sino porque los nombres de recuerdo son únicos globalmente, no por
 rama (ver más abajo), y esto evita la colisión de raíz en vez de tener que
 resolverla caso por caso cuando el usuario marca más de una rama:
 
@@ -379,34 +379,34 @@ resolverla caso por caso cuando el usuario marca más de una rama:
 - **Estudio** → `cursos-estudio`, `apuntes-estudio`, `tareas-estudio`
 - **Comunidad** → `reuniones-comunidad`, `pendientes-comunidad`,
   `contactos-comunidad`
-- **Otro**: no tiene sub-supernodos fijos -- no hay forma de anticipar la
+- **Otro**: no tiene subcategorías fijos -- no hay forma de anticipar la
   forma de una categoría que el propio checklist no supo nombrar. Pregunta
-  el nombre ("¿cómo la llamarías?") y crea solo el nodo raíz con ese
+  el nombre ("¿cómo la llamarías?") y crea solo el recuerdo raíz con ese
   nombre; el usuario arma los hijos después si los necesita.
 
 ```bash
-node scripts/db/create-node.mjs --name trabajo
-node scripts/db/create-node.mjs --name proyectos-trabajo --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name contactos-trabajo --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name reuniones-trabajo --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-memory.mjs --name trabajo
+node scripts/db/create-memory.mjs --name proyectos-trabajo --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-memory.mjs --name contactos-trabajo --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-memory.mjs --name reuniones-trabajo --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
 
-node scripts/db/create-node.mjs --name personal
-node scripts/db/create-node.mjs --name habitos-personal --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name rutinas-personal --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name espiritualidad-personal --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name salud-personal --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-memory.mjs --name personal
+node scripts/db/create-memory.mjs --name habitos-personal --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-memory.mjs --name rutinas-personal --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-memory.mjs --name espiritualidad-personal --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-memory.mjs --name salud-personal --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
 
-node scripts/db/create-node.mjs --name estudio
-node scripts/db/create-node.mjs --name cursos-estudio --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name apuntes-estudio --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name tareas-estudio --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-memory.mjs --name estudio
+node scripts/db/create-memory.mjs --name cursos-estudio --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-memory.mjs --name apuntes-estudio --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-memory.mjs --name tareas-estudio --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
 
-node scripts/db/create-node.mjs --name comunidad
-node scripts/db/create-node.mjs --name reuniones-comunidad --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name pendientes-comunidad --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name contactos-comunidad --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-memory.mjs --name comunidad
+node scripts/db/create-memory.mjs --name reuniones-comunidad --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-memory.mjs --name pendientes-comunidad --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-memory.mjs --name contactos-comunidad --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
 
-node scripts/db/create-node.mjs --name <nombre-que-dio-el-usuario>
+node scripts/db/create-memory.mjs --name <nombre-que-dio-el-usuario>
 ```
 
 (Solo crea los de la rama que el usuario marcó -- si marcó únicamente
@@ -414,21 +414,21 @@ node scripts/db/create-node.mjs --name <nombre-que-dio-el-usuario>
 sufijo por rama, ninguno de estos nombres colisiona entre sí sin importar
 cuántas ramas se marquen a la vez -- si el usuario marca, por ejemplo,
 Trabajo y Comunidad, obtiene `contactos-trabajo` y `contactos-comunidad`
-como nodos genuinamente separados, no uno compartido.)
+como recuerdos genuinamente separados, no uno compartido.)
 
 Si algún comando bloquea por colisión de nombre/alias (no la salta ni
 siquiera `--force`, es una protección distinta): es señal de que la Fase 5
-ya creó un nodo con ese mismo nombre al extraer un documento/correo. Usa
-ese nodo existente en vez de forzar uno nuevo -- o si genuinamente es un
-concepto distinto, elige otro nombre para ese supernodo/sub-supernodo.
+ya creó un recuerdo con ese mismo nombre al extraer un documento/correo. Usa
+ese recuerdo existente en vez de forzar uno nuevo -- o si genuinamente es un
+concepto distinto, elige otro nombre para esa categoría/subcategoría.
 
-Estos nodos quedan vacíos a propósito: un supernodo agrupa, no acumula
-hechos propios (verificado en la instancia de desarrollo -- el único hecho
-que tenía un supernodo real ahí era autodescriptivo, "esto agrupa tal
-cosa", no contenido). El contenido real lo traen los hechos que vengan
+Estos recuerdos quedan vacíos a propósito: una categoría agrupa, no acumula
+registros propios (verificado en la instancia de desarrollo -- el único
+registro que tenía una categoría real ahí era autodescriptivo, "esto agrupa tal
+cosa", no contenido). El contenido real lo traen los registros que vengan
 después.
 
-**PREGUNTA**: ofrece enriquecer la estructura ahora mismo con hechos reales,
+**PREGUNTA**: ofrece enriquecer la estructura ahora mismo con registros reales,
 mismo espíritu que la Fase 5 (documentos/correo antes que memoria):
 *"¿Tienes algo activo ya mismo en alguna de las ramas que creamos --un
 proyecto de trabajo, un hábito o rutina personal, un curso, un pendiente de
@@ -438,20 +438,20 @@ proyecto que menciones, igual que ofrecí en la Fase 5."* Adapta la pregunta
 a las ramas que el usuario realmente marcó -- no le preguntes por Estudio
 si no la marcó.
 
-Si el usuario da algo (a mano, o vía correo), por cada hecho candidato:
+Si el usuario da algo (a mano, o vía correo), por cada registro candidato:
 
 1. Decide tú, por el contexto de la pregunta que lo originó, a qué
-   sub-supernodo pertenece (`proyectos`, `habitos`, etc.) -- no hace falta
+   subcategoría pertenece (`proyectos`, `habitos`, etc.) -- no hace falta
    el clasificador automático de `remember.mjs` para esto, el contexto de
-   la entrevista ya lo resuelve (mismo criterio que usa `create-node.mjs
-   --parent`: quien construye el nodo ya sabe a qué grupo pertenece).
+   la entrevista ya lo resuelve (mismo criterio que usa `create-memory.mjs
+   --parent`: quien construye el recuerdo ya sabe a qué grupo pertenece).
 2. Créalo y ligalo en un solo paso:
-   `node scripts/db/create-node.mjs --name <nombre-nodo> --parent <sub-supernodo> --date YYYY-MM-DD --reason "..."`
-3. Guarda el hecho en el nodo ya creado (sin `--create-node`, ya existe del
+   `node scripts/db/create-memory.mjs --name <nombre-recuerdo> --parent <subcategoría> --date YYYY-MM-DD --reason "..."`
+3. Guarda el registro en el recuerdo ya creado (sin `--create-memory`, ya existe del
    paso anterior):
-   `node scripts/db/remember.mjs --claim "..." --date YYYY-MM-DD --source "..." --node <nombre-nodo>`
+   `node scripts/db/remember.mjs --claim "..." --date YYYY-MM-DD --source "..." --memory <nombre-recuerdo>`
 
-Muéstrale cada hecho candidato antes de guardarlo, igual que en la Fase 5 --
+Muéstrale cada registro candidato antes de guardarlo, igual que en la Fase 5 --
 nunca inventes, solo lo que la fuente real dice.
 
 Si no tiene nada a mano todavía, sigue solo con la estructura vacía -- no es
@@ -516,7 +516,7 @@ hable MCP), no solo el dashboard/CLI de este repo?
     `deno run -A jsr:@deno/deploy --prod` desde `deno-deploy/mcp-server/`.
 
 Verifica el deploy elegido con una llamada real (`curl` al endpoint
-resultante, o `tools/list` del protocolo MCP) antes de darlo por hecho,
+resultante, o `tools/list` del protocolo MCP) antes de darlo por registro,
 nunca asumas que un deploy funcionó solo porque el comando no dio error.
 
 ## Fase 9: Hooks (opcional)
@@ -549,14 +549,14 @@ Muestra esto exacto:
 
 ```
 Instalación completa. Desde ahora:
-- node scripts/db/remember.mjs, guarda un hecho
+- node scripts/db/remember.mjs, guarda un registro
 - node scripts/db/search.mjs "pregunta", busca
 - http://localhost:4287, dashboard (búsqueda, grafo, mantenimiento)
 - node scripts/db/doctor.mjs, chequeo de salud, cuando quieras
 Ver skills/segundo-cerebro-capture/SKILL.md para el detalle de cómo y
-cuándo capturar hechos. Si alguna vez trabajas en OTRO repo/sesión sin
-acceso a esta base, usa skills/extract-code-facts/SKILL.md ("/extract-code-facts")
-para extraer los hechos de esa sesión como JSON y traerlos aquí después.
+cuándo capturar registros. Si alguna vez trabajas en OTRO repo/sesión sin
+acceso a esta base, usa skills/extract-code-records/SKILL.md ("/extract-code-records")
+para extraer los registros de esa sesión como JSON y traerlos aquí después.
 ```
 
 De aquí en adelante, tu comportamiento diario lo definen

@@ -1,8 +1,8 @@
-// Lista los compromisos abiertos (facts kind='commitment', valid_until is
-// null), ordenados por fecha, con nodo. Reemplaza la sección "Open
+// Lista los compromisos abiertos (records kind='commitment', valid_until is
+// null), ordenados por fecha, con recuerdo. Reemplaza la sección "Open
 // commitments" mantenida a mano en MEMORY.md (2026-09-05): esa prosa
-// duplicaba lo que `facts` ya guarda mejor estructurado (fecha, fuente,
-// nodo, con la posibilidad real de retractar/reemplazar vía forget.mjs),
+// duplicaba lo que `records` ya guarda mejor estructurado (fecha, fuente,
+// recuerdo, con la posibilidad real de retractar/reemplazar vía forget.mjs),
 // herencia directa de la era gbrain donde MEMORY.md era la única memoria.
 // El commitments-check de HEARTBEAT.md corre esto en vez de leer prosa.
 // Uso: node list-commitments.mjs [--all]  (--all incluye los ya resueltos/retractados)
@@ -30,8 +30,8 @@ await client.connect();
 
 const { rows } = await client.query(
   `select f.id, f.date, f.claim, f.source, f.valid_until,
-          (select string_agg(node_name, ', ' order by node_name) from fact_nodes where fact_id = f.id) as nodes
-   from facts f
+          (select string_agg(memory_name, ', ' order by memory_name) from record_memories where record_id = f.id) as memories
+   from records f
    where f.kind = 'commitment' ${showAll ? '' : 'and f.valid_until is null'}
    order by f.date asc`,
 );
@@ -43,7 +43,7 @@ if (rows.length === 0) {
     const date = r.date.toISOString().slice(0, 10);
     const status = r.valid_until ? ' [resuelto/retractado]' : '';
     console.log(`\n#${r.id} [${date}]${status} ${r.claim}`);
-    console.log(`  fuente: ${r.source}${r.nodes ? ` · nodos: ${r.nodes}` : ''}`);
+    console.log(`  fuente: ${r.source}${r.memories ? ` · recuerdos: ${r.memories}` : ''}`);
   }
 }
 

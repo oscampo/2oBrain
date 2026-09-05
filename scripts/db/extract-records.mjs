@@ -1,19 +1,19 @@
-// Extrae hechos candidatos de un rango horario de una transcripción de
+// Extrae registros candidatos de un rango horario de una transcripción de
 // Claude Code (.jsonl local) usando un LLM externo (Gemini por defecto).
 //
 // Dos modos:
 //   - Sin --review (default): solo IMPRIME los candidatos, no toca la base.
 //     Uso previsto: el usuario le pide esto a Claude en el chat; Claude corre el
 //     script, muestra la lista, el usuario aprueba/edita/descarta por chat, y
-//     Claude llama a remember.mjs a mano por cada hecho aprobado: igual que
+//     Claude llama a remember.mjs a mano por cada registro aprobado: igual que
 //     se ha venido haciendo manualmente, sin necesidad de más código aquí.
 //   - Con --review: entra en un loop interactivo en la terminal (requiere
 //     TTY real, no sirve invocado como subproceso no interactivo). Por cada
-//     hecho candidato: aprobar tal cual, editar (claim/fecha/tipo), o saltar.
+//     registro candidato: aprobar tal cual, editar (claim/fecha/tipo), o saltar.
 //     Los aprobados se insertan de inmediato vía remember.mjs (subproceso).
 //     Si remember.mjs no inserta (duplicado ambiguo, su propio clasificador
 //     de Ollama Cloud no tuvo confianza suficiente), esa decisión NO se le
-//     pasa al usuario aquí: es de remember.mjs, no de esta revisión. El hecho
+//     pasa al usuario aquí: es de remember.mjs, no de esta revisión. El registro
 //     queda listado al final como pendiente de revisión manual.
 //
 // Costo: $0 en tokens de Claude (nunca llama a la API de Anthropic). Sí
@@ -28,10 +28,10 @@
 // que el prompt genérico embebido de respaldo).
 //
 // Uso:
-//   node extract-facts.mjs --date 2026-08-26 --from 08:00 --to 18:00 [opciones]
+//   node extract-records.mjs --date 2026-08-26 --from 08:00 --to 18:00 [opciones]
 //
 // --review                    Entra en revisión interactiva e inserta los
-//                              hechos aprobados vía remember.mjs.
+//                              registros aprobados vía remember.mjs.
 // --provider gemini|ollama    Default: gemini.
 // --model <id>                Override del modelo (un solo intento, sin
 //                              fallback). Sin esto, prueba en orden la lista
@@ -113,7 +113,7 @@ const args = parseArgs(process.argv.slice(2));
 if (!args.date || !args.from || !args.to) {
   console.error(
     'Faltan campos. Uso:\n' +
-      '  node extract-facts.mjs --date YYYY-MM-DD --from HH:MM --to HH:MM [--review] [--provider gemini|ollama] [--session id] [--tz-offset -5]',
+      '  node extract-records.mjs --date YYYY-MM-DD --from HH:MM --to HH:MM [--review] [--provider gemini|ollama] [--session id] [--tz-offset -5]',
   );
   process.exit(1);
 }
@@ -257,15 +257,15 @@ if (systemPromptFile) {
   systemPrompt = readFileSync(systemPromptFile, 'utf8');
   userPrompt = `Transcripción (fecha del día: ${args.date}):\n${transcript}`;
 } else {
-  userPrompt = `Eres un extractor de hechos atómicos a partir de una transcripción de conversación en español entre el usuario y su asistente Claude. Lee la transcripción y devuelve CON LA MAYOR CANTIDAD DE DETALLES POSIBLE SOLO los hechos que valgan la pena recordar a largo plazo, incluyendo datos e información de contexto que enriquezca informativamente cada uno de esos hechos : decisiones cerradas, correcciones, compromisos con fecha, hallazgos con fecha. Ignora saludos, preguntas sin resolver, y contenido puramente exploratorio sin conclusión.
+  userPrompt = `Eres un extractor de registros atómicos a partir de una transcripción de conversación en español entre el usuario y su asistente Claude. Lee la transcripción y devuelve CON LA MAYOR CANTIDAD DE DETALLES POSIBLE SOLO los registros que valgan la pena recordar a largo plazo, incluyendo datos e información de contexto que enriquezca informativamente cada uno de esos registros : decisiones cerradas, correcciones, compromisos con fecha, hallazgos con fecha. Ignora saludos, preguntas sin resolver, y contenido puramente exploratorio sin conclusión.
 
 Transcripción (fecha del día: ${args.date}):
 ${transcript}
 
 Responde SOLO con JSON, sin texto adicional, con esta forma exacta:
-{"facts": [{"claim": "hecho atómico en una o varias oraciones, en una sola línea de texto, español, autocontenido", "date": "YYYY-MM-DD", "kind": "fact"|"event"|"preference"|"commitment"}]}
+{"records": [{"claim": "registro atómico en una o varias oraciones, en una sola línea de texto, español, autocontenido", "date": "YYYY-MM-DD", "kind": "fact"|"event"|"preference"|"commitment"}]}
 
-Si no hay nada capturable, responde {"facts": []}. No inventes fechas: si el hecho no tiene \
+Si no hay nada capturable, responde {"records": []}. No inventes fechas: si el registro no tiene \
 fecha explícita, usa la fecha del día (${args.date}).`;
 }
 
@@ -451,15 +451,15 @@ if (rawResponse == null) {
   }
 
   if (parsed) {
-    const facts = parsed.facts ?? [];
+    const records = parsed.records ?? [];
 
     if (!args.review) {
-      console.log(`\n${facts.length} hecho(s) candidato(s):\n`);
-      for (const f of facts) {
+      console.log(`\n${records.length} registro(s) candidato(s):\n`);
+      for (const f of records) {
         console.log(`- [${f.date}] (${f.kind}) ${f.claim}`);
       }
       console.log('\nEsto NO se insertó en la base. Revisa y captura a mano con remember.mjs lo que valga la pena.');
-    } else if (facts.length === 0) {
+    } else if (records.length === 0) {
       console.log('\nNada capturable en ese rango.');
     } else {
       const rlp = createInterfaceAsync({ input: process.stdin, output: process.stdout });
@@ -476,15 +476,15 @@ if (rawResponse == null) {
         return result.status === 0;
       }
 
-      console.log(`\nRevisión interactiva: ${facts.length} hecho(s) candidato(s).\n`);
+      console.log(`\nRevisión interactiva: ${records.length} registro(s) candidato(s).\n`);
       let inserted = 0;
       let skipped = 0;
       const needsManualReview = [];
       let quit = false;
 
-      for (let i = 0; i < facts.length && !quit; i++) {
-        const f = { ...facts[i] };
-        console.log(`\n[${i + 1}/${facts.length}] (${f.kind}) [${f.date}]\n${f.claim}`);
+      for (let i = 0; i < records.length && !quit; i++) {
+        const f = { ...records[i] };
+        console.log(`\n[${i + 1}/${records.length}] (${f.kind}) [${f.date}]\n${f.claim}`);
 
         let decision = null; // 'approve' | 'skip' | null (sigue preguntando)
         while (decision === null) {
@@ -518,7 +518,7 @@ if (rawResponse == null) {
 
       rlp.close();
       console.log(
-        `\nRevisión terminada: ${inserted} insertado(s), ${skipped} saltado(s), ${needsManualReview.length} pendiente(s) de revisión manual de ${facts.length}.`,
+        `\nRevisión terminada: ${inserted} insertado(s), ${skipped} saltado(s), ${needsManualReview.length} pendiente(s) de revisión manual de ${records.length}.`,
       );
       if (needsManualReview.length > 0) {
         console.log('\nPendientes de revisión manual (duplicado ambiguo, resolver con remember.mjs a mano):');

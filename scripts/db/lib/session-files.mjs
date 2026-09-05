@@ -1,5 +1,5 @@
 // Ubica los .jsonl de sesión de Claude Code para este proyecto. Usado por
-// extract-facts.mjs para resolver "la sesión más reciente" cuando no se pasa
+// extract-records.mjs para resolver "la sesión más reciente" cuando no se pasa
 // --session explícito.
 import { readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';

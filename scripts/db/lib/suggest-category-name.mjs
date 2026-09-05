@@ -1,9 +1,9 @@
-// Propone un nombre kebab-case para un supernodo nuevo, dado un cluster de
-// nodos huérfanos que list-supernode-candidates.mjs ya agrupó por similitud
-// de sus hechos -- mismo patrón y mismo modelo que classify-node.mjs
+// Propone un nombre kebab-case para una categoría nueva, dado un cluster de
+// recuerdos huérfanos que list-category-candidates.mjs ya agrupó por similitud
+// de sus registros -- mismo patrón y mismo modelo que classify-memory.mjs
 // (Ollama Cloud, gpt-oss:20b-cloud, tiering barato), pero esto NO es una
 // decisión que bloquee nada: es una sugerencia editable, el humano decide el
-// nombre final en el dashboard antes de crear el nodo. Fail-closed devuelve
+// nombre final en el dashboard antes de crear el recuerdo. Fail-closed devuelve
 // null (no bloquea, el llamador simplemente no muestra sugerencia, el campo
 // queda vacío para que el usuario escriba a mano).
 import { readFileSync } from 'node:fs';
@@ -29,17 +29,17 @@ export const suggesterEnabled = Boolean(env.OLLAMA_API_KEY);
 
 function buildPrompt(members) {
   const list = members
-    .map((m) => `  - "${m.name}" (${m.factCount} hecho(s)), ejemplo: "${m.example}"`)
+    .map((m) => `  - "${m.name}" (${m.factCount} registro(s)), ejemplo: "${m.example}"`)
     .join('\n');
-  return `Eres un asistente que propone el nombre de un nodo "supernodo" (agrupador) \
-para un segundo cerebro personal. Te doy un grupo de nodos existentes que ya se \
-detectaron como temáticamente parecidos entre sí, cada uno con un hecho de ejemplo.
+  return `Eres un asistente que propone el nombre de un recuerdo "categoría" (agrupador) \
+para un segundo cerebro personal. Te doy un grupo de recuerdos existentes que ya se \
+detectaron como temáticamente parecidos entre sí, cada uno con un registro de ejemplo.
 
-Nodos del grupo:
+recuerdos del grupo:
 ${list}
 
-Propón UN nombre de supernodo en kebab-case (minúsculas, guiones, sin acentos ni \
-espacios) que describa lo que estos nodos tienen en común, lo bastante específico \
+Propón UN nombre de categoría en kebab-case (minúsculas, guiones, sin acentos ni \
+espacios) que describa lo que estos recuerdos tienen en común, lo bastante específico \
 para no confundirse con otro grupo, y una razón breve.
 
 Responde SOLO con JSON, sin texto adicional, con esta forma exacta:
@@ -71,12 +71,12 @@ export async function suggestSupernodeName(members) {
       signal: AbortSignal.timeout(20_000),
     });
   } catch (err) {
-    console.error(`  (sugeridor de nombre de supernodo no disponible: ${err.message})`);
+    console.error(`  (sugeridor de nombre de categoría no disponible: ${err.message})`);
     return null;
   }
 
   if (!res.ok) {
-    console.error(`  (sugeridor de nombre de supernodo falló: ${res.status})`);
+    console.error(`  (sugeridor de nombre de categoría falló: ${res.status})`);
     return null;
   }
 

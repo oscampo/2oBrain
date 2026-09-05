@@ -1,19 +1,19 @@
 // Etapa 6 (2026-09-02, decisión del usuario: "lo haremos automático"). Juzga UN
-// candidato concreto que ya encontró detect-node-mentions.mjs (un hecho
+// candidato concreto que ya encontró detect-memory-mentions.mjs (un registro
 // nuevo de A menciona por nombre/alias a B) -- distinto de
 // classify-relation.mjs, que compara los DOS historiales completos de A y B
 // para descubrir todas las relaciones posibles entre ellos (el barrido
 // O(n²), con poda de redundancia en 2 fases). Acá el disparador ya es
 // puntual (una mención real, no todos los pares), así que el costo es
-// lineal con hechos nuevos, no cuadrático -- por eso puede reintroducirse
+// lineal con registros nuevos, no cuadrático -- por eso puede reintroducirse
 // una llamada a LLM sin repetir el problema de costo que forzó abandonar el
-// barrido como mecanismo principal (ver PLAN-nodos.md, Etapa 6, hecho #487).
+// barrido como mecanismo principal (ver PLAN-recuerdos.md, Etapa 6, registro #487).
 //
-// Mismo patrón de confianza que classify-duplicate.mjs/classify-node.mjs:
+// Mismo patrón de confianza que classify-duplicate.mjs/classify-memory.mjs:
 // null = clasificador no disponible o falló -- el llamador debe caer al
 // candidato de revisión manual de siempre (mismo criterio fail-closed: un
 // fallo de red NUNCA se trata como "no hay relación", eso perdería la señal
-// gratis que ya encontró detect-node-mentions.mjs). verdict "no_relation" sí
+// gratis que ya encontró detect-memory-mentions.mjs). verdict "no_relation" sí
 // es una respuesta válida del clasificador (no un fallo) -- ahí el llamador
 // puede descartar el candidato sin mostrarlo, es la reducción de ruido que
 // pidió el usuario.
@@ -22,7 +22,7 @@
 // modelo correcto para ESTE juicio más fino (una mención puntual, no un
 // diff completo de historiales) todavía no está validado empíricamente --
 // classify-relation.mjs necesitó Gemini por el patrón espurio "ambos
-// hechos mencionan al usuario", pero eso se probó en el contexto del barrido
+// registros mencionan al usuario", pero eso se probó en el contexto del barrido
 // completo, no en este.
 import { readFileSync } from 'node:fs';
 import { generateWithGeminiFallback } from './gemini-fallback.mjs';
@@ -48,24 +48,24 @@ const env = loadEnv();
 
 export const classifierEnabled = Boolean(env.OLLAMA_API_KEY || env.GEMINI_API_KEY);
 
-function buildPrompt(claim, nodeA, nodeB, factsTextB) {
-  return `Eres un clasificador que decide si la mención de un nodo dentro de un hecho \
-nuevo representa una relación genuina entre dos nodos (entidad: persona, proyecto, \
+function buildPrompt(claim, memoryA, memoryB, factsTextB) {
+  return `Eres un clasificador que decide si la mención de un recuerdo dentro de un registro \
+nuevo representa una relación genuina entre dos recuerdos (entidad: persona, proyecto, \
 curso o colaboración) de un segundo cerebro personal, o si es una mención incidental \
 sin valor como relación (ej. ambos comparten un tema genérico, o el nombre aparece de \
-paso sin que el hecho trate realmente sobre esa conexión).
+paso sin que el registro trate realmente sobre esa conexión).
 
-Nodo A: "${nodeA}"
-Hecho nuevo de A: "${claim}"
+recuerdo A: "${memoryA}"
+registro nuevo de A: "${claim}"
 
-Nodo B: "${nodeB}" (mencionado dentro del hecho nuevo)
-Hechos ya conocidos de B:
+recuerdo B: "${memoryB}" (mencionado dentro del registro nuevo)
+registros ya conocidos de B:
 ${factsTextB}
 
 Responde SOLO con JSON, sin texto adicional, con esta forma exacta:
 {"verdict": "relation" | "no_relation", "relation": "tipo_de_relacion_especifica en snake_case si verdict es relation, vacío si no_relation", "confidence": número entre 0 y 1, "reasoning": "una oración breve en español"}
 
-"relation" solo si el hecho nuevo describe una conexión funcional, de dependencia, de \
+"relation" solo si el registro nuevo describe una conexión funcional, de dependencia, de \
 colaboración o de interacción real entre A y B -- no basta con que ambos compartan un \
 rasgo genérico (mismo dueño, mismo contexto amplio, mismo periodo de tiempo) si eso es \
 lo único en común. "no_relation" si la mención es incidental, o si la relación es tan \
@@ -105,20 +105,20 @@ async function callGemini(prompt) {
 }
 
 /**
- * @param {string} claim hecho nuevo de nodeA
- * @param {string} nodeA
- * @param {string} nodeB nodo mencionado dentro del claim
- * @param {string} factsTextB texto de los hechos existentes de nodeB (formato libre, mismo estilo que timeline.mjs)
+ * @param {string} claim registro nuevo de memoryA
+ * @param {string} memoryA
+ * @param {string} memoryB recuerdo mencionado dentro del claim
+ * @param {string} factsTextB texto de los registros existentes de memoryB (formato libre, mismo estilo que timeline.mjs)
  * @param {'ollama'|'gemini'} [provider] default 'ollama' -- sin validar empíricamente todavía, ver cabecera
  * @param {string} [model] override del modelo (solo aplica a provider 'ollama')
  * @returns {Promise<{verdict: 'relation'|'no_relation', relation: string, confidence: number, reasoning: string} | null>}
  *   null si el clasificador está deshabilitado o falla -- el llamador debe caer al
  *   candidato de revisión manual, nunca tratar null como "no_relation".
  */
-export async function classifyMentionRelation(claim, nodeA, nodeB, factsTextB, provider = DEFAULT_PROVIDER, model) {
+export async function classifyMentionRelation(claim, memoryA, memoryB, factsTextB, provider = DEFAULT_PROVIDER, model) {
   if (!classifierEnabled) return null;
 
-  const prompt = buildPrompt(claim, nodeA, nodeB, factsTextB);
+  const prompt = buildPrompt(claim, memoryA, memoryB, factsTextB);
   const rawResponse = provider === 'gemini' ? await callGemini(prompt) : await callOllama(prompt, model);
   if (rawResponse == null) return null;
 
@@ -158,7 +158,7 @@ export async function classifyMentionRelation(claim, nodeA, nodeB, factsTextB, p
 // en vivo): Ollama es rápido (4-14s) pero cae en el mismo patrón espurio que
 // ya documentó classify-relation.mjs ("ambos comparten contexto genérico"),
 // probado en este archivo contra el caso real coil-2026-2/DB1-gestion-github
-// (hecho #486, ya sabíamos que era espurio): Ollama dijo "relation"
+// (registro #486, ya sabíamos que era espurio): Ollama dijo "relation"
 // (confianza 0.70, razón inventada), Gemini dijo "no_relation" (confianza
 // 0.95, razón correcta) -- pero Gemini tardó 8-52s, demasiado para correrlo
 // siempre. Solución: confía rápido en un "no_relation" de Ollama con
@@ -167,14 +167,14 @@ export async function classifyMentionRelation(claim, nodeA, nodeB, factsTextB, p
 // Cualquier otro caso ("relation", inseguro, o falla) escala a Gemini como
 // segunda opinión antes de decidir -- especialmente importante justo cuando
 // se está por auto-crear un enlace.
-export async function classifyMentionRelationHybrid(claim, nodeA, nodeB, factsTextB) {
-  const ollamaResult = await classifyMentionRelation(claim, nodeA, nodeB, factsTextB, 'ollama');
+export async function classifyMentionRelationHybrid(claim, memoryA, memoryB, factsTextB) {
+  const ollamaResult = await classifyMentionRelation(claim, memoryA, memoryB, factsTextB, 'ollama');
 
   if (ollamaResult?.verdict === 'no_relation' && ollamaResult.confidence >= CONFIDENCE_THRESHOLD) {
     return ollamaResult;
   }
 
-  const geminiResult = await classifyMentionRelation(claim, nodeA, nodeB, factsTextB, 'gemini');
+  const geminiResult = await classifyMentionRelation(claim, memoryA, memoryB, factsTextB, 'gemini');
   return geminiResult ?? ollamaResult;
 }
 

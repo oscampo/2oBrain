@@ -1,8 +1,8 @@
-// Tiering de la Etapa 4 (ver hecho #149): primera pasada barata sobre el
+// Tiering de la Etapa 4 (ver registro #149): primera pasada barata sobre el
 // gate de contradicciones de remember.mjs, vía Ollama Cloud (free tier,
 // gpt-oss:20b-cloud = nivel 1, el más barato). Objetivo puntual: que Claude
 // no tenga que releer el texto completo de los candidatos parecidos en el
-// caso común de alta confianza (causa de costo documentada en el hecho
+// caso común de alta confianza (causa de costo documentada en el registro
 // #148). No reemplaza la garantía de la Etapa 4 ("ninguna contradicción
 // coexiste sin que alguien la haya visto"): por debajo del umbral de
 // confianza, o si Ollama Cloud falla por cualquier motivo, cae al
@@ -35,19 +35,19 @@ function buildPrompt(newClaim, candidates) {
   const candidateList = candidates
     .map((c) => `  #${c.id} (similitud ${c.similarity.toFixed(2)}): "${c.claim}"`)
     .join('\n');
-  return `Eres un clasificador que decide si un hecho nuevo, comparado con hechos ya \
+  return `Eres un clasificador que decide si un registro nuevo, comparado con registros ya \
 registrados y parecidos por embedding, es genuinamente distinto o si reemplaza \
 (supersede) a alguno de ellos por describir el mismo estado de cosas actualizado.
 
-Hecho nuevo: "${newClaim}"
+registro nuevo: "${newClaim}"
 
-Hechos vigentes parecidos:
+registros vigentes parecidos:
 ${candidateList}
 
 Responde SOLO con JSON, sin texto adicional, con esta forma exacta:
-{"verdict": "distinct" | "supersedes", "supersedes_ids": [ids numéricos de los hechos que reemplaza, vacío si verdict es "distinct"], "confidence": número entre 0 y 1, "reasoning": "una oración breve en español"}
+{"verdict": "distinct" | "supersedes", "supersedes_ids": [ids numéricos de los registros que reemplaza, vacío si verdict es "distinct"], "confidence": número entre 0 y 1, "reasoning": "una oración breve en español"}
 
-"supersedes" solo si el hecho nuevo describe el mismo asunto en un estado más \
+"supersedes" solo si el registro nuevo describe el mismo asunto en un estado más \
 reciente o corrige al anterior. "distinct" si es temáticamente parecido pero es \
 información genuinamente distinta (otro aspecto, otro momento no contradictorio, \
 otro sujeto). Si no estás seguro, baja la confidence en vez de adivinar.`;
@@ -102,7 +102,7 @@ export async function classifyDuplicate(newClaim, candidates) {
     return null;
   }
 
-  // pg devuelve columnas bigint (facts.id) como string, no number: hay que
+  // pg devuelve columnas bigint (records.id) como string, no number: hay que
   // normalizar antes de comparar contra los ids numéricos que devuelve el JSON.
   const validIds = new Set(candidates.map((c) => Number(c.id)));
   const supersedesIds = Array.isArray(parsed.supersedes_ids)

@@ -1,38 +1,38 @@
-// Fase 3: registra un hecho atómico con fecha y fuente obligatorias.
-// Fase 4: antes de insertar, busca hechos vivos parecidos por embedding.
+// Fase 3: registra un registro atómico con fecha y fuente obligatorias.
+// Fase 4: antes de insertar, busca registros vivos parecidos por embedding.
 // Si hay candidatos por encima del umbral, se niega a insertar salvo que
 // se pase --supersedes <id>[,<id>...] o --distinct explícitamente: no hay
 // ruta silenciosa para que una contradicción quede sin resolver.
 //
-// Rediseño 2026-08-29 (ver PLAN-nodos.md): --slug (page_slug, columna
-// única) reemplazado por --node (fact_nodes, many-to-many). Etapa 2
-// (2026-08-29): --node ya es opcional: sin él, se busca por embedding entre
-// hechos existentes agrupados por nodo (nodes_similar()) y un clasificador
-// (lib/classify-node.mjs) decide el nodo, o bloquea si no hay confianza
-// suficiente (fail-closed, nunca inserta con nodo nulo o placeholder). Con
-// --node explícito, la desambiguación igual corre pero solo como aviso, la
-// elección del humano nunca se sobreescribe. Un nodo debe existir de
-// antemano en la tabla `nodes` (fail-closed contra typos) salvo que se pase
-// --create-node explícitamente. Si un nodo fue fusionado a otro
-// (`merged_into`), se resuelve solo al nodo vigente.
+// Rediseño 2026-08-29 (ver PLAN-recuerdos.md): --slug (page_slug, columna
+// única) reemplazado por --memory (record_memories, many-to-many). Etapa 2
+// (2026-08-29): --memory ya es opcional: sin él, se busca por embedding entre
+// registros existentes agrupados por recuerdo (memories_similar()) y un clasificador
+// (lib/classify-memory.mjs) decide el recuerdo, o bloquea si no hay confianza
+// suficiente (fail-closed, nunca inserta con recuerdo nulo o placeholder). Con
+// --memory explícito, la desambiguación igual corre pero solo como aviso, la
+// elección del humano nunca se sobreescribe. Un recuerdo debe existir de
+// antemano en la tabla `memories` (fail-closed contra typos) salvo que se pase
+// --create-memory explícitamente. Si un recuerdo fue fusionado a otro
+// (`merged_into`), se resuelve solo al recuerdo vigente.
 // Uso:
-//   node remember.mjs --claim "texto del hecho" --date 2026-08-22 --source "conversación Claude Code" [--kind fact|event|preference|commitment] [--node nodo1,nodo2] [--create-node] [--aliases "alias1,alias2"] [--confidence 0.9] [--supersedes 12,15] [--distinct] [--confirm-date]
+//   node remember.mjs --claim "texto del registro" --date 2026-08-22 --source "conversación Claude Code" [--kind fact|event|commitment] [--memory recuerdo1,recuerdo2] [--create-memory] [--aliases "alias1,alias2"] [--confidence 0.9] [--supersedes 12,15] [--distinct] [--confirm-date]
 //
 // --confirm-date: obligatorio si --date no es la fecha real de hoy (America/
-// Bogota): confirma que un hecho con fecha distinta es intencional
+// Bogota): confirma que un registro con fecha distinta es intencional
 // (histórico, backfill), no un error de no verificar la fecha antes de llamar.
 //
-// Sin --node, deja que la desambiguación automática lo resuelva (bloquea si no hay confianza suficiente).
+// Sin --memory, deja que la desambiguación automática lo resuelva (bloquea si no hay confianza suficiente).
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { embed, toVectorLiteral } from './lib/embed.mjs';
 import { classifyDuplicate, CLASSIFIER_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL } from './lib/classify-duplicate.mjs';
-import { classifyNode, CLASSIFIER_CONFIDENCE_THRESHOLD as NODE_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL as NODE_CLASSIFIER_MODEL } from './lib/classify-node.mjs';
-import { detectNodeMentions } from './lib/detect-node-mentions.mjs';
+import { classifyNode, CLASSIFIER_CONFIDENCE_THRESHOLD as NODE_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL as NODE_CLASSIFIER_MODEL } from './lib/classify-memory.mjs';
+import { detectNodeMentions } from './lib/detect-memory-mentions.mjs';
 import { findAliasCollisions } from './lib/check-alias-collision.mjs';
 import { classifyMentionRelationHybrid, CLASSIFIER_CONFIDENCE_THRESHOLD as MENTION_CONFIDENCE_THRESHOLD } from './lib/classify-mention-relation.mjs';
-import { formatFactsBlock } from './lib/format-facts.mjs';
-import { createEdge } from './lib/create-edge.mjs';
+import { formatFactsBlock } from './lib/format-records.mjs';
+import { createLink } from './lib/create-link.mjs';
 
 const SIMILARITY_THRESHOLD = 0.6;
 
@@ -64,7 +64,7 @@ const args = parseArgs(process.argv.slice(2));
 if (!args.claim || !args.date || !args.source) {
   console.error(
     'Faltan campos obligatorios. Uso:\n' +
-      '  node remember.mjs --claim "..." --date YYYY-MM-DD --source "..." [--kind fact] [--node nodo1,nodo2] [--create-node] [--aliases "a,b"] [--confidence 1.0] [--supersedes id,id] [--distinct] [--confirm-date]',
+      '  node remember.mjs --claim "..." --date YYYY-MM-DD --source "..." [--kind fact] [--memory recuerdo1,recuerdo2] [--create-memory] [--aliases "a,b"] [--confidence 1.0] [--supersedes id,id] [--distinct] [--confirm-date]',
   );
   process.exit(1);
 }
@@ -74,22 +74,22 @@ if (!/^\d{4}-\d{2}-\d{2}$/.test(args.date)) {
   process.exit(1);
 }
 
-// --date distinto de hoy es legítimo a propósito (hechos históricos,
-// backfill de extract-facts.mjs sobre una sesión pasada, timelines de
+// --date distinto de hoy es legítimo a propósito (registros históricos,
+// backfill de extract-records.mjs sobre una sesión pasada, timelines de
 // proyectos armados en retrospectiva): nunca debe bloquearse por defecto
 // solo por eso. Pero un aviso que solo se imprime y sigue de largo es
 // exactamente el tipo de fallo silencioso que causó el error real del
-// 2026-09-03 (hecho #525 quedó fechado 2026-09-01 por no verificar la fecha
+// 2026-09-03 (registro #525 quedó fechado 2026-09-01 por no verificar la fecha
 // antes de llamar esto): fácil de no leer entre el resto del output. Fix:
 // bloquea salvo que se pase --confirm-date explícito, mismo patrón que
-// --distinct/--create-node en este mismo script: no es fricción para el
+// --distinct/--create-memory en este mismo script: no es fricción para el
 // caso histórico legítimo (un flag, no una re-ejecución completa), y hace
 // imposible que el desfase pase desapercibido en el caso accidental.
 const todayBogota = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
 if (args.date !== todayBogota && !args['confirm-date']) {
   console.error(
     `--date ${args.date} es distinto de hoy (${todayBogota} en America/Bogota).\n` +
-      'Si es un hecho histórico o backfill intencional, agrega --confirm-date para confirmarlo.\n' +
+      'Si es un registro histórico o backfill intencional, agrega --confirm-date para confirmarlo.\n' +
       'Si fue sin querer, corrige --date y vuelve a intentar.',
   );
   process.exit(1);
@@ -117,9 +117,9 @@ const vectorLiteral = toVectorLiteral(embedding);
 
 const { rows: candidates } = await client.query(
   `select f.id, f.claim, f.date, f.source, f.kind,
-          (select string_agg(node_name, ', ' order by node_name) from fact_nodes where fact_id = f.id) as nodes,
+          (select string_agg(memory_name, ', ' order by memory_name) from record_memories where record_id = f.id) as memories,
           1 - (f.embedding <=> $1) as similarity
-   from facts f
+   from records f
    where f.valid_until is null and f.embedding is not null
    order by f.embedding <=> $1
    limit 5`,
@@ -154,15 +154,15 @@ if (similar.length > 0 && supersedesIds.length === 0 && !args.distinct) {
 }
 
 if (similar.length > 0 && supersedesIds.length === 0 && !args.distinct) {
-  console.error(`Hay ${similar.length} hecho(s) vivo(s) parecido(s), resuélvelo antes de insertar:\n`);
+  console.error(`Hay ${similar.length} registro(s) vivo(s) parecido(s), resuélvelo antes de insertar:\n`);
   for (const c of similar) {
     console.error(
       `  #${c.id} [${c.date.toISOString().slice(0, 10)}] (similitud ${c.similarity.toFixed(2)}) ${truncateClaim(c.claim)}`,
     );
-    console.error(`     fuente: ${c.source}${c.nodes ? ` · nodos: ${c.nodes}` : ''}`);
+    console.error(`     fuente: ${c.source}${c.memories ? ` · recuerdos: ${c.memories}` : ''}`);
   }
   console.error(
-    '\nSi este hecho reemplaza a alguno de los anteriores, pasa --supersedes <id>[,<id>...].\n' +
+    '\nSi este registro reemplaza a alguno de los anteriores, pasa --supersedes <id>[,<id>...].\n' +
       'Si es genuinamente distinto pese al parecido, pasa --distinct para confirmarlo explícitamente.',
   );
   await client.end();
@@ -184,14 +184,14 @@ if (supersedesIds.length > 0) {
   }
 }
 
-// Etapa 2 (PLAN-nodos.md, 2026-08-29): desambiguación por búsqueda vectorial
+// Etapa 2 (PLAN-recuerdos.md, 2026-08-29): desambiguación por búsqueda vectorial
 // + clasificador. Corre SIEMPRE (Etapa 0: "siempre corre desambiguación
-// después, incluso si viene explícito"), pero solo bloquea cuando --node no
+// después, incluso si viene explícito"), pero solo bloquea cuando --memory no
 // vino: si el humano ya eligió explícitamente, la desambiguación es un
 // chequeo informativo (stderr), nunca sobreescribe una decisión explícita.
-const { rows: nodeCandidateRows } = await client.query(`select * from nodes_similar($1, 5)`, [vectorLiteral]);
+const { rows: nodeCandidateRows } = await client.query(`select * from memories_similar($1, 5)`, [vectorLiteral]);
 const nodeCandidates = nodeCandidateRows.map((r) => ({
-  node_name: r.node_name,
+  memory_name: r.memory_name,
   examples: r.examples,
   similarity: r.similarity,
   aliases: r.aliases,
@@ -202,82 +202,82 @@ if (nodeCandidates.length > 0) {
   nodeVerdict = await classifyNode(args.claim, nodeCandidates);
 }
 
-let requestedNodes = args.node
-  ? String(args.node)
+let requestedNodes = args.memory
+  ? String(args.memory)
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean)
   : [];
 
 if (requestedNodes.length === 0) {
-  // Sin --node explícito: la propuesta del clasificador ES la decisión, no
+  // Sin --memory explícito: la propuesta del clasificador ES la decisión, no
   // solo una sugerencia: pero solo si pasa el umbral de confianza.
   if (!nodeVerdict || nodeVerdict.confidence < NODE_CONFIDENCE_THRESHOLD) {
-    console.error('No se pasó --node y la desambiguación automática no alcanzó confianza suficiente.\n');
+    console.error('No se pasó --memory y la desambiguación automática no alcanzó confianza suficiente.\n');
     if (nodeCandidates.length > 0) {
-      console.error('Nodos existentes más parecidos:');
+      console.error('recuerdos existentes más parecidos:');
       for (const c of nodeCandidates) {
-        console.error(`  "${c.node_name}" (similitud ${c.similarity.toFixed(2)}):`);
+        console.error(`  "${c.memory_name}" (similitud ${c.similarity.toFixed(2)}):`);
         for (const ex of c.examples) console.error(`      - ${truncateClaim(ex)}`);
       }
     } else {
-      console.error('(no hay hechos con embedding en ningún nodo todavía para comparar)');
+      console.error('(no hay registros con embedding en ningún recuerdo todavía para comparar)');
     }
     console.error(
-      '\nPasa --node <nombre existente>, o --node <nombre nuevo> --create-node si es genuinamente un nodo nuevo.',
+      '\nPasa --memory <nombre existente>, o --memory <nombre nuevo> --create-memory si es genuinamente un recuerdo nuevo.',
     );
     await client.end();
     process.exit(1);
   }
   if (nodeVerdict.verdict === 'new') {
     console.error(
-      `El clasificador (${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}) propone un nodo NUEVO: "${nodeVerdict.node}" (${nodeVerdict.reasoning})\n` +
-        `Si es correcto, vuelve a llamar con --node "${nodeVerdict.node}" --create-node.`,
+      `El clasificador (${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}) propone un recuerdo NUEVO: "${nodeVerdict.node}" (${nodeVerdict.reasoning})\n` +
+        `Si es correcto, vuelve a llamar con --memory "${nodeVerdict.node}" --create-memory.`,
     );
     await client.end();
     process.exit(1);
   }
-  // verdict === 'existing' con confianza suficiente: la propuesta ES el nodo.
+  // verdict === 'existing' con confianza suficiente: la propuesta ES el recuerdo.
   requestedNodes = [nodeVerdict.node];
   console.error(
-    `(nodo auto-resuelto por ${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}: ${nodeVerdict.reasoning})`,
+    `(recuerdo auto-resuelto por ${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}: ${nodeVerdict.reasoning})`,
   );
 } else if (
   nodeVerdict &&
   nodeVerdict.confidence >= NODE_CONFIDENCE_THRESHOLD &&
   (nodeVerdict.verdict === 'new' || !requestedNodes.includes(nodeVerdict.node))
 ) {
-  // --node vino explícito pero la desambiguación sugiere algo distinto con
+  // --memory vino explícito pero la desambiguación sugiere algo distinto con
   // confianza alta: se avisa, nunca se bloquea ni se sobreescribe.
   console.error(
     `(aviso: la desambiguación automática (${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}) ` +
-      `sugiere ${nodeVerdict.verdict === 'new' ? `un nodo nuevo distinto: "${nodeVerdict.node}"` : `el nodo existente "${nodeVerdict.node}"`}` +
+      `sugiere ${nodeVerdict.verdict === 'new' ? `un recuerdo nuevo distinto: "${nodeVerdict.node}"` : `el recuerdo existente "${nodeVerdict.node}"`}` +
       ` en vez de ${requestedNodes.map((n) => `"${n}"`).join(', ')}, ${nodeVerdict.reasoning}. Se respeta tu elección explícita.)`,
   );
 }
 
-// --aliases (2026-09-02): un nodo nuevo nacía siempre con aliases vacío --
-// el mismo hueco que forzó el backfill guiado de 24 nodos (ver PLAN-nodos.md,
-// Etapa 6, hecho #497: un `name` kebab-case casi nunca aparece literal en
-// prosa natural, así que detect-node-mentions.mjs no podía reconocer
-// menciones futuras sin alias). Solo aplica junto con --create-node, y solo
-// si esta llamada crea exactamente UN nodo nuevo -- con varios a la vez, una
+// --aliases (2026-09-02): un recuerdo nuevo nacía siempre con aliases vacío --
+// el mismo hueco que forzó el backfill guiado de 24 recuerdos (ver PLAN-recuerdos.md,
+// Etapa 6, registro #497: un `name` kebab-case casi nunca aparece literal en
+// prosa natural, así que detect-memory-mentions.mjs no podía reconocer
+// menciones futuras sin alias). Solo aplica junto con --create-memory, y solo
+// si esta llamada crea exactamente UN recuerdo nuevo -- con varios a la vez, una
 // sola lista de alias sería ambigua (¿de cuál de todos?). Mismo chequeo de
-// colisión que set-node-aliases.mjs (lib/check-alias-collision.mjs): un
-// alias que ya es name/alias de otro nodo bloquea, no se crea nada.
+// colisión que set-memory-aliases.mjs (lib/check-alias-collision.mjs): un
+// alias que ya es name/alias de otro recuerdo bloquea, no se crea nada.
 let aliasesForNewNode = null;
 if (args.aliases) {
-  if (!args['create-node']) {
-    console.error('--aliases solo aplica junto con --create-node.');
+  if (!args['create-memory']) {
+    console.error('--aliases solo aplica junto con --create-memory.');
     await client.end();
     process.exit(1);
   }
-  const { rows: existing } = await client.query(`select name from nodes where name = any($1::text[])`, [requestedNodes]);
+  const { rows: existing } = await client.query(`select name from memories where name = any($1::text[])`, [requestedNodes]);
   const existingNames = new Set(existing.map((r) => r.name));
   const toCreate = requestedNodes.filter((n) => !existingNames.has(n));
   if (toCreate.length !== 1) {
     console.error(
-      `--aliases solo aplica si esta llamada crea exactamente un nodo nuevo (crearía ${toCreate.length}: ${toCreate.join(', ') || 'ninguno'}). Créalos por separado, o aplica alias después con set-node-aliases.mjs.`,
+      `--aliases solo aplica si esta llamada crea exactamente un recuerdo nuevo (crearía ${toCreate.length}: ${toCreate.join(', ') || 'ninguno'}). Créalos por separado, o aplica alias después con set-memory-aliases.mjs.`,
     );
     await client.end();
     process.exit(1);
@@ -285,7 +285,7 @@ if (args.aliases) {
   const newAliases = args.aliases.split(',').map((a) => a.trim()).filter(Boolean);
   const conflicts = await findAliasCollisions(client, toCreate[0], newAliases);
   if (conflicts.length > 0) {
-    console.error(`Colisión -- no se crea el nodo. Los siguientes alias ya pertenecen a otro nodo:`);
+    console.error(`Colisión -- no se crea el recuerdo. Los siguientes alias ya pertenecen a otro recuerdo:`);
     for (const c of conflicts) console.error(`  "${c.alias}" ya es name/alias de "${c.node}"`);
     await client.end();
     process.exit(1);
@@ -293,10 +293,10 @@ if (args.aliases) {
   aliasesForNewNode = { name: toCreate[0], aliases: newAliases };
 }
 
-// Resuelve cada nodo: debe existir en `nodes` (fail-closed contra typos que
-// crearían un nodo fantasma), salvo --create-node explícito. Si un nodo fue
+// Resuelve cada recuerdo: debe existir en `memories` (fail-closed contra typos que
+// crearían un recuerdo fantasma), salvo --create-memory explícito. Si un recuerdo fue
 // fusionado a otro (merged_into), sigue la cadena al vigente: nadie que
-// llame remember.mjs necesita saber que un nodo cambió de nombre.
+// llame remember.mjs necesita saber que un recuerdo cambió de nombre.
 const resolvedNodes = [];
 for (const name of requestedNodes) {
   let current = name;
@@ -304,12 +304,12 @@ for (const name of requestedNodes) {
   let row = null;
   while (true) {
     if (seen.has(current)) {
-      console.error(`Ciclo de merged_into detectado en nodos empezando por "${name}".`);
+      console.error(`Ciclo de merged_into detectado en recuerdos empezando por "${name}".`);
       await client.end();
       process.exit(1);
     }
     seen.add(current);
-    const { rows: found } = await client.query(`select name, merged_into from nodes where name = $1`, [current]);
+    const { rows: found } = await client.query(`select name, merged_into from memories where name = $1`, [current]);
     if (found.length === 0) {
       row = null;
       break;
@@ -320,19 +320,19 @@ for (const name of requestedNodes) {
   }
   if (row) {
     resolvedNodes.push(row.name);
-  } else if (args['create-node']) {
+  } else if (args['create-memory']) {
     if (aliasesForNewNode?.name === name) {
       await client.query(
-        `insert into nodes (name, aliases) values ($1, $2) on conflict (name) do nothing`,
+        `insert into memories (name, aliases) values ($1, $2) on conflict (name) do nothing`,
         [name, aliasesForNewNode.aliases],
       );
     } else {
-      await client.query(`insert into nodes (name) values ($1) on conflict (name) do nothing`, [name]);
+      await client.query(`insert into memories (name) values ($1) on conflict (name) do nothing`, [name]);
     }
     resolvedNodes.push(name);
   } else {
     console.error(
-      `Nodo "${name}" no existe en la tabla nodes. Pasa --create-node si es genuinamente uno nuevo, o revisa el nombre con list-nodes.mjs.`,
+      `recuerdo "${name}" no existe en la tabla memories. Pasa --create-memory si es genuinamente uno nuevo, o revisa el nombre con list-memories.mjs.`,
     );
     await client.end();
     process.exit(1);
@@ -340,7 +340,7 @@ for (const name of requestedNodes) {
 }
 
 const { rows } = await client.query(
-  `insert into facts (claim, kind, date, source, confidence, embedding)
+  `insert into records (claim, kind, date, source, confidence, embedding)
    values ($1, $2, $3, $4, $5, $6)
    returning id, date, claim`,
   [
@@ -355,19 +355,19 @@ const { rows } = await client.query(
 
 const newId = rows[0].id;
 
-for (const nodeName of resolvedNodes) {
-  await client.query(`insert into fact_nodes (fact_id, node_name) values ($1, $2) on conflict do nothing`, [
+for (const memoryName of resolvedNodes) {
+  await client.query(`insert into record_memories (record_id, memory_name) values ($1, $2) on conflict do nothing`, [
     newId,
-    nodeName,
+    memoryName,
   ]);
 }
 if (resolvedNodes.length > 0) {
-  console.log(`Nodo(s): ${resolvedNodes.join(', ')}`);
+  console.log(`recuerdo(s): ${resolvedNodes.join(', ')}`);
 }
 
 if (supersedesIds.length > 0) {
   await client.query(
-    `update facts set valid_until = now(), superseded_by = $1 where id = any($2::bigint[])`,
+    `update records set valid_until = now(), superseded_by = $1 where id = any($2::bigint[])`,
     [newId, supersedesIds],
   );
   console.log(`Reemplazó a #${supersedesIds.join(', #')}.`);
@@ -375,35 +375,35 @@ if (supersedesIds.length > 0) {
   console.log(`Confirmado como distinto pese al parecido con #${similar.map((c) => c.id).join(', #')}.`);
 }
 
-// Etapa 6 (PLAN-nodos.md, 2026-09-02, hecho #487): co-ocurrencia textual en
+// Etapa 6 (PLAN-recuerdos.md, 2026-09-02, registro #487): co-ocurrencia textual en
 // vez del barrido O(n²) por embeddings que no funcionó -- si el claim
-// menciona por nombre a otro nodo vigente, es señal barata de una posible
+// menciona por nombre a otro recuerdo vigente, es señal barata de una posible
 // relación. Solo avisa (mismo criterio "revisión humana obligatoria" que
-// list-edge-candidates-deep.mjs/merge-nodes.mjs) -- nunca crea nada solo.
-// Se salta por completo si el hecho es de un nodo is_meta (segundo-cerebro,
-// segundo-cerebro-dashboard-log): esos hechos documentan la construcción
-// del propio sistema y mencionan otros nodos como ejemplos dentro de su
+// list-link-candidates-deep.mjs/merge-memories.mjs) -- nunca crea nada solo.
+// Se salta por completo si el registro es de un recuerdo is_meta (segundo-cerebro,
+// segundo-cerebro-dashboard-log): esos registros documentan la construcción
+// del propio sistema y mencionan otros recuerdos como ejemplos dentro de su
 // narración -- autorreferencia, no relación real (hallazgo real probando
-// list-node-mentions.mjs contra el histórico, 2026-09-02).
+// list-memory-mentions.mjs contra el histórico, 2026-09-02).
 const { rows: ownIsMeta } = resolvedNodes.length > 0
-  ? await client.query(`select count(*)::int as n from nodes where name = any($1::text[]) and is_meta`, [resolvedNodes])
+  ? await client.query(`select count(*)::int as n from memories where name = any($1::text[]) and is_meta`, [resolvedNodes])
   : { rows: [{ n: 0 }] };
 const { rows: allNodeRows } = ownIsMeta[0].n > 0
   ? { rows: [] }
-  : await client.query(`select name, aliases from nodes where merged_into is null and not is_meta`);
+  : await client.query(`select name, aliases from memories where merged_into is null and not is_meta`);
 const mentions = detectNodeMentions(args.claim, resolvedNodes, allNodeRows);
 
 // Auto-creación de enlaces (2026-09-02, decisión del usuario: "lo haremos
 // automático"). classify-mention-relation.mjs juzga cada candidato puntual
-// (costo lineal con hechos nuevos, no el barrido O(n²)) -- confianza alta
-// crea el enlace solo (anotado en source, igual que un hecho auto-resuelto);
+// (costo lineal con registros nuevos, no el barrido O(n²)) -- confianza alta
+// crea el enlace solo (anotado en source, igual que un registro auto-resuelto);
 // confianza baja o el clasificador no disponible cae al candidato de
 // revisión manual de siempre; "no_relation" se descarta sin mostrar nada,
 // es la reducción de ruido que pidió el usuario. Nunca trata un fallo del
 // clasificador como "no hay relación" -- eso perdería la señal gratis de
 // detectNodeMentions.
 for (const m of mentions) {
-  const { rows: bFactRows } = await client.query(`select * from facts_timeline($1, $2, false)`, [m.node, 1000]);
+  const { rows: bFactRows } = await client.query(`select * from records_timeline($1, $2, false)`, [m.node, 1000]);
   const judged = await classifyMentionRelationHybrid(args.claim, resolvedNodes[0], m.node, formatFactsBlock(bFactRows));
 
   if (judged?.verdict === 'no_relation') continue;
@@ -411,13 +411,13 @@ for (const m of mentions) {
   if (judged?.verdict === 'relation' && judged.confidence >= MENTION_CONFIDENCE_THRESHOLD) {
     let allCreated = true;
     for (const from of resolvedNodes) {
-      const edgeResult = await createEdge(
+      const edgeResult = await createLink(
         client, from, m.node, judged.relation,
-        `[auto-creado por clasificador de menciones (${judged.via}), confianza ${judged.confidence.toFixed(2)}]: ${judged.reasoning} (hecho #${newId})`,
+        `[auto-creado por clasificador de menciones (${judged.via}), confianza ${judged.confidence.toFixed(2)}]: ${judged.reasoning} (registro #${newId})`,
         args.date,
       );
       if (edgeResult.ok) {
-        console.log(`(enlace auto-creado: ${edgeResult.fromNode} -> ${edgeResult.toNode} (${edgeResult.relation}), confianza ${judged.confidence.toFixed(2)})`);
+        console.log(`(enlace auto-creado: ${edgeResult.fromMemory} -> ${edgeResult.toMemory} (${edgeResult.relation}), confianza ${judged.confidence.toFixed(2)})`);
       } else {
         allCreated = false;
       }
@@ -427,7 +427,7 @@ for (const m of mentions) {
 
   console.log(`\n(el claim menciona a "${m.node}" (coincide con "${m.matchedOn}") -- posible relación, revisión manual):`);
   for (const from of resolvedNodes) {
-    console.log(`  node-link.mjs --from ${from} --to ${m.node} --relation "${judged?.relation || '...'}" --date ${args.date} --reason "hecho #${newId}"`);
+    console.log(`  memory-link.mjs --from ${from} --to ${m.node} --relation "${judged?.relation || '...'}" --date ${args.date} --reason "registro #${newId}"`);
   }
 }
 

@@ -37,7 +37,7 @@ a real correction.)*
 
 ## Open commitments
 
-`node scripts/db/list-commitments.mjs`, a live query against `facts`
+`node scripts/db/list-commitments.mjs`, a live query against `records`
 (`kind: commitment`, `valid_until is null`), not prose maintained by hand
 here. Keeping a duplicate list in this file is exactly the kind of thing
 that goes stale silently and defeats the point of a structured backend,

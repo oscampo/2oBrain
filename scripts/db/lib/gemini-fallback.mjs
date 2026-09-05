@@ -1,5 +1,5 @@
 // Llamada a Gemini con reintento sobre una lista de modelos de respaldo
-// (config/gemini-models.json: mismo archivo que ya usa extract-facts.mjs,
+// (config/gemini-models.json: mismo archivo que ya usa extract-records.mjs,
 // no se duplica la config, solo el mecanismo de reintento). Google renombra
 // o sobrecarga modelos con frecuencia (razón de fondo por la que el default
 // ya usa el alias "-latest" en vez de fijar versión); reintentar con el

@@ -1,12 +1,12 @@
-// Etapa 5 (PLAN-nodos.md, 2026-08-30): "estado actual del nodo X" generado
-// al momento de la consulta desde los hechos vigentes reales, no una página
+// Etapa 5 (PLAN-recuerdos.md, 2026-08-30): "estado actual del recuerdo X" generado
+// al momento de la consulta desde los registros vigentes reales, no una página
 // mantenida a mano que se congela el día que se escribe (ver la motivación
-// completa del rediseño en PLAN-nodos.md). Trae TODOS los hechos vigentes
-// del nodo (match_count alto, no los 20 de timeline.mjs) y le pide a un LLM
+// completa del rediseño en PLAN-recuerdos.md). Trae TODOS los registros vigentes
+// del recuerdo (match_count alto, no los 20 de timeline.mjs) y le pide a un LLM
 // que resuma en prosa: mismo principio de fuente obligatoria que el resto
 // del sistema: el prompt (ver lib/synthesize.mjs) prohíbe completar con
 // conocimiento general.
-// Uso: node node-status.mjs <nombre-de-nodo> [--provider ollama|gemini] [--model ...]
+// Uso: node memory-status.mjs <nombre-de-recuerdo> [--provider ollama|gemini] [--model ...]
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { synthesizeNodeStatus } from './lib/synthesize.mjs';
@@ -34,7 +34,7 @@ const args = parseArgs(rawArgs);
 const provider = args.provider ?? 'ollama';
 
 if (!node) {
-  console.error('Uso: node node-status.mjs <nombre-de-nodo> [--provider ollama|gemini] [--model ...]');
+  console.error('Uso: node memory-status.mjs <nombre-de-recuerdo> [--provider ollama|gemini] [--model ...]');
   process.exit(1);
 }
 
@@ -67,9 +67,9 @@ while (true) {
     process.exit(1);
   }
   seen.add(current);
-  const { rows } = await client.query(`select name, merged_into from nodes where name = $1`, [current]);
+  const { rows } = await client.query(`select name, merged_into from memories where name = $1`, [current]);
   if (rows.length === 0) {
-    console.error(`Nodo "${current}" no existe. Revisa el nombre con list-nodes.mjs.`);
+    console.error(`recuerdo "${current}" no existe. Revisa el nombre con list-memories.mjs.`);
     await client.end();
     process.exit(1);
   }
@@ -77,19 +77,19 @@ while (true) {
   current = rows[0].merged_into;
 }
 
-const { rows: facts } = await client.query('select * from facts_timeline($1, $2, $3)', [live, 500, false]);
+const { rows: records } = await client.query('select * from records_timeline($1, $2, $3)', [live, 500, false]);
 await client.end();
 
-if (facts.length === 0) {
-  console.log(`Sin hechos vigentes para el nodo "${live}".`);
+if (records.length === 0) {
+  console.log(`Sin registros vigentes para el recuerdo "${live}".`);
   process.exit(0);
 }
 
-const rawFacts = facts
+const rawFacts = records
   .map((f) => `#${f.id} [${f.date.toISOString().slice(0, 10)}] ${f.claim}\n  fuente: ${f.source} · tipo: ${f.kind}`)
   .join('\n\n');
 
-console.error(`(${facts.length} hecho(s) vigente(s) de "${live}", sintetizando con ${provider}${args.model ? ` (${args.model})` : ''}...)`);
+console.error(`(${records.length} registro(s) vigente(s) de "${live}", sintetizando con ${provider}${args.model ? ` (${args.model})` : ''}...)`);
 
 const narrative = await synthesizeNodeStatus(live, rawFacts, provider, args.model);
 console.log(narrative);

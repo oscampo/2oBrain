@@ -1,8 +1,8 @@
-// Lista los nodos vigentes (no fusionados a otro): para saber qué pasarle a
-// timeline.mjs/remember.mjs --node sin tener que memorizarlos de antemano, y
-// como primera línea de defensa manual contra crear un nodo casi-duplicado
-// mientras la desambiguación automática (Etapa 2 de PLAN-nodos.md) no existe.
-// Uso: node list-nodes.mjs [--json]
+// Lista los recuerdos vigentes (no fusionados a otro): para saber qué pasarle a
+// timeline.mjs/remember.mjs --memory sin tener que memorizarlos de antemano, y
+// como primera línea de defensa manual contra crear un recuerdo casi-duplicado
+// mientras la desambiguación automática (Etapa 2 de PLAN-recuerdos.md) no existe.
+// Uso: node list-memories.mjs [--json]
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 
@@ -26,13 +26,13 @@ const client = new pg.Client({
 await client.connect();
 
 const { rows } = await client.query(
-  `select name, aliases from nodes where merged_into is null order by name`,
+  `select name, aliases from memories where merged_into is null order by name`,
 );
 
 if (asJson) {
-  console.log(JSON.stringify({ nodes: rows }));
+  console.log(JSON.stringify({ memories: rows }));
 } else if (rows.length === 0) {
-  console.log('No hay nodos registrados.');
+  console.log('No hay recuerdos registrados.');
 } else {
   for (const r of rows) {
     console.log(r.name + (r.aliases?.length ? ` (alias: ${r.aliases.join(', ')})` : ''));
