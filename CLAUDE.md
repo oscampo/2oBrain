@@ -349,21 +349,31 @@ y reemplaza cada `YYYY-MM-DD` de abajo por ese valor.
 ```
 ¿Para qué vas a usar 2oBrain?
 [ ] Trabajo
-[ ] Vida personal
+[ ] Personal
+[ ] Estudio
+[ ] Comunidad (junta/consejo, iglesia, asociación -- cualquier rol
+    organizativo no remunerado con reuniones y pendientes propios)
+[ ] Otro: ____
 ```
-(puede marcar una, ambas, o ninguna)
+(puede marcar varias, una sola, o ninguna)
 
 Si no marca ninguna, no crees ningún nodo, sigue directo a la Fase 7 -- no
 es un requisito, el usuario puede pedir esta estructura después.
 
 Con la respuesta, crea tú los supernodos con `create-node.mjs`: un nodo raíz
-por cada opción marcada, y debajo un conjunto fijo de sub-supernodos. Van
-fijos a propósito, no se ofrecen como checklist aparte -- alargaría la
-entrevista sin necesidad real, y el usuario siempre puede crear otros
-después con el mismo comando:
+por cada opción marcada, y debajo un conjunto fijo de sub-supernodos (salvo
+"Otro", ver abajo). Van fijos a propósito, no se ofrecen como checklist
+aparte -- alargaría la entrevista sin necesidad real, y el usuario siempre
+puede crear otros después con el mismo comando:
 
 - **Trabajo** → `proyectos`, `contactos`, `reuniones`
-- **Vida personal** → `habitos`, `rutinas`, `espiritualidad`, `salud`
+- **Personal** → `habitos`, `rutinas`, `espiritualidad`, `salud`
+- **Estudio** → `cursos`, `apuntes`, `tareas`
+- **Comunidad** → `reuniones`, `pendientes`, `contactos`
+- **Otro**: no tiene sub-supernodos fijos -- no hay forma de anticipar la
+  forma de una categoría que el propio checklist no supo nombrar. Pregunta
+  el nombre ("¿cómo la llamarías?") y crea solo el nodo raíz con ese
+  nombre; el usuario arma los hijos después si los necesita.
 
 ```bash
 node scripts/db/create-node.mjs --name trabajo
@@ -371,15 +381,40 @@ node scripts/db/create-node.mjs --name proyectos --parent trabajo --date YYYY-MM
 node scripts/db/create-node.mjs --name contactos --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
 node scripts/db/create-node.mjs --name reuniones --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
 
-node scripts/db/create-node.mjs --name vida-personal
-node scripts/db/create-node.mjs --name habitos --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name rutinas --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name espiritualidad --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name salud --parent vida-personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name personal
+node scripts/db/create-node.mjs --name habitos --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name rutinas --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name espiritualidad --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name salud --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+
+node scripts/db/create-node.mjs --name estudio
+node scripts/db/create-node.mjs --name cursos --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name apuntes --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name tareas --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+
+node scripts/db/create-node.mjs --name comunidad
+node scripts/db/create-node.mjs --name reuniones --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name pendientes --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name contactos --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+
+node scripts/db/create-node.mjs --name <nombre-que-dio-el-usuario>
 ```
 
 (Solo crea los de la rama que el usuario marcó -- si marcó únicamente
-"Trabajo", no crees `vida-personal` ni sus hijos.)
+"Trabajo", no crees `personal`, `estudio`, `comunidad` ni sus hijos.
+
+Ojo con `reuniones` y `contactos`: se repiten como nombre entre Trabajo y
+Comunidad, y los nombres de nodo son únicos globalmente, no por rama --
+`create-node.mjs` es idempotente ante un nombre ya existente: si el usuario
+marcó ambas ramas, el segundo `create-node.mjs --name reuniones --parent
+comunidad` NO crea un nodo nuevo, enlaza el mismo nodo "reuniones" que ya
+existe bajo Trabajo a Comunidad también (un nodo puede tener más de un
+`pertenece_a`). No es un error, pero sí una decisión real -- pregúntale al
+usuario si marca ambas ramas: *"Trabajo y Comunidad usan por defecto un
+solo nodo 'reuniones' y uno de 'contactos' compartido entre las dos, ¿te
+sirve así o prefieres separarlos (ej. 'reuniones-comunidad',
+'contactos-comunidad')?"* Si prefiere separarlos, usa esos nombres en vez
+de los de arriba solo para la rama de Comunidad.)
 
 Si algún comando bloquea por colisión de nombre/alias (no la salta ni
 siquiera `--force`, es una protección distinta): es señal de que la Fase 5
@@ -395,10 +430,13 @@ después.
 
 **PREGUNTA**: ofrece enriquecer la estructura ahora mismo con hechos reales,
 mismo espíritu que la Fase 5 (documentos/correo antes que memoria):
-*"¿Tienes algún proyecto de trabajo activo, o algún hábito/rutina de tu
-vida personal, que quieras que registre ya? Si tienes un MCP de correo
-conectado en esta sesión, puedo buscar antecedentes de un proyecto que
-menciones, igual que ofrecí en la Fase 5."*
+*"¿Tienes algo activo ya mismo en alguna de las ramas que creamos --un
+proyecto de trabajo, un hábito o rutina personal, un curso, un pendiente de
+la junta/comunidad-- que quieras que registre de una vez? Si tienes un MCP
+de correo conectado en esta sesión, puedo buscar antecedentes de un
+proyecto que menciones, igual que ofrecí en la Fase 5."* Adapta la pregunta
+a las ramas que el usuario realmente marcó -- no le preguntes por Estudio
+si no la marcó.
 
 Si el usuario da algo (a mano, o vía correo), por cada hecho candidato:
 
