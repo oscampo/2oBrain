@@ -49,12 +49,43 @@ or a degraded one; the MCP server is the same thin layer for all of them.
 
 ## Quick start
 
-Follow `CLAUDE.md`, it's an interview script. Open this repo in Claude
-Code and it will walk you through: creating the Supabase project and
-applying `scripts/db/schema.sql`, filling in `.env` (see `.env.example`),
-choosing which MCP server to deploy (or skipping that and using the
-dashboard/CLI only), and writing your own `SOUL.md`/`USER.md` so the
-assistant knows who it's working with.
+**Requires Claude Code** (terminal, the desktop app's Code tab, or a VS
+Code/JetBrains extension), anywhere with real file system and shell
+access. This will not work from Claude Chat (claude.ai web/mobile) or
+Cowork: neither has the tools to clone a repo, write `.env`, or keep a
+local server running, and pasting the message below into one of those
+will just fail or stall with no real progress.
+
+In Claude Code, tell it:
+
+```
+Sigue las instrucciones definidas aquí: https://github.com/oscampo/2oBrain
+```
+
+That single message is meant to be enough, even in a brand new session
+with nothing cloned yet. Before anything else, the agent should:
+
+1. Check whether `git` is installed (`git --version`); if not, install it
+   for the detected OS itself, not ask you to go do it.
+2. Clone this repo (`git clone https://github.com/oscampo/2oBrain.git`)
+   into a sensible folder, `./2oBrain/` by default unless that collides
+   with something already there.
+3. Detach it from this repo (`git remote remove origin`), inside the new
+   folder: a clone keeps pointing at `oscampo/2oBrain` by default, and
+   your copy is meant to become fully yours, not a fork someone could
+   confuse for a place to push back to.
+4. Move into that folder and continue from `CLAUDE.md`, which is a guided
+   installation script, not documentation to read passively.
+
+From there, `CLAUDE.md` takes over end to end: creating the Supabase
+project and applying `scripts/db/schema.sql`, filling in `.env` (see
+`.env.example`), choosing which MCP server to deploy (or skipping that
+and using the dashboard/CLI only), and writing your own `SOUL.md`/
+`USER.md` so the assistant knows who it's working with.
+
+Once installed, reopen your agent **from inside this cloned folder** in
+future sessions, that's what makes your `SOUL.md`/`USER.md`/`MEMORY.md`
+identity persist turn to turn instead of starting over each time.
 
 ## What doesn't ship here
 

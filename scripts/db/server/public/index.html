@@ -186,6 +186,7 @@ const SECTIONS = [
   { id: 'merge-nodes', label: 'Fusionar nodos', group: 'Nodos' },
   { id: 'aliases', label: 'Alias', group: 'Nodos' },
   { id: 'relations', label: 'Relaciones', group: 'Nodos' },
+  { id: 'supernode-candidates', label: 'Candidatos de supernodo', group: 'Nodos' },
 
   { id: 'extract-facts', label: 'Extraer de sesión', group: 'Extraer' },
   { id: 'extract-page-facts', label: 'Extraer de página', group: 'Extraer' },
@@ -219,6 +220,26 @@ function show(id) {
   for (const sec of main.querySelectorAll('section')) sec.classList.toggle('active', sec.id === id);
 }
 
+// Pensado para el usuario novato que no sabe qué es un proceso ni un exit
+// code: un fallo del dashboard (ej. el servidor con un execPath obsoleto
+// tras horas corriendo) se leía como "esto no sirve" sin ninguna pista de
+// qué hacer. No basta con mostrarlo siempre que algo falla: la mayoría de
+// los ok:false de este archivo ya traen su propia explicación clara
+// (validación de formulario, un script que bloqueó algo a propósito con
+// su propio mensaje) -- ahí el aviso de reinicio es ruido, no ayuda. Solo
+// aplica cuando NO hay ninguna explicación real: (1) result.error viene de
+// call() cuando fetch() ni siquiera pudo conectar (servidor genuinamente
+// caído, la señal más fuerte de que hace falta reiniciar), o (2) un
+// ok:false sin ningún mensaje en stdout/stderr/texto resuelto (un script
+// que crasheó antes de poder explicarse).
+const RESTART_HINT = 'Si esto no tiene sentido o nada en el dashboard responde, el servidor puede necesitar reiniciarse, cierra esta ventana y solicita a tu LLM "reinicia el servidor del dashboard" o corre node scripts/db/server/dashboard-server.mjs en una terminal dentro de tu carpeta 2oBrain';
+
+function needsRestartHint(result, resolvedText) {
+  if (result.error) return true;
+  if (result.ok) return false;
+  return !result.stdout && !result.stderr && !resolvedText;
+}
+
 function out(container, result) {
   let pre = container.querySelector('pre.out');
   if (!pre) {
@@ -227,7 +248,8 @@ function out(container, result) {
     container.appendChild(pre);
   }
   pre.className = 'out ' + (result.ok ? 'ok' : 'err');
-  pre.textContent = (result.stdout || '') + (result.stderr ? '\n[stderr]\n' + result.stderr : '') || JSON.stringify(result, null, 2);
+  pre.textContent = (result.stdout || '') + (result.stderr ? '\n[stderr]\n' + result.stderr : '') || (result.error || JSON.stringify(result, null, 2));
+  if (needsRestartHint(result)) pre.textContent += '\n\n' + RESTART_HINT;
 }
 
 function escapeHtml(s) {
@@ -346,14 +368,16 @@ function outMarkdown(container, result, text) {
     box.className = 'out out-md';
     container.appendChild(box);
   }
+  const resolvedText = text ?? (result.stdout || result.answer || '');
   box.className = 'out out-md ' + (result.ok ? 'ok' : 'err');
-  box.innerHTML = renderMarkdown(text ?? (result.stdout || result.answer || ''));
+  box.innerHTML = renderMarkdown(resolvedText || result.error || '');
   container.querySelector('.out-md-stderr')?.remove();
-  if (result.stderr) {
+  const showHint = needsRestartHint(result, resolvedText);
+  if (result.stderr || showHint) {
     const pre = document.createElement('pre');
     pre.className = 'out out-md-stderr';
     pre.style.marginTop = '10px';
-    pre.textContent = '[stderr]\n' + result.stderr;
+    pre.textContent = (result.stderr ? '[stderr]\n' + result.stderr + '\n\n' : '') + (showHint ? RESTART_HINT : '');
     box.after(pre);
   }
 }
@@ -1056,6 +1080,106 @@ function section(id, title, hint, bodyHtml) {
     } finally {
       btn.disabled = false;
       btn.textContent = 'Fusionar';
+    }
+  });
+}
+
+// --- Candidatos de supernodo ---
+// Nodos de dominio sin lugar en la jerarquía (ni hijo ni padre de ningún
+// pertenece_a) agrupados por similitud de sus hechos, ver
+// list-supernode-candidates.mjs para el diseño completo y por qué quedó bajo
+// demanda (el usuario la corre cuando siente el grafo desordenado) en vez de
+// una sugerencia proactiva.
+//
+// Arma una tarjeta por cluster (nombre sugerido editable, miembros con
+// checkbox para excluir alguno) y crea + liga en el navegador
+// (/api/create-node, /api/node-link): revisión humana obligatoria, nada se
+// crea hasta pulsar el botón de la tarjeta.
+{
+  const sec = section('supernode-candidates', 'Candidatos de supernodo', 'Nodos de dominio que no están ligados a nada en la jerarquía (ni son hijos ni son padres de otro nodo vía "pertenece_a"), agrupados por similitud temática de sus hechos, con un nombre de supernodo sugerido. Nada se crea solo: revisa/edita el nombre y los miembros de cada tarjeta y confirma.',
+    `<button class="run" id="sc-run">Buscar candidatos</button>
+     <div class="status" id="sc-info"></div>
+     <div id="sc-cards"></div>`);
+
+  const runBtn = sec.querySelector('#sc-run');
+  const infoEl = sec.querySelector('#sc-info');
+  const cardsEl = sec.querySelector('#sc-cards');
+
+  function renderCluster(cluster, index) {
+    const card = document.createElement('div');
+    card.className = 'fact-card';
+    const membersHtml = cluster.members
+      .map(
+        (m, i) => `
+      <div class="fc-top">
+        <input type="checkbox" class="sc-member-include" data-name="${m.name.replace(/"/g, '&quot;')}" checked>
+        <label>${m.name} (${m.factCount} hecho(s))</label>
+      </div>
+      <div class="fc-fragment">"${(m.example ?? '').replace(/</g, '&lt;')}"</div>`,
+      )
+      .join('');
+    card.innerHTML = `
+      <label>Nombre del supernodo${cluster.suggestedReasoning ? ` -- sugerido: ${cluster.suggestedReasoning}` : ' (sin sugerencia automática, escribe uno)'}</label>
+      <input type="text" class="sc-name" value="${cluster.suggestedName ?? ''}" placeholder="nombre-en-kebab-case">
+      <label style="margin-top:14px">Miembros a ligar (desmarca los que no apliquen)</label>
+      ${membersHtml}
+      <div class="row" style="margin-top:14px">
+        <div><label>Fecha</label><input type="date" class="sc-date"></div>
+      </div>
+      <label>Motivo</label>
+      <input type="text" class="sc-reason" placeholder="ej. agrupa la infraestructura de GitHub Classroom, antes sin categoría">
+      <button class="run secondary sc-create">Crear supernodo y ligar</button>`;
+    card.querySelector('.sc-date').value = todayBogota();
+
+    card.querySelector('.sc-create').addEventListener('click', async () => {
+      const name = card.querySelector('.sc-name').value.trim();
+      const date = card.querySelector('.sc-date').value;
+      const reason = card.querySelector('.sc-reason').value.trim();
+      const members = [...card.querySelectorAll('.sc-member-include')].filter((cb) => cb.checked).map((cb) => cb.dataset.name);
+      if (!name) { out(card, { ok: false, stdout: '', stderr: 'Falta el nombre del supernodo.' }); return; }
+      if (members.length === 0) { out(card, { ok: false, stdout: '', stderr: 'No hay ningún miembro incluido.' }); return; }
+      if (!reason) { out(card, { ok: false, stdout: '', stderr: 'Falta el motivo (queda como fuente de cada enlace).' }); return; }
+      const btn = card.querySelector('.sc-create');
+      btn.disabled = true;
+      btn.textContent = 'Creando…';
+      try {
+        // force: true: la desambiguación semántica de create-node.mjs
+        // compara el nombre nuevo contra nodos temáticamente parecidos, pero
+        // acá la premisa del cluster YA es "parecido a estos miembros", por
+        // construcción, sin esto el chequeo bloquea el caso normal de este
+        // flujo. La colisión de nombre/alias sigue corriendo sin --force,
+        // esa sí aplica igual aquí.
+        const createResult = await call('POST', '/api/create-node', { name, force: true });
+        if (!createResult.ok) { out(card, createResult); return; }
+        let lines = [createResult.stdout];
+        let anyFailed = false;
+        for (const member of members) {
+          const linkResult = await call('POST', '/api/node-link', { from: member, to: name, relation: 'pertenece_a', date, reason });
+          lines.push(linkResult.stdout || linkResult.stderr || linkResult.error);
+          if (!linkResult.ok) anyFailed = true;
+        }
+        out(card, { ok: !anyFailed, stdout: lines.join('\n'), stderr: '' });
+        if (!anyFailed) card.querySelector('.sc-create').textContent = 'Hecho';
+      } finally {
+        btn.disabled = false;
+        if (btn.textContent === 'Creando…') btn.textContent = 'Crear supernodo y ligar';
+      }
+    });
+
+    return card;
+  }
+
+  runBtn.addEventListener('click', async () => {
+    cardsEl.innerHTML = '';
+    runBtn.disabled = true;
+    infoEl.textContent = 'Buscando (compara embeddings de hechos y pide una sugerencia de nombre por cluster, puede tardar)…';
+    try {
+      const r = await call('GET', '/api/supernode-candidates');
+      if (!r.ok) { infoEl.textContent = 'Error: ' + r.error; return; }
+      infoEl.textContent = `${r.orphanCount} nodo(s) sin lugar en la jerarquía -- ${r.clusters.length} cluster(es) candidato(s).`;
+      r.clusters.forEach((cluster, i) => cardsEl.appendChild(renderCluster(cluster, i)));
+    } finally {
+      runBtn.disabled = false;
     }
   });
 }

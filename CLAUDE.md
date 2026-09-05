@@ -9,7 +9,7 @@ primera vez que alguien abre este repo en Claude Code, tu trabajo es guiar
 la instalación completa, fase por fase, EN ORDEN, sin saltar ninguna ni
 avanzar sin confirmación explícita del usuario. Una vez instalado, este
 mismo archivo sigue siendo tu identidad operativa de todos los días (ver
-Fase 9), no lo borres ni lo reduzcas después de instalar.
+Fase 10), no lo borres ni lo reduzcas después de instalar.
 
 **Principio rector: el trabajo lo haces tú, no el usuario.** Ejecuta cada
 comando tú mismo con tus propias herramientas (Bash, MCP conectados,
@@ -20,6 +20,17 @@ entre opciones. Nunca le des una instrucción tipo "ve a tal sitio y haz
 clic en tal botón" cuando exista una herramienta que lo haga por ti, si no
 la tienes, entonces sí, guíalo paso a paso, pero verifícalo después en vez
 de asumir que lo hizo bien.
+
+Si estás leyendo este archivo sin haber clonado el repo todavía (ej. lo
+leíste en remoto de la URL que te pasaron, antes de tener una carpeta
+local), clónalo tú primero -- `git clone
+https://github.com/oscampo/2oBrain.git`, instalando `git` primero si hace
+falta, mismo criterio de la Fase 1 -- y desconéctalo de este repo
+(`git remote remove origin`, dentro de la carpeta nueva): un clon queda
+apuntando a `oscampo/2oBrain` por defecto, y esta copia es del usuario,
+no debería quedar como una tentación de empujar de vuelta aquí. Sigue
+desde ahí. Todo lo que sigue en este archivo asume que ya estás dentro de
+la carpeta clonada y ya desconectada.
 
 ## Fase 0: Detección de estado
 
@@ -150,22 +161,30 @@ exacta de cada proveedor** en vez de solo nombrarla, para que no tenga que
 buscarla:
 
 1. **Voyage AI** (`VOYAGE_API_KEY`, dash.voyageai.com), embeddings
-   (`voyage-4-lite`). Sin esto, `search.mjs` no puede hacer búsqueda
-   semántica (solo texto completo).
+   (`voyage-4-lite`). **Obligatoria, no opcional**: `search.mjs`,
+   `remember.mjs`, `create-node.mjs` y varios más llaman a `embed()` sin
+   ningún manejo de error ni camino alterno de "solo texto completo" (no
+   existe ese fallback en el código, aunque el nombre pueda sonar a
+   búsqueda híbrida) -- sin esta llave el sistema no arranca, punto.
 2. **Ollama Cloud** (`OLLAMA_API_KEY`, ollama.com/settings/keys),
    clasificación barata (duplicados, alias, menciones) y extracción de
-   hechos.
+   hechos. Opcional de verdad: cada clasificador chequea la llave primero
+   (`classifierEnabled`) y cae a revisión manual si falta, sin romper nada.
 3. **Gemini** (`GEMINI_API_KEY`, aistudio.google.com/apikey), fallback de
    mayor calidad para síntesis y clasificación de relaciones; algunos
    clasificadores lo usan como único proveedor cuando la tarea es de
-   juicio, no de extracción (ver comentarios en `scripts/db/lib/`).
+   juicio, no de extracción (ver comentarios en `scripts/db/lib/`). También
+   opcional, mismo criterio de degradación explícita que Ollama Cloud.
 
-**PREGUNTA**: ¿Tienes ya alguna de estas tres, o las creamos ahora las
-tres? Todas tienen capa gratis funcional para empezar. Si el usuario
-prefiere arrancar con menos de las tres, dile explícitamente qué deja de
-funcionar sin cada una (búsqueda semántica sin Voyage, sin clasificadores
-automáticos de duplicados/alias sin ninguna de las dos de LLM) y sigue,
-no lo bloquees a tener las tres para poder probar el sistema.
+**PREGUNTA**: pide la llave de Voyage AI primero y no avances de esta fase
+sin ella -- explica por qué es la única de las tres que no se puede saltar
+("es la que convierte tus hechos en vectores para poder buscarlos y
+compararlos; sin ella el sistema no funciona, no es una función de menos").
+Después pregunta por Ollama Cloud y Gemini juntas: ¿las tienen ya, o las
+creamos ahora? Si el usuario prefiere arrancar sin alguna de esas dos, dile
+explícitamente qué deja de funcionar (sin clasificadores automáticos de
+duplicados/alias/menciones sin ninguna de las dos) y sigue, esas sí no
+bloquean el resto de la instalación.
 
 Cada vez que te pase una llave, escríbela tú mismo en `.env`, nunca le
 pidas que edite el archivo él.
@@ -179,9 +198,13 @@ node doctor.mjs
 ```
 
 `search.mjs` debe correr sin error (aunque no haya resultados, la base está
-vacía). `doctor.mjs` debe salir "Todo limpio." Si algo falla, diagnostica y
-corrige tú antes de seguir, no avances con el motor roto, y no le pidas al
-usuario que lo revise él.
+vacía) -- si falla, lo primero que hay que descartar es `VOYAGE_API_KEY`
+faltante o mal pegada (`grep VOYAGE_API_KEY .env`), es la causa más
+probable dado que `embed()` no tiene manejo de error propio; no avances a
+la Fase 5 hasta que esto corra limpio, cualquier fase después de esta
+depende de que `embed()` funcione. `doctor.mjs` debe salir "Todo limpio."
+Si algo falla, diagnostica y corrige tú antes de seguir, no avances con el
+motor roto, y no le pidas al usuario que lo revise él.
 
 **Fase 4 completada.**
 
@@ -212,14 +235,38 @@ eso es la fuente más pobre, no la única. Antes de seguir, ofrécele
 explícitamente enriquecer el arranque con una fuente ya escrita, en vez de
 (o además de) lo que acaba de contar:
 
-- **Documentos**: *"¿Tienes alguna nota, propuesta o documento (.md, PDF,
-  lo que sea) de alguno de tus proyectos activos? Si me dices la ruta, lo
-  leo y te propongo los hechos concretos a guardar antes de escribir nada
- , nunca invento, solo extraigo lo que el documento realmente dice."*
-  Para un `.md`, `scripts/db/extract-page-facts.mjs --page <ruta>
-  --review` hace la extracción asistida por LLM; para otros formatos, léelo
-  tú mismo con tus herramientas y redacta los hechos a mano siguiendo el
-  mismo criterio (atómicos, fechados, con fuente).
+- **Documentos y notas dispersas**: la fuente más común no es un solo
+  documento prolijo sino ideas repartidas entre varias herramientas a la
+  vez -- pregúntalo así, no solo "¿tienes un documento?": *"¿Tienes notas,
+  propuestas o ideas guardadas en algún lado -- un archivo (.md, PDF...),
+  una app de notas (Evernote, Keep, Notion...), favoritos/marcados
+  guardados en el navegador o en una app, un cuaderno físico? Si me dices
+  dónde, lo reviso y te propongo los hechos concretos a guardar antes de
+  escribir nada, nunca invento, solo extraigo lo que el material
+  realmente dice."* El tratamiento depende del formato, no de la fuente:
+  para un `.md`, usa `scripts/db/extract-page-facts.mjs --page <ruta>
+  --json` -- NUNCA `--review`: esa bandera exige una terminal interactiva
+  real, el propio script la rechaza de inmediato si no la tiene ("stdin no
+  es TTY"), y correrla vos como agente nunca tiene una (mismo motivo por
+  el que el dashboard la reemplazó por `--json`, ver comentarios de
+  `extract-page-facts.mjs`). `--json` entrega los candidatos ya
+  estructurados con nodos parecidos calculados; muéstraselos tú mismo al
+  usuario en la conversación, uno por uno o en bloque, y aprueba/edita/
+  descarta cada uno con él antes de guardar nada. Los aprobados se
+  guardan con `remember-batch.mjs --file <archivo>` (o por stdin), nunca
+  uno por uno con `remember.mjs`, para reusar el chequeo de contradicción
+  del lote completo. Cualquier otro formato (exportación `.enex` de
+  Evernote, `.html` de una nota o de favoritos del navegador, PDF, texto
+  pegado directo en el chat) NO pasa por `extract-page-facts.mjs` -- ese
+  script solo acepta `.md` en disco o un slug ya existente en `pages`.
+  Léelo tú mismo con tus herramientas (es texto plano o marcado por
+  dentro, no necesita conversión) y redacta los hechos a mano siguiendo
+  el mismo criterio (atómicos, fechados, con fuente), mostrando cada uno
+  antes de guardarlo igual que con `--json`. Si son fotos de un cuaderno
+  físico, el usuario necesita transcribirlas primero -- esta fase no hace
+  OCR. Si son marcadores/favoritos sin contenido propio (solo enlaces),
+  decide con el usuario si vale la pena guardarlos como hechos o dejarlos
+  fuera por ser demasiados o poco informativos.
 - **Correo**: si tienes un MCP de correo conectado en esta sesión (Gmail u
   otro), ofrécele buscar antecedentes reales de un proyecto que mencionó
   ("¿busco en tu bandeja los últimos correos sobre [proyecto X] para
@@ -241,9 +288,9 @@ explícitamente, no le fuerces a decidir algo que no le importa todavía.
 
 **PREGUNTA**: ¿Hay alguna captura automática de hechos que quieras activa
 desde ya? (el hook `Stop` de Claude Code, que revisa al cerrar cada turno
-si hay algo capturable, ver Fase 8) ¿O prefieres empezar solo con captura
+si hay algo capturable, ver Fase 9) ¿O prefieres empezar solo con captura
 manual ("guarda este hecho")?
-→ Anota la respuesta, se aplica en la Fase 8 (tú activas el hook, no el
+→ Anota la respuesta, se aplica en la Fase 9 (tú activas el hook, no el
 usuario).
 
 **PREGUNTA**: `HEARTBEAT.md` trae 5 chequeos ya construidos (ambient-delta,
@@ -274,35 +321,192 @@ referencia (no la cambies, es la que el resto del sistema espera;
 **Fase 5 completada**, muéstrale al usuario los 3 archivos resultantes
 para que confirme antes de seguir.
 
-## Fase 6: Dashboard local
+## Fase 6: Estructura inicial de nodos
 
-Levántalo y ábrelo tú mismo, no le digas al usuario que lo abra:
+Un segundo cerebro vacío, sin ningún punto de partida, es más difícil de
+organizar después que uno con un andamiaje simple desde el día uno -- ver
+`scripts/db/create-node.mjs` (creación de nodos con protección contra
+duplicados/colisión de nombre) y `scripts/db/list-supernode-candidates.mjs`
+(detecta después, bajo demanda, nodos que quedaron sin agrupar) para el
+resto del sistema de nodos; esta fase solo les da un arranque, no reemplaza
+esa protección.
+
+Voyage AI ya quedó garantizado desde la Fase 4 (no se avanza sin eso), así
+que el chequeo de desambiguación semántica de `create-node.mjs` corre
+siempre, sin `--force` -- si bloquea, es una señal real (nombre parecido a
+un nodo existente), no un problema de configuración.
+
+Antes de cualquier comando con `--date`, calcula la fecha real (nunca de
+memoria, mismo motivo que obliga `--confirm-date` en `remember.mjs`):
+
+```bash
+date '+%Y-%m-%d'
+```
+
+y reemplaza cada `YYYY-MM-DD` de abajo por ese valor.
+
+**PREGUNTA**:
+```
+¿Para qué vas a usar 2oBrain?
+[ ] Trabajo
+[ ] Personal
+[ ] Estudio
+[ ] Comunidad (junta/consejo, iglesia, asociación -- cualquier rol
+    organizativo no remunerado con reuniones y pendientes propios)
+[ ] Otro: ____
+```
+(puede marcar varias, una sola, o ninguna)
+
+Si no marca ninguna, no crees ningún nodo, sigue directo a la Fase 7 -- no
+es un requisito, el usuario puede pedir esta estructura después.
+
+Con la respuesta, crea tú los supernodos con `create-node.mjs`: un nodo raíz
+por cada opción marcada, y debajo un conjunto fijo de sub-supernodos (salvo
+"Otro", ver abajo). Van fijos a propósito, no se ofrecen como checklist
+aparte -- alargaría la entrevista sin necesidad real, y el usuario siempre
+puede crear otros después con el mismo comando:
+
+Cada sub-supernodo lleva el nombre de su rama como sufijo
+(`<tipo>-<supernodo>`, el mismo esquema que Oscar ya usa en su propio
+segundo cerebro: `proyectos-uao`, `proyectos-personales`) -- no por
+prolijidad, sino porque los nombres de nodo son únicos globalmente, no por
+rama (ver más abajo), y esto evita la colisión de raíz en vez de tener que
+resolverla caso por caso cuando el usuario marca más de una rama:
+
+- **Trabajo** → `proyectos-trabajo`, `contactos-trabajo`, `reuniones-trabajo`
+- **Personal** → `habitos-personal`, `rutinas-personal`,
+  `espiritualidad-personal`, `salud-personal`
+- **Estudio** → `cursos-estudio`, `apuntes-estudio`, `tareas-estudio`
+- **Comunidad** → `reuniones-comunidad`, `pendientes-comunidad`,
+  `contactos-comunidad`
+- **Otro**: no tiene sub-supernodos fijos -- no hay forma de anticipar la
+  forma de una categoría que el propio checklist no supo nombrar. Pregunta
+  el nombre ("¿cómo la llamarías?") y crea solo el nodo raíz con ese
+  nombre; el usuario arma los hijos después si los necesita.
+
+```bash
+node scripts/db/create-node.mjs --name trabajo
+node scripts/db/create-node.mjs --name proyectos-trabajo --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name contactos-trabajo --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name reuniones-trabajo --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+
+node scripts/db/create-node.mjs --name personal
+node scripts/db/create-node.mjs --name habitos-personal --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name rutinas-personal --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name espiritualidad-personal --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name salud-personal --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+
+node scripts/db/create-node.mjs --name estudio
+node scripts/db/create-node.mjs --name cursos-estudio --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name apuntes-estudio --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name tareas-estudio --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+
+node scripts/db/create-node.mjs --name comunidad
+node scripts/db/create-node.mjs --name reuniones-comunidad --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name pendientes-comunidad --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name contactos-comunidad --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+
+node scripts/db/create-node.mjs --name <nombre-que-dio-el-usuario>
+```
+
+(Solo crea los de la rama que el usuario marcó -- si marcó únicamente
+"Trabajo", no crees `personal`, `estudio`, `comunidad` ni sus hijos. Con el
+sufijo por rama, ninguno de estos nombres colisiona entre sí sin importar
+cuántas ramas se marquen a la vez -- si el usuario marca, por ejemplo,
+Trabajo y Comunidad, obtiene `contactos-trabajo` y `contactos-comunidad`
+como nodos genuinamente separados, no uno compartido.)
+
+Si algún comando bloquea por colisión de nombre/alias (no la salta ni
+siquiera `--force`, es una protección distinta): es señal de que la Fase 5
+ya creó un nodo con ese mismo nombre al extraer un documento/correo. Usa
+ese nodo existente en vez de forzar uno nuevo -- o si genuinamente es un
+concepto distinto, elige otro nombre para ese supernodo/sub-supernodo.
+
+Estos nodos quedan vacíos a propósito: un supernodo agrupa, no acumula
+hechos propios (verificado en la instancia de desarrollo -- el único hecho
+que tenía un supernodo real ahí era autodescriptivo, "esto agrupa tal
+cosa", no contenido). El contenido real lo traen los hechos que vengan
+después.
+
+**PREGUNTA**: ofrece enriquecer la estructura ahora mismo con hechos reales,
+mismo espíritu que la Fase 5 (documentos/correo antes que memoria):
+*"¿Tienes algo activo ya mismo en alguna de las ramas que creamos --un
+proyecto de trabajo, un hábito o rutina personal, un curso, un pendiente de
+la junta/comunidad-- que quieras que registre de una vez? Si tienes un MCP
+de correo conectado en esta sesión, puedo buscar antecedentes de un
+proyecto que menciones, igual que ofrecí en la Fase 5."* Adapta la pregunta
+a las ramas que el usuario realmente marcó -- no le preguntes por Estudio
+si no la marcó.
+
+Si el usuario da algo (a mano, o vía correo), por cada hecho candidato:
+
+1. Decide tú, por el contexto de la pregunta que lo originó, a qué
+   sub-supernodo pertenece (`proyectos`, `habitos`, etc.) -- no hace falta
+   el clasificador automático de `remember.mjs` para esto, el contexto de
+   la entrevista ya lo resuelve (mismo criterio que usa `create-node.mjs
+   --parent`: quien construye el nodo ya sabe a qué grupo pertenece).
+2. Créalo y ligalo en un solo paso:
+   `node scripts/db/create-node.mjs --name <nombre-nodo> --parent <sub-supernodo> --date YYYY-MM-DD --reason "..."`
+3. Guarda el hecho en el nodo ya creado (sin `--create-node`, ya existe del
+   paso anterior):
+   `node scripts/db/remember.mjs --claim "..." --date YYYY-MM-DD --source "..." --node <nombre-nodo>`
+
+Muéstrale cada hecho candidato antes de guardarlo, igual que en la Fase 5 --
+nunca inventes, solo lo que la fuente real dice.
+
+Si no tiene nada a mano todavía, sigue solo con la estructura vacía -- no es
+un requisito, sirve igual como punto de partida para cuando use
+`remember.mjs` normalmente más adelante.
+
+**Fase 6 completada.**
+
+## Fase 7: Dashboard local
+
+Levántalo y ábrelo tú mismo, no le digas al usuario que lo abra.
+`dashboard-server.mjs` es un servidor persistente, nunca vuelve solo: si
+lo corres como un comando bloqueante normal, el paso nunca termina y toda
+la instalación se cuelga ahí. Ejecútalo en segundo plano -- con la
+herramienta de tu entorno para correr comandos en background si la
+tienes (ej. `run_in_background` de Claude Code), o si no, algo
+equivalente a:
 
 ```bash
 cd scripts/db/server
-node dashboard-server.mjs
+nohup node dashboard-server.mjs > dashboard.log 2>&1 &
 ```
+
+Verifica que de verdad quedó escuchando antes de seguir (ej. `curl -s
+http://localhost:4287 > /dev/null && echo OK`, o revisa `dashboard.log`),
+nunca asumas que arrancó solo porque el comando no dio error.
 
 Si tienes un navegador controlable (Claude Code con Browser pane, o
 similar), ábrelo en `http://localhost:4287` y confirma en vivo que carga
 el dashboard con sus secciones (Buscar/Timeline/Grafo/Doctor/etc.), no le
 pidas al usuario que lo revise él salvo que no tengas esa herramienta.
 
-## Fase 7: Servidor MCP (opcional)
+## Fase 8: Servidor MCP (opcional)
+
+Esto es para el USO diario de `search`/`remember` desde esos clientes una
+vez instalado (una llamada a herramienta MCP por HTTP, no requiere shell
+ni sistema de archivos del lado del cliente), no para instalar 2oBrain
+desde ahí -- la instalación en sí (todas las fases anteriores) solo puede
+correr desde Claude Code, ver README.
 
 **PREGUNTA**: ¿Quieres que `search`/`remember` estén disponibles para
 otros clientes MCP (Claude Desktop, Claude Chat/Cowork, cualquier app que
 hable MCP), no solo el dashboard/CLI de este repo?
-- **Si NO**: continúa a la Fase 8. Puedes volver a esto cuando quieras, no
+- **Si NO**: continúa a la Fase 9. Puedes volver a esto cuando quieras, no
   bloquea nada del resto del sistema.
 - **Si SÍ**: hay dos opciones, el usuario elige una (o ambas):
   - **Supabase Edge Function** (`supabase/functions/mcp-server/`): si
     tienes el MCP de Supabase conectado (Fase 2), despliégala tú
     directamente con la herramienta `deploy_edge_function` de ese MCP,
-    el usuario no necesita instalar nada. Sin ese MCP, necesita la
-    Supabase CLI (`supabase functions deploy mcp-server`), que sí tiene
-    que correr él si tú no puedes instalarla de forma confiable en su
-    sistema.
+    el usuario no necesita instalar nada. Pásale `import_map_path:
+    "deno.json"` explícito -- la detección automática del import map está
+    rota (falla con "import map path does not exist" si no se pasa a
+    mano, ya verificado en vivo). Sin ese MCP, necesita la Supabase CLI
+    (`supabase functions deploy mcp-server`), que sí tiene que correr él
+    si tú no puedes instalarla de forma confiable en su sistema.
   - **Deno Deploy** (`deno-deploy/mcp-server/`): el usuario necesita
     cuenta en dash.deno.com y generar `DENO_DEPLOY_TOKEN`
     (dash.deno.com/account#access-tokens), eso sí es solo suyo. Una vez
@@ -315,7 +519,7 @@ Verifica el deploy elegido con una llamada real (`curl` al endpoint
 resultante, o `tools/list` del protocolo MCP) antes de darlo por hecho,
 nunca asumas que un deploy funcionó solo porque el comando no dio error.
 
-## Fase 8: Hooks (opcional)
+## Fase 9: Hooks (opcional)
 
 Según la respuesta de la Fase 5, actívalos tú mismo, no describas los pasos
 para que el usuario los siga:
@@ -339,7 +543,7 @@ para que el usuario los siga:
 Si el usuario no quiere ninguno de los tres, sigue sin ellos, no son
 obligatorios para que el resto del sistema funcione.
 
-## Fase 9: Cierre
+## Fase 10: Cierre
 
 Muestra esto exacto:
 
