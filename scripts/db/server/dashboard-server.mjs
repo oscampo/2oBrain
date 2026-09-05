@@ -295,6 +295,46 @@ app.post('/api/merge-nodes', async (c) => {
   return respond(c, runScript('merge-nodes.mjs', ['--from', body.from, '--to', body.to, '--reason', body.reason]));
 });
 
+// Supernodos candidatos (2026-09-04): nodos de dominio sin lugar en la
+// jerarquía (ni hijo ni padre de ningún pertenece_a), agrupados por
+// similitud de sus hechos, ver list-supernode-candidates.mjs para el porqué
+// de "sin padre Y sin hijo" y por qué quedó bajo demanda, no proactiva. Solo
+// lectura, nunca crea/liga nada.
+//
+// A diferencia de merge-candidates/mention-candidates (texto plano, el
+// usuario copia comandos a una terminal), este corre en modo --json: el
+// frontend arma tarjetas editables (nombre sugerido, miembros) y crea/liga
+// con /api/create-node de abajo, sin salir del navegador.
+app.get('/api/supernode-candidates', (c) => {
+  const result = runScript('list-supernode-candidates.mjs', ['--json']);
+  if (!result.ok) return c.json({ ok: false, error: result.stderr || 'list-supernode-candidates.mjs falló' }, 422);
+  try {
+    return c.json({ ok: true, ...JSON.parse(result.stdout) });
+  } catch {
+    return c.json({ ok: false, error: 'list-supernode-candidates.mjs no devolvió JSON válido: ' + result.stdout.slice(0, 500) }, 422);
+  }
+});
+
+// create-node.mjs: creación standalone de un nodo, opcionalmente ligado a un
+// padre en el mismo llamado (--parent, ver el script para el diseño
+// completo). Usado por la sección "Candidatos de supernodo" para crear el
+// supernodo propuesto; --parent no aplica acá (el supernodo nuevo no tiene
+// padre todavía), el enlace a cada miembro va por /api/node-link.
+app.post('/api/create-node', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body?.name) return c.json({ ok: false, error: 'falta name' }, 400);
+  const args = ['--name', body.name];
+  if (body.aliases) args.push('--aliases', body.aliases);
+  if (body.isMeta) args.push('--is-meta');
+  if (body.force) args.push('--force');
+  if (body.parent) {
+    if (!body.date) return c.json({ ok: false, error: '--parent requiere date' }, 400);
+    args.push('--parent', body.parent, '--date', body.date);
+    if (body.reason) args.push('--reason', body.reason);
+  }
+  return respond(c, runScript('create-node.mjs', args));
+});
+
 // Etapa 6 (PLAN-nodos.md, 2026-09-02): grafo de relaciones nodo-a-nodo.
 // list-node-mentions.mjs es de solo lectura (revisión humana obligatoria,
 // ningún enlace se crea desde acá sin pasar por node-link.mjs); la
