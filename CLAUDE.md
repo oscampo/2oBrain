@@ -379,7 +379,7 @@ resolverla caso por caso cuando el usuario marca más de una rama:
 - **Estudio** → `cursos-estudio`, `apuntes-estudio`, `tareas-estudio`
 - **Comunidad** → `reuniones-comunidad`, `pendientes-comunidad`,
   `contactos-comunidad`
-- **Otro**: no tiene subcategorías fijos -- no hay forma de anticipar la
+- **Otro**: no tiene subcategorías fijas -- no hay forma de anticipar la
   forma de una categoría que el propio checklist no supo nombrar. Pregunta
   el nombre ("¿cómo la llamarías?") y crea solo el recuerdo raíz con ese
   nombre; el usuario arma los hijos después si los necesita.
