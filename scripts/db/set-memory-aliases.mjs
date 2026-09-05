@@ -1,24 +1,24 @@
-// Aplica alias a un nodo -- escritor manual, contraparte de
+// Aplica alias a un recuerdo -- escritor manual, contraparte de
 // list-alias-candidates.mjs (que solo propone, nunca escribe). Suma
 // (unión, sin duplicados) sobre los alias existentes, nunca sobreescribe --
 // mismo principio fail-closed que el resto de Etapa 6: una aprobación no
 // debería poder borrar por accidente un alias que ya estaba.
 //
 // Chequeo de colisión (2026-09-02, a pedido del usuario): a diferencia de
-// remember.mjs --create-node (que corre nodes_similar()+classify-node.mjs
-// antes de dar de alta un nodo), este escritor no validaba si el alias que
-// se va a escribir ya es name/alias de OTRO nodo -- riesgo real, no
+// remember.mjs --create-memory (que corre memories_similar()+classify-memory.mjs
+// antes de dar de alta un recuerdo), este escritor no validaba si el alias que
+// se va a escribir ya es name/alias de OTRO recuerdo -- riesgo real, no
 // hipotético: el backfill propuso el nombre de pila del usuario como alias
-// de 3 nodos distintos a la vez (ej. gestion-academica-jane, preferencias-jane,
-// plan-habitos-jane-2026). Si un alias colisiona con otro nodo, no se
+// de 3 recuerdos distintos a la vez (ej. gestion-academica-jane, preferencias-jane,
+// plan-habitos-jane-2026). Si un alias colisiona con otro recuerdo, no se
 // aplica nada (todo o nada, no parcial) y se lista el conflicto.
 // Uso:
-//   node set-node-aliases.mjs --node atlas-2026 --aliases "Jane Doe,jane-doe,Atlas" --reason "backfill guiado, aprobado por el usuario"
-//   node set-node-aliases.mjs --node DB2-gestion-github --remove "Diseño Biomédico 2,DB2" --reason "..."
+//   node set-memory-aliases.mjs --memory atlas-2026 --aliases "Jane Doe,jane-doe,Atlas" --reason "backfill guiado, aprobado por el usuario"
+//   node set-memory-aliases.mjs --memory DB2-gestion-github --remove "Diseño Biomédico 2,DB2" --reason "..."
 //
 // --remove (2026-09-02): quita alias existentes en vez de sumar -- caso real
 // que lo motivó: "Diseño Biomédico 2"/"DB2" eran alias de DB2-gestion-github
-// (nodo de infraestructura GitHub) pero en la práctica esas formas genéricas
+// (recuerdo de infraestructura GitHub) pero en la práctica esas formas genéricas
 // se usan en prosa para el semestre/curso, no específicamente para su
 // gestión de GitHub -- confirmado con la evidencia real: los matches de
 // *-gestion-github siempre fueron por la forma técnica concatenada
@@ -44,11 +44,11 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv.slice(2));
 
-if (!args.node || !args.reason || (!args.aliases && !args.remove) || (args.aliases && args.remove)) {
+if (!args.memory || !args.reason || (!args.aliases && !args.remove) || (args.aliases && args.remove)) {
   console.error(
     'Uso:\n' +
-    '  node set-node-aliases.mjs --node <nodo> --aliases "a,b,c" --reason "..."\n' +
-    '  node set-node-aliases.mjs --node <nodo> --remove "a,b,c" --reason "..."\n' +
+    '  node set-memory-aliases.mjs --memory <recuerdo> --aliases "a,b,c" --reason "..."\n' +
+    '  node set-memory-aliases.mjs --memory <recuerdo> --remove "a,b,c" --reason "..."\n' +
     '  (--aliases y --remove son mutuamente excluyentes)',
   );
   process.exit(1);
@@ -68,14 +68,14 @@ const env = Object.fromEntries(
 const client = new pg.Client({ connectionString: env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
 await client.connect();
 
-const { rows } = await client.query(`select name, aliases, merged_into from nodes where name = $1`, [args.node]);
+const { rows } = await client.query(`select name, aliases, merged_into from memories where name = $1`, [args.memory]);
 if (rows.length === 0) {
-  console.error(`Nodo "${args.node}" no existe. Revisa el nombre con list-nodes.mjs.`);
+  console.error(`recuerdo "${args.memory}" no existe. Revisa el nombre con list-memories.mjs.`);
   await client.end();
   process.exit(1);
 }
 if (rows[0].merged_into) {
-  console.error(`"${args.node}" está fusionado en "${rows[0].merged_into}" -- aplica los alias al nodo vigente, no a este.`);
+  console.error(`"${args.memory}" está fusionado en "${rows[0].merged_into}" -- aplica los alias al recuerdo vigente, no a este.`);
   await client.end();
   process.exit(1);
 }
@@ -88,9 +88,9 @@ if (args.remove) {
 } else {
   const newAliases = args.aliases.split(',').map((a) => a.trim()).filter(Boolean);
 
-  const conflicts = await findAliasCollisions(client, args.node, newAliases);
+  const conflicts = await findAliasCollisions(client, args.memory, newAliases);
   if (conflicts.length > 0) {
-    console.error(`Colisión -- no se aplica ningún alias. Ya pertenecen a otro nodo:`);
+    console.error(`Colisión -- no se aplica ningún alias. Ya pertenecen a otro recuerdo:`);
     for (const c of conflicts) console.error(`  "${c.alias}" ya es name/alias de "${c.node}"`);
     await client.end();
     process.exit(1);
@@ -99,9 +99,9 @@ if (args.remove) {
   merged = Array.from(new Set([...(rows[0].aliases ?? []), ...newAliases]));
 }
 
-await client.query(`update nodes set aliases = $2 where name = $1`, [args.node, merged]);
+await client.query(`update memories set aliases = $2 where name = $1`, [args.memory, merged]);
 
-console.log(`Alias de "${args.node}": ${merged.length ? merged.join(', ') : '(ninguno)'}`);
+console.log(`Alias de "${args.memory}": ${merged.length ? merged.join(', ') : '(ninguno)'}`);
 console.log(`Motivo: ${args.reason}`);
 
 await client.end();

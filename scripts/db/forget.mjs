@@ -1,6 +1,6 @@
-// Retracta (invalida) un hecho vigente sin reemplazarlo por uno nuevo: para
+// Retracta (invalida) un registro vigente sin reemplazarlo por uno nuevo: para
 // cuando algo se aprobó por error o dejó de ser relevante sin que haya un
-// hecho nuevo que lo reemplace (si sí lo hay, usa remember.mjs --supersedes).
+// registro nuevo que lo reemplace (si sí lo hay, usa remember.mjs --supersedes).
 // Por defecto nunca borra la fila: mismo principio de siempre, el historial
 // completo queda consultable con --all en timeline.mjs. El motivo queda
 // anotado en source, no se pierde por qué se retractó.
@@ -9,18 +9,18 @@
 // real sin ningún valor histórico (pruebas de dashboard, duplicados de una
 // sesión de debugging): nunca para una corrección real, que siempre debe
 // quedar auditable. Fail-closed en dos sentidos:
-//   1. Solo borra hechos que YA estén retractados (valid_until no nulo),
-//      nunca borra un hecho vigente en un solo paso, tiene que pasar primero
+//   1. Solo borra registros que YA estén retractados (valid_until no nulo),
+//      nunca borra un registro vigente en un solo paso, tiene que pasar primero
 //      por --reason. Si algún id de la lista sigue vigente, no se borra NADA
 //      (todo o nada, nunca un purge parcial silencioso).
-//   2. Un nodo solo se puede purgar si no tiene ningún hecho ligado (ni
-//      vigente ni retractado) y ningún otro nodo lo tiene como merged_into,
-//      la propia base de datos ya lo protege (fact_nodes.node_name referencia
-//      nodes sin cascade), esto solo da un mensaje claro antes de intentarlo.
+//   2. Un recuerdo solo se puede purgar si no tiene ningún registro ligado (ni
+//      vigente ni retractado) y ningún otro recuerdo lo tiene como merged_into,
+//      la propia base de datos ya lo protege (record_memories.memory_name referencia
+//      memories sin cascade), esto solo da un mensaje claro antes de intentarlo.
 // Uso:
 //   node forget.mjs --id 159,160 --reason "ruido de desarrollo interno, aprobado por error en revisión"
 //   node forget.mjs --id 159,160 --purge
-//   node forget.mjs --node prueba-nodo-dashboard --purge
+//   node forget.mjs --memory prueba-recuerdo-dashboard --purge
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 
@@ -46,19 +46,19 @@ const args = parseArgs(process.argv.slice(2));
 const USAGE =
   'Uso:\n' +
   '  node forget.mjs --id <id>[,<id>...] --reason "..."\n' +
-  '  node forget.mjs --id <id>[,<id>...] --purge   (solo hechos ya retractados)\n' +
-  '  node forget.mjs --node <nombre> --purge        (solo si no tiene hechos ligados)';
+  '  node forget.mjs --id <id>[,<id>...] --purge   (solo registros ya retractados)\n' +
+  '  node forget.mjs --memory <nombre> --purge        (solo si no tiene registros ligados)';
 
 if (!args.purge && (!args.id || !args.reason)) {
   console.error(USAGE);
   process.exit(1);
 }
-if (args.purge && !args.id && !args.node) {
+if (args.purge && !args.id && !args.memory) {
   console.error(USAGE);
   process.exit(1);
 }
-if (args.purge && args.id && args.node) {
-  console.error('--purge acepta --id o --node, no ambos a la vez.');
+if (args.purge && args.id && args.memory) {
+  console.error('--purge acepta --id o --memory, no ambos a la vez.');
   process.exit(1);
 }
 
@@ -79,56 +79,56 @@ const client = new pg.Client({
 });
 await client.connect();
 
-if (args.purge && args.node) {
-  const nodeName = String(args.node);
+if (args.purge && args.memory) {
+  const memoryName = String(args.memory);
   const { rows: linked } = await client.query(
-    `select count(*)::int as n from fact_nodes where node_name = $1`,
-    [nodeName],
+    `select count(*)::int as n from record_memories where memory_name = $1`,
+    [memoryName],
   );
   const { rows: mergedFrom } = await client.query(
-    `select name from nodes where merged_into = $1`,
-    [nodeName],
+    `select name from memories where merged_into = $1`,
+    [memoryName],
   );
-  // node_edges y node_pair_checks (Etapa 6, añadidas después de que se
-  // escribiera este chequeo) también referencian nodes(name) sin cascade --
+  // memory_links y memory_pair_checks (Etapa 6, añadidas después de que se
+  // escribiera este chequeo) también referencian memories(name) sin cascade --
   // sin este chequeo, el delete de abajo revienta con un stack trace crudo
   // de FK en vez de un mensaje claro (encontrado en vivo purgando
-  // preferencias-jane, hecho #523 y siguientes).
+  // preferencias-jane, registro #523 y siguientes).
   const { rows: edgeCount } = await client.query(
-    `select count(*)::int as n from node_edges where from_node = $1 or to_node = $1`,
-    [nodeName],
+    `select count(*)::int as n from memory_links where from_memory = $1 or to_memory = $1`,
+    [memoryName],
   );
   const { rows: pairCheckCount } = await client.query(
-    `select count(*)::int as n from node_pair_checks where node_a = $1 or node_b = $1`,
-    [nodeName],
+    `select count(*)::int as n from memory_pair_checks where memory_a = $1 or memory_b = $1`,
+    [memoryName],
   );
   if (linked[0].n > 0) {
     console.error(
-      `No se puede purgar "${nodeName}": tiene ${linked[0].n} hecho(s) ligado(s) (vigente o retractado). Desligarlos o purgarlos primero.`,
+      `No se puede purgar "${memoryName}": tiene ${linked[0].n} registro(s) ligado(s) (vigente o retractado). Desligarlos o purgarlos primero.`,
     );
     process.exitCode = 1;
   } else if (mergedFrom.length > 0) {
     console.error(
-      `No se puede purgar "${nodeName}": otro(s) nodo(s) apuntan a él con merged_into: ${mergedFrom.map((r) => r.name).join(', ')}.`,
+      `No se puede purgar "${memoryName}": otro(s) recuerdo(s) apuntan a él con merged_into: ${mergedFrom.map((r) => r.name).join(', ')}.`,
     );
     process.exitCode = 1;
   } else if (edgeCount[0].n > 0) {
     console.error(
-      `No se puede purgar "${nodeName}": tiene ${edgeCount[0].n} relación(es) en node_edges. Bórralas primero con node-unlink.mjs.`,
+      `No se puede purgar "${memoryName}": tiene ${edgeCount[0].n} relación(es) en memory_links. Bórralas primero con memory-unlink.mjs.`,
     );
     process.exitCode = 1;
   } else if (pairCheckCount[0].n > 0) {
     console.error(
-      `No se puede purgar "${nodeName}": tiene ${pairCheckCount[0].n} fila(s) de memoización en node_pair_checks (barrido de minería de relaciones). Bórralas primero: delete from node_pair_checks where node_a = '${nodeName}' or node_b = '${nodeName}'.`,
+      `No se puede purgar "${memoryName}": tiene ${pairCheckCount[0].n} fila(s) de memoización en memory_pair_checks (barrido de minería de relaciones). Bórralas primero: delete from memory_pair_checks where memory_a = '${memoryName}' or memory_b = '${memoryName}'.`,
     );
     process.exitCode = 1;
   } else {
-    const { rowCount } = await client.query(`delete from nodes where name = $1`, [nodeName]);
+    const { rowCount } = await client.query(`delete from memories where name = $1`, [memoryName]);
     if (rowCount === 0) {
-      console.error(`No existe ningún nodo "${nodeName}".`);
+      console.error(`No existe ningún recuerdo "${memoryName}".`);
       process.exitCode = 1;
     } else {
-      console.log(`Purgado el nodo "${nodeName}".`);
+      console.log(`Purgado el recuerdo "${memoryName}".`);
     }
   }
   await client.end();
@@ -148,7 +148,7 @@ if (ids.length === 0) {
 
 if (args.purge) {
   const { rows: targets } = await client.query(
-    `select id, claim, valid_until from facts where id = any($1::bigint[])`,
+    `select id, claim, valid_until from records where id = any($1::bigint[])`,
     [ids],
   );
   const foundIds = new Set(targets.map((r) => Number(r.id)));
@@ -156,7 +156,7 @@ if (args.purge) {
   const stillLive = targets.filter((r) => r.valid_until === null);
 
   if (missing.length > 0) {
-    console.error(`No existe(n) hecho(s) con id: ${missing.join(', ')}. No se purgó nada.`);
+    console.error(`No existe(n) registro(s) con id: ${missing.join(', ')}. No se purgó nada.`);
     process.exitCode = 1;
   } else if (stillLive.length > 0) {
     console.error(
@@ -165,7 +165,7 @@ if (args.purge) {
     process.exitCode = 1;
   } else {
     const { rows: deleted } = await client.query(
-      `delete from facts where id = any($1::bigint[]) returning id, claim`,
+      `delete from records where id = any($1::bigint[]) returning id, claim`,
       [ids],
     );
     for (const r of deleted) {
@@ -177,7 +177,7 @@ if (args.purge) {
 }
 
 const { rows } = await client.query(
-  `update facts
+  `update records
    set valid_until = now(),
        source = source || ' [RETRACTADO ' || to_char(now(), 'YYYY-MM-DD') || ': ' || $2 || ']'
    where id = any($1::bigint[]) and valid_until is null

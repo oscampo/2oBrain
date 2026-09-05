@@ -1,18 +1,18 @@
 // Backfill guiado de Etapa 6 (2026-09-02, decisión del usuario): propone alias
-// naturales para un nodo a partir de sus propios hechos -- 24 de 26 nodos de
-// dominio tienen aliases vacío, lo que le impide a detect-node-mentions.mjs
-// reconocer menciones en prosa normal (el name de un nodo es un slug
-// kebab-case, casi nunca aparece literal en un hecho escrito a mano; ver
-// hecho #493, caso John/Jane no detectado por esta causa exacta).
+// naturales para un recuerdo a partir de sus propios registros -- 24 de 26 recuerdos de
+// dominio tienen aliases vacío, lo que le impide a detect-memory-mentions.mjs
+// reconocer menciones en prosa normal (el name de un recuerdo es un slug
+// kebab-case, casi nunca aparece literal en un registro escrito a mano; ver
+// registro #493, caso John/Jane no detectado por esta causa exacta).
 //
-// Mismo tiering barato que classify-node.mjs (Ollama Cloud, gpt-oss:20b-cloud)
+// Mismo tiering barato que classify-memory.mjs (Ollama Cloud, gpt-oss:20b-cloud)
 // -- a diferencia de classify-relation.mjs (que sí necesitó Gemini por
 // calidad), esta es una tarea de extracción, no de juicio: el riesgo de
 // alucinación se cierra pidiendo copia LITERAL (mismo principio que el
-// hallazgo del hecho #480 -- exigir texto exacto generaliza, pedir un
+// hallazgo del registro #480 -- exigir texto exacto generaliza, pedir un
 // resumen o interpretación alucina) y, además, verificando en código que
 // cada alias propuesto aparece de verdad como substring en el texto de los
-// hechos antes de mostrarlo como candidato -- el llamador nunca confía en
+// registros antes de mostrarlo como candidato -- el llamador nunca confía en
 // la respuesta cruda del modelo.
 import { readFileSync } from 'node:fs';
 
@@ -35,18 +35,18 @@ const env = loadEnv();
 
 export const classifierEnabled = Boolean(env.OLLAMA_API_KEY);
 
-function buildPrompt(nodeName, factsText) {
-  return `Eres un extractor de alias para un nodo (entidad: persona, proyecto, curso o \
-colaboración) dentro de un segundo cerebro personal. El nodo se identifica internamente \
-con un slug técnico ("${nodeName}"), pero la gente lo menciona en prosa normal con \
+function buildPrompt(memoryName, factsText) {
+  return `Eres un extractor de alias para un recuerdo (entidad: persona, proyecto, curso o \
+colaboración) dentro de un segundo cerebro personal. El recuerdo se identifica internamente \
+con un slug técnico ("${memoryName}"), pero la gente lo menciona en prosa normal con \
 nombres naturales: nombre de pila, nombre completo, sigla, apodo, nombre de repositorio, \
 variante con/sin tildes.
 
-Hechos registrados sobre este nodo:
+registros registrados sobre este recuerdo:
 ${factsText}
 
-Tarea: proponer formas alternativas (alias) con las que este nodo aparece mencionado \
-DENTRO del texto de estos hechos. Copia las formas TAL COMO aparecen en el texto, \
+Tarea: proponer formas alternativas (alias) con las que este recuerdo aparece mencionado \
+DENTRO del texto de estos registros. Copia las formas TAL COMO aparecen en el texto, \
 literal -- no traduzcas, no normalices, no inventes ninguna forma que no esté escrita \
 ahí. Si el texto no contiene ninguna forma natural distinta del slug, responde con \
 lista vacía.
@@ -56,13 +56,13 @@ Responde SOLO con JSON, sin texto adicional:
 }
 
 /**
- * @param {string} nodeName
- * @param {string} factsText texto concatenado de los hechos propios del nodo
+ * @param {string} memoryName
+ * @param {string} factsText texto concatenado de los registros propios del recuerdo
  * @returns {Promise<string[] | null>} alias propuestos y verificados contra el texto
  *   real (substring, insensible a mayúsculas) -- null si el clasificador está
  *   deshabilitado o falla, nunca `[]` como sinónimo de "no se pudo evaluar".
  */
-export async function classifyAliases(nodeName, factsText) {
+export async function classifyAliases(memoryName, factsText) {
   if (!classifierEnabled) return null;
   if (!factsText.trim()) return null;
 
@@ -71,7 +71,7 @@ export async function classifyAliases(nodeName, factsText) {
     res = await fetch('https://ollama.com/api/generate', {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.OLLAMA_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, prompt: buildPrompt(nodeName, factsText), format: 'json', stream: false }),
+      body: JSON.stringify({ model: MODEL, prompt: buildPrompt(memoryName, factsText), format: 'json', stream: false }),
       signal: AbortSignal.timeout(30_000),
     });
   } catch (err) {

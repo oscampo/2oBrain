@@ -1,7 +1,7 @@
-// Trae hecho(s) por id exacto, vigentes o ya retractados, sin importar
+// Trae registro(s) por id exacto, vigentes o ya retractados, sin importar
 // estado: para inspeccionar un id puntual (ej. antes de retractarlo o
 // purgarlo) sin tener que buscarlo en Timeline. No modifica nada.
-// Uso: node get-facts.mjs --id 159,160
+// Uso: node get-records.mjs --id 159,160
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 
@@ -21,7 +21,7 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv.slice(2));
 
 if (!args.id) {
-  console.error('Uso: node get-facts.mjs --id <id>[,<id>...]');
+  console.error('Uso: node get-records.mjs --id <id>[,<id>...]');
   process.exit(1);
 }
 
@@ -54,8 +54,8 @@ await client.connect();
 
 const { rows } = await client.query(
   `select f.id, f.date, f.claim, f.source, f.kind, f.valid_until, f.superseded_by,
-          (select string_agg(node_name, ', ' order by node_name) from fact_nodes where fact_id = f.id) as nodes
-   from facts f
+          (select string_agg(memory_name, ', ' order by memory_name) from record_memories where record_id = f.id) as memories
+   from records f
    where f.id = any($1::bigint[])
    order by f.id`,
   [ids],
@@ -71,7 +71,7 @@ if (rows.length === 0) {
     const date = r.date.toISOString().slice(0, 10);
     const status = r.valid_until ? ` [YA RETRACTADO/REEMPLAZADO${r.superseded_by ? ` por #${r.superseded_by}` : ''}]` : ' [vigente]';
     console.log(`\n#${r.id} [${date}]${status} ${r.claim}`);
-    console.log(`  fuente: ${r.source} · tipo: ${r.kind}${r.nodes ? ` · nodos: ${r.nodes}` : ''}`);
+    console.log(`  fuente: ${r.source} · tipo: ${r.kind}${r.memories ? ` · recuerdos: ${r.memories}` : ''}`);
   }
 }
 if (missing.length > 0) {

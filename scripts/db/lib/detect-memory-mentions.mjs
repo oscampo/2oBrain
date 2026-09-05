@@ -1,14 +1,14 @@
-// Detecta menciones literales de OTROS nodos (nombre o alias) dentro del
+// Detecta menciones literales de OTROS recuerdos (nombre o alias) dentro del
 // texto de un claim -- señal de co-ocurrencia barata (gratis: coincidencia
 // de texto, sin embeddings ni LLM), pensada para reemplazar el barrido O(n²)
-// de list-edge-candidates-deep.mjs que dos intentos de filtro por embedding
+// de list-link-candidates-deep.mjs que dos intentos de filtro por embedding
 // (centroide, luego similitud máxima) no lograron acotar sin perder la
-// mayoría de las relaciones reales (PLAN-nodos.md, Etapa 6, hecho #487).
+// mayoría de las relaciones reales (PLAN-recuerdos.md, Etapa 6, registro #487).
 //
 // Fundamento (LightRAG): las relaciones se definen por co-ocurrencia
 // textual dentro del mismo fragmento, no por comparar entidades ya
-// separadas después del hecho -- si un hecho nuevo menciona por nombre a
-// otro nodo existente, esa mención ES la señal, no un proxy indirecto.
+// separadas después del registro -- si un registro nuevo menciona por nombre a
+// otro recuerdo existente, esa mención ES la señal, no un proxy indirecto.
 //
 // Coincidencia por palabra completa (regex con \b), insensible a
 // mayúsculas/acentos, para no disparar con substrings sueltos dentro de
@@ -27,9 +27,9 @@ function escapeRegex(s) {
 
 /**
  * @param {string} claimText
- * @param {string[]} excludeNodeNames nodos ya asignados a este hecho -- no tiene sentido "detectar" el mismo nodo
- * @param {{name: string, aliases: string[]}[]} allNodes nodos vigentes candidatos (normalmente todos menos is_meta/merged)
- * @returns {{node: string, matchedOn: string}[]} nodos mencionados, con el texto exacto (nombre o alias) que hizo match
+ * @param {string[]} excludeNodeNames recuerdos ya asignados a este registro -- no tiene sentido "detectar" el mismo recuerdo
+ * @param {{name: string, aliases: string[]}[]} allNodes recuerdos vigentes candidatos (normalmente todos menos is_meta/merged)
+ * @returns {{node: string, matchedOn: string}[]} recuerdos mencionados, con el texto exacto (nombre o alias) que hizo match
  */
 export function detectNodeMentions(claimText, excludeNodeNames, allNodes) {
   const normalizedClaim = normalize(claimText);
@@ -45,7 +45,7 @@ export function detectNodeMentions(claimText, excludeNodeNames, allNodes) {
       const pattern = new RegExp(`\\b${escapeRegex(normalize(candidate))}\\b`, 'i');
       if (pattern.test(normalizedClaim)) {
         found.push({ node: node.name, matchedOn: candidate });
-        break; // un match por nodo alcanza, no hace falta seguir probando sus otros alias
+        break; // un match por recuerdo alcanza, no hace falta seguir probando sus otros alias
       }
     }
   }

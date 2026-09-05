@@ -1,13 +1,13 @@
 // Catch-up de sesión: qué cambió en segundo-cerebro desde la última vez que
 // se corrió esto en esta máquina. Adaptado del concepto de `gbrain delta` /
 // `context-pack`, pero sobre el backend real (Postgres compartido, sin
-// proceso local): usa `pages.updated_at` y `facts.created_at`, que ya
+// proceso local): usa `pages.updated_at` y `records.created_at`, que ya
 // existen, en vez de un mecanismo de "thread-id" propio.
 // Uso: node delta.mjs [--since 2026-08-20T00:00:00Z] [--budget-tokens 4000] [--no-advance] [--quiet]
 //
 // --quiet (2026-09-03): para cuando lo que cambió fue producido por el usuario en
 // otra sesión/máquina, no algo que Claude necesite repasar palabra por
-// palabra -- el recuento completo ya vive en `facts`/`pages` y es
+// palabra -- el recuento completo ya vive en `records`/`pages` y es
 // consultable con search.mjs cuando haga falta un detalle puntual. Sin esto,
 // "ponte al día" siempre imprimía el detalle completo (truncado si excedía
 // el presupuesto de tokens, perdiendo ítems sin decirlo con claridad), que
@@ -71,25 +71,25 @@ const { rows: pages } = await client.query(
   `select slug, type, title, updated_at from pages where updated_at > $1 order by updated_at desc`,
   [since],
 );
-const { rows: facts } = await client.query(
+const { rows: records } = await client.query(
   `select f.id, f.date, f.claim, f.created_at,
-          (select string_agg(node_name, ', ' order by node_name) from fact_nodes where fact_id = f.id) as nodes
-   from facts f
+          (select string_agg(memory_name, ', ' order by memory_name) from record_memories where record_id = f.id) as memories
+   from records f
    where f.created_at > $1 and f.valid_until is null
    order by f.created_at desc`,
   [since],
 );
 
 if (args.quiet) {
-  if (pages.length === 0 && facts.length === 0) {
+  if (pages.length === 0 && records.length === 0) {
     console.log(`Al día, sin cambios desde ${since}.`);
   } else {
     const parts = [];
-    if (facts.length > 0) parts.push(`${facts.length} hecho(s) nuevo(s)`);
+    if (records.length > 0) parts.push(`${records.length} registro(s) nuevo(s)`);
     if (pages.length > 0) parts.push(`${pages.length} página(s) nueva(s)`);
     console.log(`Al día: ${parts.join(', ')} desde ${since}.`);
   }
-} else if (pages.length === 0 && facts.length === 0) {
+} else if (pages.length === 0 && records.length === 0) {
   console.log(`Sin cambios desde ${since}.`);
 } else {
   const lines = [`Cambios desde ${since}:`, ''];
@@ -100,19 +100,19 @@ if (args.quiet) {
     }
     lines.push('');
   }
-  if (facts.length > 0) {
-    lines.push(`Hechos (${facts.length}):`);
-    for (const f of facts) {
-      lines.push(`  - #${f.id} [${f.date.toISOString().slice(0, 10)}] ${f.claim}${f.nodes ? ` (${f.nodes})` : ''}`);
+  if (records.length > 0) {
+    lines.push(`registros (${records.length}):`);
+    for (const f of records) {
+      lines.push(`  - #${f.id} [${f.date.toISOString().slice(0, 10)}] ${f.claim}${f.memories ? ` (${f.memories})` : ''}`);
     }
   }
 
   let out = lines.join('\n');
   let omitted = 0;
-  while (out.length > budgetChars && (pages.length + facts.length - omitted) > 0) {
+  while (out.length > budgetChars && (pages.length + records.length - omitted) > 0) {
     // recorta desde el fondo (lo menos reciente) hasta caber en el presupuesto
-    if (facts.length > 0) {
-      facts.pop();
+    if (records.length > 0) {
+      records.pop();
     } else {
       pages.pop();
     }
@@ -123,9 +123,9 @@ if (args.quiet) {
       for (const p of pages) rebuilt.push(`  - ${p.slug} (${p.type}), ${p.title ?? 'sin título'}`);
       rebuilt.push('');
     }
-    if (facts.length > 0) {
-      rebuilt.push(`Hechos (${facts.length}):`);
-      for (const f of facts) rebuilt.push(`  - #${f.id} [${f.date.toISOString().slice(0, 10)}] ${f.claim}${f.nodes ? ` (${f.nodes})` : ''}`);
+    if (records.length > 0) {
+      rebuilt.push(`registros (${records.length}):`);
+      for (const f of records) rebuilt.push(`  - #${f.id} [${f.date.toISOString().slice(0, 10)}] ${f.claim}${f.memories ? ` (${f.memories})` : ''}`);
     }
     out = rebuilt.join('\n');
   }

@@ -1,23 +1,23 @@
 // Búsqueda híbrida (vector + texto completo) contra Supabase, sobre pages
-// y facts a la vez. Uso: node search.mjs "tu pregunta" [--include-dashboard-log]
+// y records a la vez. Uso: node search.mjs "tu pregunta" [--include-dashboard-log]
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { embed, toVectorLiteral, rerank } from './lib/embed.mjs';
 
 // Excluye por defecto projects/segundo-cerebro-dashboard-log (bitácora de
-// construcción del dashboard, 28-ago-2026): hechos meta que citan preguntas
+// construcción del dashboard, 28-ago-2026): registros meta que citan preguntas
 // de prueba textuales pueden rankear más alto que el contenido real sobre
-// ese tema (hallazgo en vivo, ver hecho #264 en esa misma bitácora).
+// ese tema (hallazgo en vivo, ver registro #264 en esa misma bitácora).
 // --include-dashboard-log la trae de vuelta, para cuando de verdad se
 // quiere consultar la bitácora de construcción. `pages` sigue usando el
-// slug (no migrado todavía, ver PLAN-nodos.md Etapa 4); `facts` ya usa el
-// nombre de nodo (fact_nodes, sin el prefijo de carpeta que sí tiene el slug).
+// slug (no migrado todavía, ver PLAN-recuerdos.md Etapa 4); `records` ya usa el
+// nombre de recuerdo (record_memories, sin el prefijo de carpeta que sí tiene el slug).
 const EXCLUDE_SLUG = 'projects/segundo-cerebro-dashboard-log';
 const EXCLUDE_NODE = 'segundo-cerebro-dashboard-log';
 
 const includeDashboardLog = process.argv.includes('--include-dashboard-log');
 const excludeSlug = includeDashboardLog ? null : EXCLUDE_SLUG;
-const excludeNode = includeDashboardLog ? null : EXCLUDE_NODE;
+const excludeMemory = includeDashboardLog ? null : EXCLUDE_NODE;
 
 const query = process.argv.slice(2).filter((a) => a !== '--include-dashboard-log').join(' ');
 if (!query) {
@@ -46,13 +46,13 @@ await client.connect();
 
 const vectorLiteral = toVectorLiteral(queryEmbedding);
 
-// Router de nodos (hallazgo 2026-08-31, ver PLAN-nodos.md): si la pregunta
-// nombra literalmente un nodo por su nombre o alias (ej. "estado del
-// proyecto Atlas"), trae TODOS sus hechos vigentes en vez de confiar en que
-// RRF/rerank adivinen la relación: no la adivinan cuando ningún hecho
-// individual repite el nombre del proyecto/nodo, solo hablan de su
+// Router de recuerdos (hallazgo 2026-08-31, ver PLAN-recuerdos.md): si la pregunta
+// nombra literalmente un recuerdo por su nombre o alias (ej. "estado del
+// proyecto Atlas"), trae TODOS sus registros vigentes en vez de confiar en que
+// RRF/rerank adivinen la relación: no la adivinan cuando ningún registro
+// individual repite el nombre del proyecto/recuerdo, solo hablan de su
 // contenido (atlas-2026 nunca dice "Atlas", solo habla de Jane
-// Doe/la universidad socia). Para preguntas que cruzan varios nodos o no nombran ninguno,
+// Doe/la universidad socia). Para preguntas que cruzan varios recuerdos o no nombran ninguno,
 // esto no aporta nada y la búsqueda híbrida de abajo sigue siendo el
 // camino principal.
 const MAX_NODE_MATCH_FACTS = 15;
@@ -67,7 +67,7 @@ function wordMatch(term) {
   const esc = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`(^|[^a-z0-9])${esc}([^a-z0-9]|$)`).test(queryNorm);
 }
-// Un nodo "matchea" si algún alias aparece completo en la pregunta, o si
+// Un recuerdo "matchea" si algún alias aparece completo en la pregunta, o si
 // algún segmento significativo de su nombre kebab-case aparece como
 // palabra completa (segmentos cortos o puramente numéricos, ej. "2026",
 // se ignoran por poco específicos).
@@ -77,9 +77,9 @@ function nodeIsMatched(n) {
   return segments.some((s) => wordMatch(s));
 }
 
-const { rows: allNodes } = await client.query(`select name, aliases, merged_into from nodes`);
+const { rows: allNodes } = await client.query(`select name, aliases, merged_into from memories`);
 const byName = new Map(allNodes.map((n) => [n.name, n]));
-function resolveLiveNode(name) {
+function resolveLiveMemory(name) {
   let current = name;
   const seen = new Set();
   while (true) {
@@ -95,14 +95,14 @@ function resolveLiveNode(name) {
 const matchedLiveNodes = new Set();
 for (const n of allNodes) {
   if (!nodeIsMatched(n)) continue;
-  const live = resolveLiveNode(n.name);
-  if (live && live !== excludeNode) matchedLiveNodes.add(live);
+  const live = resolveLiveMemory(n.name);
+  if (live && live !== excludeMemory) matchedLiveNodes.add(live);
 }
 
 let nodeMatchFacts = [];
 let nodeMatchTotal = 0;
 if (matchedLiveNodes.size > 0) {
-  const { rows } = await client.query(`select * from node_match_facts($1, $2)`, [[...matchedLiveNodes], MAX_NODE_MATCH_FACTS]);
+  const { rows } = await client.query(`select * from memory_match_records($1, $2)`, [[...matchedLiveNodes], MAX_NODE_MATCH_FACTS]);
   nodeMatchFacts = rows;
   nodeMatchTotal = rows.length > 0 ? Number(rows[0].total_count) : 0;
 }
@@ -111,7 +111,7 @@ const nodeMatchTruncated = nodeMatchTotal > nodeMatchFacts.length;
 // Trae un pool más grande (10) para que el reranker tenga sobre qué
 // trabajar, luego se reordena y se muestran los 5 más relevantes de verdad.
 const { rows: pageCandidates } = await client.query(`select * from search_pages($1, $2, $3, $4)`, [vectorLiteral, query, 10, excludeSlug]);
-const { rows: factCandidates } = await client.query(`select * from facts_search($1, $2, $3, $4)`, [vectorLiteral, query, 10, excludeNode]);
+const { rows: factCandidates } = await client.query(`select * from records_search($1, $2, $3, $4)`, [vectorLiteral, query, 10, excludeMemory]);
 
 async function rerankTop(candidates, toDoc, topN) {
   if (candidates.length === 0) return [];
@@ -120,19 +120,19 @@ async function rerankTop(candidates, toDoc, topN) {
 }
 
 const pages = await rerankTop(pageCandidates, (p) => `${p.title}\n${p.content}`.slice(0, 4000), 5);
-// Incluye el/los nodo(s) en el texto que ve el reranker: sin esto, un
-// hecho cuyo contenido nunca menciona el nombre del proyecto/nodo (ej.
-// atlas-2026, cuyos hechos hablan de "Jane Doe"/"la universidad socia" y
+// Incluye el/los recuerdo(s) en el texto que ve el reranker: sin esto, un
+// registro cuyo contenido nunca menciona el nombre del proyecto/recuerdo (ej.
+// atlas-2026, cuyos registros hablan de "Jane Doe"/"la universidad socia" y
 // nunca dicen "Atlas") queda mal puntuado frente a una pregunta que sí lo
-// nombra, aunque facts_search ya lo haya traído al pool correctamente
+// nombra, aunque records_search ya lo haya traído al pool correctamente
 // (mismo hallazgo 2026-08-31 que motivó el fix en schema.sql).
-const rerankedFacts = await rerankTop(factCandidates, (f) => (f.nodes ? `[${f.nodes}] ${f.claim}` : f.claim), 5);
+const rerankedFacts = await rerankTop(factCandidates, (f) => (f.memories ? `[${f.memories}] ${f.claim}` : f.claim), 5);
 
-// Los hechos del router de nodos van primero (garantizados completos para
-// el/los nodo(s) nombrados), seguidos de los de la búsqueda híbrida
+// Los registros del router de recuerdos van primero (garantizados completos para
+// el/los recuerdo(s) nombrados), seguidos de los de la búsqueda híbrida
 // general que no se repitan.
 const nodeMatchIds = new Set(nodeMatchFacts.map((f) => f.id));
-const facts = [...nodeMatchFacts.map((f) => ({ ...f, score: null })), ...rerankedFacts.filter((f) => !nodeMatchIds.has(f.id))];
+const records = [...nodeMatchFacts.map((f) => ({ ...f, score: null })), ...rerankedFacts.filter((f) => !nodeMatchIds.has(f.id))];
 
 console.log('--- Páginas ---');
 if (pages.length === 0) {
@@ -147,19 +147,19 @@ if (pages.length === 0) {
 }
 
 if (matchedLiveNodes.size > 0) {
-  const suffix = nodeMatchTruncated ? ` (mostrando ${MAX_NODE_MATCH_FACTS} de ${nodeMatchTotal}, ver Timeline/Estado de nodo para el resto)` : '';
-  console.log(`\n(nodo(s) detectado(s) en la pregunta: ${[...matchedLiveNodes].join(', ')}${suffix})`);
+  const suffix = nodeMatchTruncated ? ` (mostrando ${MAX_NODE_MATCH_FACTS} de ${nodeMatchTotal}, ver Timeline/Estado de recuerdo para el resto)` : '';
+  console.log(`\n(recuerdo(s) detectado(s) en la pregunta: ${[...matchedLiveNodes].join(', ')}${suffix})`);
 }
 
-console.log('\n--- Hechos vigentes ---');
-if (facts.length === 0) {
+console.log('\n--- registros vigentes ---');
+if (records.length === 0) {
   console.log('Sin resultados.');
 } else {
-  for (const r of facts) {
+  for (const r of records) {
     const date = r.date.toISOString().slice(0, 10);
-    const scoreLabel = r.score == null ? '[nodo]' : `[${r.score.toFixed(4)}]`;
+    const scoreLabel = r.score == null ? '[recuerdo]' : `[${r.score.toFixed(4)}]`;
     console.log(`\n${scoreLabel} #${r.id} [${date}] ${r.claim}`);
-    console.log(`  fuente: ${r.source} · tipo: ${r.kind}${r.nodes ? ` · nodos: ${r.nodes}` : ''}`);
+    console.log(`  fuente: ${r.source} · tipo: ${r.kind}${r.memories ? ` · recuerdos: ${r.memories}` : ''}`);
   }
 }
 

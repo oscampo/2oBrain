@@ -4,7 +4,7 @@
 // es un paso opcional aparte que el llamador pide explícitamente.
 //
 // Solo dos proveedores hoy, ambos ya usados en el resto del sistema (mismas
-// keys que classify-duplicate.mjs y extract-facts.mjs, nada nuevo que
+// keys que classify-duplicate.mjs y extract-records.mjs, nada nuevo que
 // configurar): Ollama Cloud (gpt-oss:20b-cloud) y Gemini (gemini-flash-latest).
 // "Claude" quedó fuera a propósito (decisión del usuario, 2026-08-28): requeriría
 // ANTHROPIC_API_KEY, facturada aparte de la suscripción de Claude Code, no
@@ -38,7 +38,7 @@ en los resultados de búsqueda de abajo, extraídos del segundo cerebro \
 personal del usuario. No inventes nada que no esté en esos resultados. Si no \
 alcanzan para contestar la pregunta, dilo explícitamente en vez de adivinar \
 o completar con conocimiento general. Cita la fuente de cada afirmación \
-(slug de página o número de hecho #N, con su nodo si aparece) tal como \
+(slug de página o número de registro #N, con su recuerdo si aparece) tal como \
 aparece en los resultados.
 
 Pregunta: "${query}"
@@ -49,28 +49,28 @@ ${rawResults}
 Responde en español, en prosa, conciso.`;
 }
 
-// Etapa 5 (PLAN-nodos.md, 2026-08-30): a diferencia de buildPrompt (responde
+// Etapa 5 (PLAN-recuerdos.md, 2026-08-30): a diferencia de buildPrompt (responde
 // una pregunta puntual sobre resultados ya filtrados por relevancia), esto
-// resume TODOS los hechos vigentes de un nodo: el objetivo es reemplazar el
+// resume TODOS los registros vigentes de un recuerdo: el objetivo es reemplazar el
 // rol de una página narrativa mantenida a mano ("estado actual del proyecto
-// X"), generada al momento de la consulta desde hechos reales, nunca
+// X"), generada al momento de la consulta desde registros reales, nunca
 // congelada. Mismo principio de fuente obligatoria: solo usa lo que está en
-// los hechos, nunca completa con conocimiento general.
+// los registros, nunca completa con conocimiento general.
 function buildNodeStatusPrompt(node, rawFacts) {
-  return `Eres un asistente que resume el estado actual de un nodo (proyecto, \
+  return `Eres un asistente que resume el estado actual de un recuerdo (proyecto, \
 persona, curso o colaboración) del segundo cerebro personal del usuario, usando \
-SOLO los hechos vigentes listados abajo. No inventes nada que no esté en \
-esos hechos. Si hay información contradictoria o un vacío evidente \
-(ej. un hecho antiguo sin actualización reciente sobre el mismo asunto), \
+SOLO los registros vigentes listados abajo. No inventes nada que no esté en \
+esos registros. Si hay información contradictoria o un vacío evidente \
+(ej. un registro antiguo sin actualización reciente sobre el mismo asunto), \
 dilo explícitamente en vez de resolverlo por tu cuenta. Cita el número de \
-hecho #N de cada afirmación tal como aparece en la lista. Cuando señales \
-algo pendiente o sin resolver, cita también la fecha del hecho que lo dejó \
+registro #N de cada afirmación tal como aparece en la lista. Cuando señales \
+algo pendiente o sin resolver, cita también la fecha del registro que lo dejó \
 pendiente (formato "pendiente desde YYYY-MM-DD, #N"), no solo el número,
 la fecha es lo que le dice al lector qué tan viejo es el pendiente.
 
-Nodo: "${node}"
+recuerdo: "${node}"
 
-Hechos vigentes de este nodo, en orden cronológico:
+registros vigentes de este recuerdo, en orden cronológico:
 ${rawFacts}
 
 Responde en español, en prosa, organizada por tema si hay varios, conciso \
@@ -99,7 +99,7 @@ async function generate(prompt, provider, model) {
 
   if (provider === 'gemini') {
     // Sin `model` explícito, prueba en orden config/gemini-models.json (el
-    // mismo mecanismo de extract-facts.mjs): reintenta el siguiente modelo
+    // mismo mecanismo de extract-records.mjs): reintenta el siguiente modelo
     // solo en fallos transitorios (503/UNAVAILABLE, timeout/red).
     return generateWithGeminiFallback(env.GEMINI_API_KEY, prompt, { model });
   }
@@ -119,7 +119,7 @@ export async function synthesize(query, rawResults, provider, model) {
 
 /**
  * @param {string} node
- * @param {string} rawFacts salida de texto de facts_timeline() (ver node-status.mjs)
+ * @param {string} rawFacts salida de texto de records_timeline() (ver memory-status.mjs)
  * @param {'ollama'|'gemini'} provider
  * @param {string} [model] override, default per-provider
  * @returns {Promise<string>}

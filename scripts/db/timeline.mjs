@@ -1,8 +1,8 @@
-// Fase 3: lee hechos registrados, opcionalmente filtrados por nodo.
-// Fase 4: por defecto solo muestra hechos vigentes (valid_until is null);
+// Fase 3: lee registros registrados, opcionalmente filtrados por recuerdo.
+// Fase 4: por defecto solo muestra registros vigentes (valid_until is null);
 // --all incluye los reemplazados, marcados como tal.
-// Rediseño 2026-08-29: filtro por page_slug -> filtro por node (fact_nodes).
-// Uso: node timeline.mjs [nombre-de-nodo] [--all]
+// Rediseño 2026-08-29: filtro por page_slug -> filtro por node (record_memories).
+// Uso: node timeline.mjs [nombre-de-recuerdo] [--all]
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 
@@ -27,16 +27,16 @@ const client = new pg.Client({
 });
 await client.connect();
 
-const { rows } = await client.query('select * from facts_timeline($1, $2, $3)', [node, 20, showAll]);
+const { rows } = await client.query('select * from records_timeline($1, $2, $3)', [node, 20, showAll]);
 
 if (rows.length === 0) {
-  console.log('Sin hechos registrados' + (node ? ` para el nodo ${node}` : '') + '.');
+  console.log('Sin registros registrados' + (node ? ` para el recuerdo ${node}` : '') + '.');
 } else {
   for (const r of rows) {
     const date = r.date.toISOString().slice(0, 10);
     const replaced = r.valid_until ? ` [reemplazado por #${r.superseded_by}]` : '';
     console.log(`\n#${r.id} [${date}] ${r.claim}${replaced}`);
-    console.log(`  fuente: ${r.source} · tipo: ${r.kind}${r.nodes ? ` · nodos: ${r.nodes}` : ''}`);
+    console.log(`  fuente: ${r.source} · tipo: ${r.kind}${r.memories ? ` · recuerdos: ${r.memories}` : ''}`);
   }
 }
 

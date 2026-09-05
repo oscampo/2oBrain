@@ -1,9 +1,9 @@
 ---
-name: extract-code-facts
-description: Extrae los hechos semánticos de la sesión ACTUAL de Claude Code y los entrega como JSON en el chat, listo para ingerir después con scripts/db/remember-batch.mjs. No requiere que ESTA sesión tenga acceso a scripts/db/ ni a .env, solo extrae y entrega texto, nunca escribe a la base. Se activa con "extrae hechos", "genera facts de esta sesión", "/extract-code-facts". Funciona en cualquier sesión de Code, incluyendo contenedores remotos de otros repos sin ningún acceso a este segundo cerebro; el usuario copia el JSON después a la máquina donde sí corre remember-batch.mjs.
+name: extract-code-records
+description: Extrae los registros semánticos de la sesión ACTUAL de Claude Code y los entrega como JSON en el chat, listo para ingerir después con scripts/db/remember-batch.mjs. No requiere que ESTA sesión tenga acceso a scripts/db/ ni a .env, solo extrae y entrega texto, nunca escribe a la base. Se activa con "extrae registros", "genera records de esta sesión", "/extract-code-records". Funciona en cualquier sesión de Code, incluyendo contenedores remotos de otros repos sin ningún acceso a este segundo cerebro; el usuario copia el JSON después a la máquina donde sí corre remember-batch.mjs.
 ---
 
-# Extracción de hechos de sesión Code (para remember-batch)
+# Extracción de registros de sesión Code (para remember-batch)
 
 ## Por qué este diseño
 
@@ -21,7 +21,7 @@ a otra máquina, no determina si la skill aplica.
 
 ## Cuándo se activa
 
-Palabras clave: "extrae hechos", "genera facts de esta sesión", "/extract-code-facts".
+Palabras clave: "extrae registros", "genera records de esta sesión", "/extract-code-records".
 
 ## Pasos
 
@@ -29,10 +29,10 @@ Palabras clave: "extrae hechos", "genera facts de esta sesión", "/extract-code-
 
 Ejecutar en terminal `date '+%Y-%m-%d'` (en la zona horaria del usuario, ver
 `USER.md`) y usar ese resultado como único valor posible para `date` en
-cada hecho. Si el comando falla, preguntar la fecha al usuario antes de
+cada registro. Si el comando falla, preguntar la fecha al usuario antes de
 continuar, nunca adivinarla ni tomarla del contenido de la conversación
 (una sesión reanudada puede describir trabajo de días atrás; esa fecha del
-contenido NUNCA es la fecha del hecho).
+contenido NUNCA es la fecha del registro).
 
 ### Paso 2: Identificar el repo/proyecto
 
@@ -42,13 +42,13 @@ Nombre del repo de esta sesión. Se usa para `source` y como candidato de
 ### Paso 3: Analizar la sesión actual
 
 Única fuente: el contexto de esta conversación. Identificar candidatos a
-hecho: decisiones tomadas, hallazgos técnicos con impacto, compromisos
+registro: decisiones tomadas, hallazgos técnicos con impacto, compromisos
 asumidos (con quién y para cuándo), preferencias declaradas por el usuario
 que deban persistir. Descartar: especulación sin resolver, ideas
 exploratorias, riesgos no confirmados, narrativa de proceso ("primero
-probamos X, después Y") que no deja un hecho verificable al final.
+probamos X, después Y") que no deja un registro verificable al final.
 
-Un hecho verificable es una oración declarativa que se puede confirmar o
+Un registro verificable es una oración declarativa que se puede confirmar o
 refutar después, no un resumen de actividad.
 
 ### Paso 4: Clasificar por `kind`
@@ -60,16 +60,16 @@ refutar después, no un resumen de actividad.
 
 ### Paso 5: Construir el JSON
 
-Formato exacto, uno por hecho (esquema de `remember-batch.mjs`):
+Formato exacto, uno por registro (esquema de `remember-batch.mjs`):
 
 ```json
 {
-  "facts": [
+  "records": [
     {
       "claim": "oración declarativa corta, verificable, en tercera persona o impersonal",
       "date": "YYYY-MM-DD",
       "kind": "fact",
-      "source": "extract-code-facts, sesión Code, repo <repo>",
+      "source": "extract-code-records, sesión Code, repo <repo>",
       "node": "<repo>"
     }
   ]
@@ -77,26 +77,26 @@ Formato exacto, uno por hecho (esquema de `remember-batch.mjs`):
 ```
 
 Reglas de cada campo:
-- `claim`: una idea por hecho, sin narrativa, sin adjetivos de relleno. Si
+- `claim`: una idea por registro, sin narrativa, sin adjetivos de relleno. Si
   no se puede refutar, no es un claim útil, descartarlo.
 - `date`: siempre el resultado del Paso 1, nunca una fecha mencionada en el
   contenido analizado.
 - `kind`: uno de los cuatro valores del Paso 4, nunca inventar otros.
-- `source`: siempre `"extract-code-facts, sesión Code, repo <repo>"` con el
+- `source`: siempre `"extract-code-records, sesión Code, repo <repo>"` con el
   repo real del Paso 2.
-- `node`: nombre del nodo (string), o un array de nombres si el hecho toca
-  más de uno (`fact_nodes` es N:N). Usar `<repo>` salvo que el hecho sea
-  sobre una persona, proyecto o tema que ya tenga su propio nodo en el
+- `node`: nombre del recuerdo (string), o un array de nombres si el registro toca
+  más de uno (`record_memories` es N:N). Usar `<repo>` salvo que el registro sea
+  sobre una persona, proyecto o tema que ya tenga su propio recuerdo en el
   segundo cerebro (preguntar al usuario si no es obvio). **Es un campo
-  opcional**: si no se sabe el nombre exacto del nodo, omitirlo por
+  opcional**: si no se sabe el nombre exacto del recuerdo, omitirlo por
   completo (no inventar uno), el clasificador de `remember-batch.mjs`
-  (`lib/classify-node.mjs`) propone o reutiliza un nodo en tiempo de
-  ingesta y deja el hecho como "ambiguo" para que el usuario lo resuelva a
+  (`lib/classify-memory.mjs`) propone o reutiliza un recuerdo en tiempo de
+  ingesta y deja el registro como "ambiguo" para que el usuario lo resuelva a
   mano si la confianza no alcanza.
 
 No incluir `confidence`, `supersedes`, `distinct` ni `createNode`, esos
-los decide `remember-batch.mjs`/`classify-node.mjs` en tiempo de ingesta
-(gate de duplicados/contradicciones y desambiguación de nodo ya
+los decide `remember-batch.mjs`/`classify-memory.mjs` en tiempo de ingesta
+(gate de duplicados/contradicciones y desambiguación de recuerdo ya
 existente), no esta skill.
 
 ### Paso 6: Entregar
@@ -141,6 +141,6 @@ son cosas distintas.
 - Una idea por `claim`, oración corta, verificable.
 - `source` siempre completo, nunca campos vacíos o `null` por omisión.
 - Sin narrativa de proceso, sin elogios, sin resumen de lo que se hizo si
-  no deja un hecho verificable.
+  no deja un registro verificable.
 - `date` verificado contra el comando `date`, nunca contra el contenido
   analizado.

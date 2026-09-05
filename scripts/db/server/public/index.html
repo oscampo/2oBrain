@@ -131,7 +131,7 @@
   /* Alto contraste (hallazgo del usuario): el relleno semitransparente de abajo
      deja ver la línea/flecha de la conexión por debajo, dificultando leer el
      número, no es problema de orden de capas (los links ya se dibujan antes
-     que los nodos), es que la transparencia deja pasar lo de atrás. En
+     que los recuerdos), es que la transparencia deja pasar lo de atrás. En
      oscuro/claro se deja igual (el borde es sutil ahí, el usuario confirmó que no
      molesta); en alto contraste, relleno sólido + número en --accent-text
      (mismo color ya pensado para leerse encima de un color saturado sólido,
@@ -174,22 +174,22 @@
 const SECTIONS = [
   { id: 'search', label: 'Buscar', group: 'Consultar' },
   { id: 'timeline', label: 'Timeline', group: 'Consultar' },
-  { id: 'node-status', label: 'Estado de nodo', group: 'Consultar' },
+  { id: 'memory-status', label: 'Estado de recuerdo', group: 'Consultar' },
   { id: 'graph', label: 'Grafo', group: 'Consultar' },
   { id: 'delta', label: 'Delta', group: 'Consultar' },
 
-  { id: 'remember', label: 'Guardar hecho', group: 'Hechos' },
-  { id: 'remember-batch', label: 'Guardar lote', group: 'Hechos' },
-  { id: 'forget', label: 'Retractar', group: 'Hechos' },
-  { id: 'recategorize', label: 'Recategorizar hecho', group: 'Hechos' },
+  { id: 'remember', label: 'Guardar registro', group: 'registros' },
+  { id: 'remember-batch', label: 'Guardar lote', group: 'registros' },
+  { id: 'forget', label: 'Retractar', group: 'registros' },
+  { id: 'recategorize', label: 'Recategorizar registro', group: 'registros' },
 
-  { id: 'merge-nodes', label: 'Fusionar nodos', group: 'Nodos' },
-  { id: 'aliases', label: 'Alias', group: 'Nodos' },
-  { id: 'relations', label: 'Relaciones', group: 'Nodos' },
-  { id: 'supernode-candidates', label: 'Candidatos de supernodo', group: 'Nodos' },
+  { id: 'merge-memories', label: 'Fusionar recuerdos', group: 'recuerdos' },
+  { id: 'aliases', label: 'Alias', group: 'recuerdos' },
+  { id: 'relations', label: 'Relaciones', group: 'recuerdos' },
+  { id: 'category-candidates', label: 'Candidatos de categoría', group: 'recuerdos' },
 
-  { id: 'extract-facts', label: 'Extraer de sesión', group: 'Extraer' },
-  { id: 'extract-page-facts', label: 'Extraer de página', group: 'Extraer' },
+  { id: 'extract-records', label: 'Extraer de sesión', group: 'Extraer' },
+  { id: 'extract-page-records', label: 'Extraer de página', group: 'Extraer' },
 
   { id: 'doctor', label: 'Doctor', group: 'Sistema' },
   { id: 'models', label: 'Modelos', group: 'Sistema' },
@@ -258,7 +258,7 @@ function escapeHtml(s) {
 
 // Renderer de Markdown minimalista, a propósito (sin librería externa, sin
 // build step): cubre solo lo que las respuestas sintetizadas por LLM
-// (node-status.mjs, synthesize.mjs) realmente producen: encabezados #/##/###,
+// (memory-status.mjs, synthesize.mjs) realmente producen: encabezados #/##/###,
 // **negrita**, *cursiva*, listas "- " y "1. ", "---" como separador, tablas
 // GFM ("| col | col |"), párrafos. No es un parser de Markdown general: no
 // hace falta serlo para este uso.
@@ -383,7 +383,7 @@ function outMarkdown(container, result, text) {
 }
 
 // Misma fuente de verdad que remember.mjs/remember-batch.mjs (--confirm-date,
-// hechos #528/#530): America/Bogota, no la zona horaria del navegador.
+// registros #528/#530): America/Bogota, no la zona horaria del navegador.
 function todayBogota() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
 }
@@ -506,7 +506,7 @@ async function callStream(url, body, onChunk) {
 // mientras corre, y pintar cada línea de remember-batch.mjs (embedding,
 // clasificador, "Registrado #N") apenas llega, no solo el resumen final.
 async function runRememberBatchStream(sec, body, btn) {
-  const total = body.facts.length;
+  const total = body.records.length;
   let pre = sec.querySelector('pre.out');
   if (!pre) { pre = document.createElement('pre'); pre.className = 'out'; sec.appendChild(pre); }
   pre.className = 'out';
@@ -545,7 +545,7 @@ function section(id, title, hint, bodyHtml) {
 // "Ver datos crudos" los muestra sin volver a buscar (ya se pidieron ambos
 // en la misma corrida).
 {
-  const sec = section('search', 'Buscar', 'Busca en páginas y hechos combinando texto y significado ("search.mjs") y redacta una respuesta a partir de los fragmentos encontrados. El proveedor/modelo de la síntesis se elige en Configuración. Activa "Ver datos crudos" para ver los fragmentos originales (sin redactar) en vez de o además de la respuesta. Escribe "#123" (o varios separados por coma, ej. "#94, #95") para traer esos hechos por id exacto ("get-facts.mjs"), sin buscar ni sintetizar.',
+  const sec = section('search', 'Buscar', 'Busca en páginas y registros combinando texto y significado ("search.mjs") y redacta una respuesta a partir de los fragmentos encontrados. El proveedor/modelo de la síntesis se elige en Configuración. Activa "Ver datos crudos" para ver los fragmentos originales (sin redactar) en vez de o además de la respuesta. Escribe "#123" (o varios separados por coma, ej. "#94, #95") para traer esos registros por id exacto ("get-records.mjs"), sin buscar ni sintetizar.',
     `<label>Pregunta</label><input type="text" id="search-q" placeholder="ej. presupuesto del proyecto Atlas, o #123">
      <div class="checkline" style="margin-top:10px"><input type="checkbox" id="search-raw"><label for="search-raw">Ver datos crudos</label></div>
      <button class="run" id="search-run">Buscar</button>
@@ -576,7 +576,7 @@ function section(id, title, hint, bodyHtml) {
     rawBox.style.display = rawCheckbox.checked ? 'block' : 'none';
   });
 
-  // "#123" o "#94, #95" trae esos hechos por id exacto (get-facts.mjs), sin
+  // "#123" o "#94, #95" trae esos registros por id exacto (get-records.mjs), sin
   // buscar ni sintetizar.
   const FACT_ID_PATTERN = /^#?\d+(\s*,\s*#?\d+)*$/;
 
@@ -589,8 +589,8 @@ function section(id, title, hint, bodyHtml) {
 
     if (FACT_ID_PATTERN.test(q)) {
       const ids = q.split(',').map((s) => s.trim().replace(/^#/, '')).join(',');
-      const r = await call('GET', '/api/facts?id=' + encodeURIComponent(ids));
-      const text = r.ok ? (r.stdout || 'Ningún id existe.') : (r.stderr || r.error || 'get-facts.mjs falló');
+      const r = await call('GET', '/api/records?id=' + encodeURIComponent(ids));
+      const text = r.ok ? (r.stdout || 'Ningún id existe.') : (r.stderr || r.error || 'get-records.mjs falló');
       renderRaw(text, !r.ok);
       renderAnswer(text, !r.ok);
       return;
@@ -618,16 +618,16 @@ function section(id, title, hint, bodyHtml) {
 
 // --- Timeline ---
 {
-  const sec = section('timeline', 'Timeline', 'Lista hechos en orden cronológico ("timeline.mjs"). No es un buscador. Déjalo vacío para ver los más recientes de todo el sistema. Escribe un nodo para ver solo sus hechos, empieza a teclear para ver los nodos existentes. No acepta términos de búsqueda libres; para eso usa "Buscar".',
-    `<label>Nodo (opcional, empieza a escribir para ver sugerencias)</label>
-     <input type="text" id="tl-node" placeholder="ej. segundo-cerebro" list="tl-nodes-list">
-     <datalist id="tl-nodes-list"></datalist>
+  const sec = section('timeline', 'Timeline', 'Lista registros en orden cronológico ("timeline.mjs"). No es un buscador. Déjalo vacío para ver los más recientes de todo el sistema. Escribe un recuerdo para ver solo sus registros, empieza a teclear para ver los recuerdos existentes. No acepta términos de búsqueda libres; para eso usa "Buscar".',
+    `<label>recuerdo (opcional, empieza a escribir para ver sugerencias)</label>
+     <input type="text" id="tl-node" placeholder="ej. segundo-cerebro" list="tl-memories-list">
+     <datalist id="tl-memories-list"></datalist>
      <div class="checkline"><input type="checkbox" id="tl-all"><label for="tl-all">Incluir reemplazados (--all)</label></div>
      <button class="run" id="tl-run">Ver</button>`);
 
-  call('GET', '/api/nodes').then((r) => {
-    const list = sec.querySelector('#tl-nodes-list');
-    for (const n of r.nodes ?? []) {
+  call('GET', '/api/memories').then((r) => {
+    const list = sec.querySelector('#tl-memories-list');
+    for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
       opt.value = n.name;
       list.appendChild(opt);
@@ -645,12 +645,12 @@ function section(id, title, hint, bodyHtml) {
   });
 }
 
-// --- Estado de nodo ---
+// --- Estado de recuerdo ---
 {
-  const sec = section('node-status', 'Estado de nodo', 'Resume en prosa el estado actual de un nodo ("node-status.mjs"). Genera el resumen al momento, a partir de sus hechos vigentes. Así ya no necesitas mantener una página narrativa a mano.',
-    `<label>Nodo (empieza a escribir para ver sugerencias)</label>
-     <input type="text" id="ns-node" placeholder="ej. segundo-cerebro" list="ns-nodes-list">
-     <datalist id="ns-nodes-list"></datalist>
+  const sec = section('memory-status', 'Estado de recuerdo', 'Resume en prosa el estado actual de un recuerdo ("memory-status.mjs"). Genera el resumen al momento, a partir de sus registros vigentes. Así ya no necesitas mantener una página narrativa a mano.',
+    `<label>recuerdo (empieza a escribir para ver sugerencias)</label>
+     <input type="text" id="ns-node" placeholder="ej. segundo-cerebro" list="ns-memories-list">
+     <datalist id="ns-memories-list"></datalist>
      <div class="row">
        <div><label style="margin-top:10px">Sintetizar con</label>
          <select id="ns-provider">
@@ -679,9 +679,9 @@ function section(id, title, hint, bodyHtml) {
   nsProviderSel.addEventListener('change', loadNsModelOptions);
   loadNsModelOptions();
 
-  call('GET', '/api/nodes').then((r) => {
-    const list = sec.querySelector('#ns-nodes-list');
-    for (const n of r.nodes ?? []) {
+  call('GET', '/api/memories').then((r) => {
+    const list = sec.querySelector('#ns-memories-list');
+    for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
       opt.value = n.name;
       list.appendChild(opt);
@@ -690,7 +690,7 @@ function section(id, title, hint, bodyHtml) {
 
   sec.querySelector('#ns-run').addEventListener('click', async () => {
     const node = sec.querySelector('#ns-node').value.trim();
-    if (!node) { outMarkdown(sec, { ok: false }, 'Falta el nodo.'); return; }
+    if (!node) { outMarkdown(sec, { ok: false }, 'Falta el recuerdo.'); return; }
     const provider = nsProviderSel.value;
     const model = nsModelSel.value;
     const params = new URLSearchParams({ node, provider });
@@ -699,7 +699,7 @@ function section(id, title, hint, bodyHtml) {
     btn.disabled = true;
     btn.textContent = 'Sintetizando…';
     try {
-      const r = await call('GET', '/api/node-status?' + params.toString());
+      const r = await call('GET', '/api/memory-status?' + params.toString());
       outMarkdown(sec, r);
     } finally {
       btn.disabled = false;
@@ -730,40 +730,40 @@ function section(id, title, hint, bodyHtml) {
 // también a dependencias del frontend). Reemplaza el layout jerárquico
 // estático anterior (2026-09-03): el usuario lo pidió parecido a LightRAG/
 // Obsidian tras ver que un layout fijo por niveles no aguanta un grafo con
-// ciclos reales (ver PLAN-nodos.md) -- acá la física corre en el navegador
+// ciclos reales (ver PLAN-recuerdos.md) -- acá la física corre en el navegador
 // y decide las posiciones sola, arrastrar/zoom/clic funcionan de verdad.
-// El servidor (graph.mjs) solo entrega nodes/edges en JSON, sin caché --
+// El servidor (graph.mjs) solo entrega memories/edges en JSON, sin caché --
 // cada refresco trae el estado vigente.
 {
-  const sec = section('graph', 'Grafo', 'Mapa interactivo de nodos y conexiones (node_edges) tal como existen ahora mismo en la base. Arrastra un nodo para reacomodarlo, usa la rueda del mouse para zoom, clic en un nodo para resaltar sus vecinos directos (clic de nuevo, o en un espacio vacío, para quitar el resaltado).',
+  const sec = section('graph', 'Grafo', 'Mapa interactivo de recuerdos y conexiones (memory_links) tal como existen ahora mismo en la base. Arrastra un recuerdo para reacomodarlo, usa la rueda del mouse para zoom, clic en un recuerdo para resaltar sus vecinos directos (clic de nuevo, o en un espacio vacío, para quitar el resaltado).',
     `<div class="row" style="align-items:flex-end; gap:10px">
        <div style="flex:0 0 auto"><button class="run" id="graph-run" style="margin-top:0">Refrescar</button></div>
        <div style="flex:0 0 auto"><button class="run secondary" id="graph-fit" style="margin-top:0">Encuadre</button></div>
-       <div style="flex:1"><label style="margin:0 0 4px">Buscar nodo</label>
-         <input type="text" id="graph-search" list="graph-nodes-list" placeholder="empieza a escribir…"></div>
+       <div style="flex:1"><label style="margin:0 0 4px">Buscar recuerdo</label>
+         <input type="text" id="graph-search" list="graph-memories-list" placeholder="empieza a escribir…"></div>
        <div style="flex:0 0 auto"><button class="run secondary" id="graph-search-go" style="margin-top:0">Ir</button></div>
      </div>
-     <datalist id="graph-nodes-list"></datalist>
+     <datalist id="graph-memories-list"></datalist>
      <div class="checkline"><input type="checkbox" id="graph-show-labels" checked><label for="graph-show-labels">Mostrar nombres de relaciones</label></div>
      <div class="gph-stats" id="graph-stats" style="margin-top:16px"></div>
      <div id="graph-canvas" style="position:relative; margin-top:12px; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--panel)"></div>
      <div class="gph-legend" style="margin-top:10px">
-       <div class="gph-legend-item"><span class="gph-dot"></span> nodo de dominio</div>
-       <div class="gph-legend-item"><span class="gph-dot gph-meta"></span> nodo meta (sobre el propio sistema)</div>
+       <div class="gph-legend-item"><span class="gph-dot"></span> recuerdo de dominio</div>
+       <div class="gph-legend-item"><span class="gph-dot gph-meta"></span> recuerdo meta (sobre el propio sistema)</div>
      </div>`);
 
   const statsEl = sec.querySelector('#graph-stats');
   const canvasEl = sec.querySelector('#graph-canvas');
   const W = 1100, H = 700;
   let simulation = null;
-  let graph = null; // estado del render vigente (nodos, selección d3, zoom) para los controles de fuera: encuadre, buscador, checkbox
+  let graph = null; // estado del render vigente (recuerdos, selección d3, zoom) para los controles de fuera: encuadre, buscador, checkbox
 
   function radius(factCount) {
     return Math.max(16, Math.min(50, 16 + Math.sqrt(factCount) * 2.8));
   }
 
   // Mismo truco que el layout anterior: sin wrap nativo en SVG, se parte el
-  // nombre por guiones en varias líneas (tspans) para que no se salga del nodo.
+  // nombre por guiones en varias líneas (tspans) para que no se salga del recuerdo.
   function wrapLabel(name, maxCharsPerLine = 14) {
     const parts = name.split('-');
     const lines = [];
@@ -788,7 +788,7 @@ function section(id, title, hint, bodyHtml) {
       canvasEl.innerHTML = `<pre class="out err">${escapeHtml(r.error || 'graph.mjs falló')}</pre>`;
       return;
     }
-    renderGraph(r.nodes, r.edges);
+    renderGraph(r.memories, r.edges);
   }
 
   function edgeEndpointName(x) { return typeof x === 'object' ? x.name : x; }
@@ -798,9 +798,9 @@ function section(id, title, hint, bodyHtml) {
     canvasEl.innerHTML = '';
     // El auto-encuadre solo debe disparar UNA vez, cuando la simulación
     // inicial se asienta -- no cada vez que "end" vuelve a dispararse tras
-    // reactivarse (arrastrar un nodo hace simulation.alphaTarget(0.3).restart(),
+    // reactivarse (arrastrar un recuerdo hace simulation.alphaTarget(0.3).restart(),
     // que eventualmente vuelve a emitir "end" al enfriarse). Sin este freno,
-    // la vista se resetea sola después de cada arrastre, o de un zoom hecho
+    // la vista se resetea sola después de cada arrastre, o de un zoom registro
     // mientras la simulación inicial todavía no terminaba de asentarse.
     let hasAutoFitted = false;
 
@@ -809,11 +809,11 @@ function section(id, title, hint, bodyHtml) {
     const isolatedCount = rawNodes.filter((n) => !touched.has(n.name)).length;
     const metaCount = rawNodes.filter((n) => n.isMeta).length;
     statsEl.innerHTML = [
-      [rawNodes.length, 'nodos'], [rawEdges.length, 'conexiones'], [touched.size, 'conectados'],
+      [rawNodes.length, 'recuerdos'], [rawEdges.length, 'conexiones'], [touched.size, 'conectados'],
       [isolatedCount, 'sin conexión'], [metaCount, 'meta'],
     ].map(([n, label]) => `<div class="gph-stat"><b>${n}</b><span>${label}</span></div>`).join('');
 
-    const nodes = rawNodes.map((n) => ({ ...n }));
+    const memories = rawNodes.map((n) => ({ ...n }));
     const links = rawEdges.map((e) => ({ source: e.from, target: e.to, relation: e.relation }));
 
     const svg = d3.select(canvasEl).append('svg')
@@ -834,7 +834,7 @@ function section(id, title, hint, bodyHtml) {
     const linkLabelSel = g.append('g').selectAll('text').data(links).join('text')
       .attr('class', 'gph-edge-label').attr('text-anchor', 'middle').text((d) => d.relation);
 
-    const nodeSel = g.append('g').selectAll('g').data(nodes, (d) => d.name).join('g')
+    const nodeSel = g.append('g').selectAll('g').data(memories, (d) => d.name).join('g')
       .attr('class', (d) => 'gph-node' + (d.isMeta ? ' gph-meta' : ''))
       .style('cursor', 'grab');
 
@@ -866,7 +866,7 @@ function section(id, title, hint, bodyHtml) {
       }
       // El resto del grafo baja a 0.6 (no 0.15) -- lo suficientemente
       // atenuado para que el resaltado destaque, pero sin volverse casi
-      // invisible sobre fondo oscuro. Los nodos resaltados, además, cambian
+      // invisible sobre fondo oscuro. Los recuerdos resaltados, además, cambian
       // a rojo (var(--err)) para que destaquen por color, no solo por opacidad.
       nodeSel.style('opacity', (d) => (neighbors.has(d.name) ? 1 : 0.6));
       nodeSel.select('circle').classed('gph-circle-highlight', (d) => neighbors.has(d.name));
@@ -888,7 +888,7 @@ function section(id, title, hint, bodyHtml) {
       showCtxMenu(event.clientX, event.clientY, d.name);
     });
 
-    // Los nombres son ilegibles a este tamaño con varias docenas de nodos --
+    // Los nombres son ilegibles a este tamaño con varias docenas de recuerdos --
     // al pasar el mouse se muestra un tooltip HTML normal (no un <text> SVG
     // dentro de "g", que se agranda/encoge con el zoom igual que todo lo
     // demás -- un font-size fijo en SVG no queda fijo en pantalla si el
@@ -927,14 +927,14 @@ function section(id, title, hint, bodyHtml) {
     // alphaDecay SIEMPRE normal: es lo que hace que el layout converja bien
     // separado (probado: alphaDecay alto no solo quita la animación, apaga
     // la física antes de que el charge/collide tengan tiempo de separar los
-    // nodos, quedan amontonados; y el arrastre pierde la inercia porque
+    // recuerdos, quedan amontonados; y el arrastre pierde la inercia porque
     // decae casi instantáneo incluso durante el drag, hallazgo real de
     // el usuario). "Reducir movimiento" adelanta la simulación entera de un
     // jalón (tick() manual en loop, sin pintar) antes del primer render, en
     // vez de tocar la física en sí: layout final idéntico, solo sin
     // animación visible de asentamiento. simulation.restart() al final deja
     // el arrastre con inercia normal después.
-    simulation = d3.forceSimulation(nodes)
+    simulation = d3.forceSimulation(memories)
       .force('link', d3.forceLink(links).id((d) => d.name).distance(95).strength(0.5))
       .force('charge', d3.forceManyBody().strength(-260))
       .force('center', d3.forceCenter(W / 2, H / 2))
@@ -956,21 +956,21 @@ function section(id, title, hint, bodyHtml) {
     }
 
     graph = {
-      nodes, svg, zoomBehavior, linkLabelSel,
+      memories, svg, zoomBehavior, linkLabelSel,
       setHighlight: (name) => { highlighted = name; applyHighlight(); },
     };
     sec.querySelector('#graph-show-labels').dispatchEvent(new Event('change'));
   }
 
-  // Encuadra la vista al bounding box actual de los nodos -- se llama sola
+  // Encuadra la vista al bounding box actual de los recuerdos -- se llama sola
   // cuando la simulación se asienta (evento "end" de d3-force) y también a
   // mano con el botón "Encuadre", para volver a ver todo tras hacer zoom o
-  // arrastrar nodos fuera de vista.
+  // arrastrar recuerdos fuera de vista.
   function fitToView(animate = true) {
-    if (!graph || graph.nodes.length === 0) return;
+    if (!graph || graph.memories.length === 0) return;
     const pad = 60;
-    const xs = graph.nodes.map((n) => n.x ?? W / 2);
-    const ys = graph.nodes.map((n) => n.y ?? H / 2);
+    const xs = graph.memories.map((n) => n.x ?? W / 2);
+    const ys = graph.memories.map((n) => n.y ?? H / 2);
     const minX = Math.min(...xs) - pad, maxX = Math.max(...xs) + pad;
     const minY = Math.min(...ys) - pad, maxY = Math.max(...ys) + pad;
     const w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
@@ -984,7 +984,7 @@ function section(id, title, hint, bodyHtml) {
 
   function goToNode(name) {
     if (!graph) return;
-    const node = graph.nodes.find((n) => n.name === name);
+    const node = graph.memories.find((n) => n.name === name);
     if (!node) return;
     const scale = 1.6;
     const transform = d3.zoomIdentity.translate(W / 2 - scale * node.x, H / 2 - scale * node.y).scale(scale);
@@ -992,9 +992,9 @@ function section(id, title, hint, bodyHtml) {
     graph.setHighlight(name);
   }
 
-  // Menú contextual (clic derecho en un nodo): "Ver timeline" / "Ver estado
-  // del nodo" -- en vez de duplicar la lógica de esas dos secciones acá,
-  // cambia de pestaña con show(), precarga el campo de nodo, y dispara el
+  // Menú contextual (clic derecho en un recuerdo): "Ver timeline" / "Ver estado
+  // del recuerdo" -- en vez de duplicar la lógica de esas dos secciones acá,
+  // cambia de pestaña con show(), precarga el campo de recuerdo, y dispara el
   // mismo botón "Ver"/"Ver estado" que ya existe ahí. Una sola instancia
   // del menú en el DOM (no una por renderGraph), colgada de document.body
   // para que su position:fixed no dependa del contenedor del grafo.
@@ -1002,12 +1002,12 @@ function section(id, title, hint, bodyHtml) {
   ctxMenu.className = 'gph-ctx-menu';
   ctxMenu.innerHTML = `
     <button type="button" data-action="timeline">Ver timeline</button>
-    <button type="button" data-action="node-status">Ver estado del nodo</button>`;
+    <button type="button" data-action="memory-status">Ver estado del recuerdo</button>`;
   document.body.appendChild(ctxMenu);
 
   function hideCtxMenu() { ctxMenu.style.display = 'none'; }
-  function showCtxMenu(x, y, nodeName) {
-    ctxMenu.dataset.node = nodeName;
+  function showCtxMenu(x, y, memoryName) {
+    ctxMenu.dataset.node = memoryName;
     ctxMenu.style.display = 'block';
     // clamp para que no se salga del viewport si el clic fue cerca del borde
     const menuW = 180, menuH = 76;
@@ -1019,15 +1019,15 @@ function section(id, title, hint, bodyHtml) {
   ctxMenu.querySelectorAll('button').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const nodeName = ctxMenu.dataset.node;
+      const memoryName = ctxMenu.dataset.node;
       hideCtxMenu();
       if (btn.dataset.action === 'timeline') {
         show('timeline');
-        document.querySelector('#tl-node').value = nodeName;
+        document.querySelector('#tl-node').value = memoryName;
         document.querySelector('#tl-run').click();
       } else {
-        show('node-status');
-        document.querySelector('#ns-node').value = nodeName;
+        show('memory-status');
+        document.querySelector('#ns-node').value = memoryName;
         document.querySelector('#ns-run').click();
       }
     });
@@ -1045,9 +1045,9 @@ function section(id, title, hint, bodyHtml) {
   sec.querySelector('#graph-search').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); sec.querySelector('#graph-search-go').click(); }
   });
-  call('GET', '/api/nodes').then((r) => {
-    const list = sec.querySelector('#graph-nodes-list');
-    for (const n of r.nodes ?? []) {
+  call('GET', '/api/memories').then((r) => {
+    const list = sec.querySelector('#graph-memories-list');
+    for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
       opt.value = n.name;
       list.appendChild(opt);
@@ -1056,24 +1056,24 @@ function section(id, title, hint, bodyHtml) {
   loadGraph();
 }
 
-// --- Fusionar nodos ---
+// --- Fusionar recuerdos ---
 {
-  const sec = section('merge-nodes', 'Fusionar nodos', 'Compara los embeddings de todos los nodos y sugiere pares parecidos ("list-merge-candidates.mjs", umbral 0.85). Ningún par se fusiona solo. Revisa cada uno y decide a mano abajo: fusionar retira el nodo "from" y pasa sus hechos al nodo "to" ("merge-nodes.mjs").',
+  const sec = section('merge-memories', 'Fusionar recuerdos', 'Compara los embeddings de todos los recuerdos y sugiere pares parecidos ("list-merge-candidates.mjs", umbral 0.85). Ningún par se fusiona solo. Revisa cada uno y decide a mano abajo: fusionar retira el recuerdo "from" y pasa sus registros al recuerdo "to" ("merge-memories.mjs").',
     `<button class="run" id="mn-run">Buscar candidatos</button>
      <label style="margin-top:22px">Fusionar (from → to)</label>
      <div class="row">
-       <div><input type="text" id="mn-from" placeholder="nodo a retirar" list="mn-nodes-list"></div>
-       <div><input type="text" id="mn-to" placeholder="nodo vigente" list="mn-nodes-list"></div>
+       <div><input type="text" id="mn-from" placeholder="recuerdo a retirar" list="mn-memories-list"></div>
+       <div><input type="text" id="mn-to" placeholder="recuerdo vigente" list="mn-memories-list"></div>
      </div>
-     <datalist id="mn-nodes-list"></datalist>
+     <datalist id="mn-memories-list"></datalist>
      <label>Motivo</label><input type="text" id="mn-reason" placeholder="ej. es la misma colaboración, no dos temas distintos">
      <button class="run secondary" id="mn-merge">Fusionar</button>`);
 
   sec.querySelector('#mn-run').addEventListener('click', async () => out(sec, await call('GET', '/api/merge-candidates')));
 
-  call('GET', '/api/nodes').then((r) => {
-    const list = sec.querySelector('#mn-nodes-list');
-    for (const n of r.nodes ?? []) {
+  call('GET', '/api/memories').then((r) => {
+    const list = sec.querySelector('#mn-memories-list');
+    for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
       opt.value = n.name;
       list.appendChild(opt);
@@ -1089,7 +1089,7 @@ function section(id, title, hint, bodyHtml) {
     btn.disabled = true;
     btn.textContent = 'Fusionando…';
     try {
-      out(sec, await call('POST', '/api/merge-nodes', { from, to, reason }));
+      out(sec, await call('POST', '/api/merge-memories', { from, to, reason }));
     } finally {
       btn.disabled = false;
       btn.textContent = 'Fusionar';
@@ -1097,19 +1097,19 @@ function section(id, title, hint, bodyHtml) {
   });
 }
 
-// --- Candidatos de supernodo ---
-// Nodos de dominio sin lugar en la jerarquía (ni hijo ni padre de ningún
-// pertenece_a) agrupados por similitud de sus hechos, ver
-// list-supernode-candidates.mjs para el diseño completo y por qué quedó bajo
+// --- Candidatos de categoría ---
+// recuerdos de dominio sin lugar en la jerarquía (ni hijo ni padre de ningún
+// pertenece_a) agrupados por similitud de sus registros, ver
+// list-category-candidates.mjs para el diseño completo y por qué quedó bajo
 // demanda (el usuario la corre cuando siente el grafo desordenado) en vez de
 // una sugerencia proactiva.
 //
 // Arma una tarjeta por cluster (nombre sugerido editable, miembros con
 // checkbox para excluir alguno) y crea + liga en el navegador
-// (/api/create-node, /api/node-link): revisión humana obligatoria, nada se
+// (/api/create-memory, /api/memory-link): revisión humana obligatoria, nada se
 // crea hasta pulsar el botón de la tarjeta.
 {
-  const sec = section('supernode-candidates', 'Candidatos de supernodo', 'Nodos de dominio que no están ligados a nada en la jerarquía (ni son hijos ni son padres de otro nodo vía "pertenece_a"), agrupados por similitud temática de sus hechos, con un nombre de supernodo sugerido. Nada se crea solo: revisa/edita el nombre y los miembros de cada tarjeta y confirma.',
+  const sec = section('category-candidates', 'Candidatos de categoría', 'recuerdos de dominio que no están ligados a nada en la jerarquía (ni son hijos ni son padres de otro recuerdo vía "pertenece_a"), agrupados por similitud temática de sus registros, con un nombre de categoría sugerido. Nada se crea solo: revisa/edita el nombre y los miembros de cada tarjeta y confirma.',
     `<button class="run" id="sc-run">Buscar candidatos</button>
      <div class="status" id="sc-info"></div>
      <div id="sc-cards"></div>`);
@@ -1126,13 +1126,13 @@ function section(id, title, hint, bodyHtml) {
         (m, i) => `
       <div class="fc-top">
         <input type="checkbox" class="sc-member-include" data-name="${m.name.replace(/"/g, '&quot;')}" checked>
-        <label>${m.name} (${m.factCount} hecho(s))</label>
+        <label>${m.name} (${m.factCount} registro(s))</label>
       </div>
       <div class="fc-fragment">"${(m.example ?? '').replace(/</g, '&lt;')}"</div>`,
       )
       .join('');
     card.innerHTML = `
-      <label>Nombre del supernodo${cluster.suggestedReasoning ? ` -- sugerido: ${cluster.suggestedReasoning}` : ' (sin sugerencia automática, escribe uno)'}</label>
+      <label>Nombre del categoría${cluster.suggestedReasoning ? ` -- sugerido: ${cluster.suggestedReasoning}` : ' (sin sugerencia automática, escribe uno)'}</label>
       <input type="text" class="sc-name" value="${cluster.suggestedName ?? ''}" placeholder="nombre-en-kebab-case">
       <label style="margin-top:14px">Miembros a ligar (desmarca los que no apliquen)</label>
       ${membersHtml}
@@ -1141,7 +1141,7 @@ function section(id, title, hint, bodyHtml) {
       </div>
       <label>Motivo</label>
       <input type="text" class="sc-reason" placeholder="ej. agrupa la infraestructura de GitHub Classroom, antes sin categoría">
-      <button class="run secondary sc-create">Crear supernodo y ligar</button>`;
+      <button class="run secondary sc-create">Crear categoría y ligar</button>`;
     card.querySelector('.sc-date').value = todayBogota();
 
     card.querySelector('.sc-create').addEventListener('click', async () => {
@@ -1149,33 +1149,33 @@ function section(id, title, hint, bodyHtml) {
       const date = card.querySelector('.sc-date').value;
       const reason = card.querySelector('.sc-reason').value.trim();
       const members = [...card.querySelectorAll('.sc-member-include')].filter((cb) => cb.checked).map((cb) => cb.dataset.name);
-      if (!name) { out(card, { ok: false, stdout: '', stderr: 'Falta el nombre del supernodo.' }); return; }
+      if (!name) { out(card, { ok: false, stdout: '', stderr: 'Falta el nombre del categoría.' }); return; }
       if (members.length === 0) { out(card, { ok: false, stdout: '', stderr: 'No hay ningún miembro incluido.' }); return; }
       if (!reason) { out(card, { ok: false, stdout: '', stderr: 'Falta el motivo (queda como fuente de cada enlace).' }); return; }
       const btn = card.querySelector('.sc-create');
       btn.disabled = true;
       btn.textContent = 'Creando…';
       try {
-        // force: true: la desambiguación semántica de create-node.mjs
-        // compara el nombre nuevo contra nodos temáticamente parecidos, pero
+        // force: true: la desambiguación semántica de create-memory.mjs
+        // compara el nombre nuevo contra recuerdos temáticamente parecidos, pero
         // acá la premisa del cluster YA es "parecido a estos miembros", por
         // construcción, sin esto el chequeo bloquea el caso normal de este
         // flujo. La colisión de nombre/alias sigue corriendo sin --force,
         // esa sí aplica igual aquí.
-        const createResult = await call('POST', '/api/create-node', { name, force: true });
+        const createResult = await call('POST', '/api/create-memory', { name, force: true });
         if (!createResult.ok) { out(card, createResult); return; }
         let lines = [createResult.stdout];
         let anyFailed = false;
         for (const member of members) {
-          const linkResult = await call('POST', '/api/node-link', { from: member, to: name, relation: 'pertenece_a', date, reason });
+          const linkResult = await call('POST', '/api/memory-link', { from: member, to: name, relation: 'pertenece_a', date, reason });
           lines.push(linkResult.stdout || linkResult.stderr || linkResult.error);
           if (!linkResult.ok) anyFailed = true;
         }
         out(card, { ok: !anyFailed, stdout: lines.join('\n'), stderr: '' });
-        if (!anyFailed) card.querySelector('.sc-create').textContent = 'Hecho';
+        if (!anyFailed) card.querySelector('.sc-create').textContent = 'registro';
       } finally {
         btn.disabled = false;
-        if (btn.textContent === 'Creando…') btn.textContent = 'Crear supernodo y ligar';
+        if (btn.textContent === 'Creando…') btn.textContent = 'Crear categoría y ligar';
       }
     });
 
@@ -1185,11 +1185,11 @@ function section(id, title, hint, bodyHtml) {
   runBtn.addEventListener('click', async () => {
     cardsEl.innerHTML = '';
     runBtn.disabled = true;
-    infoEl.textContent = 'Buscando (compara embeddings de hechos y pide una sugerencia de nombre por cluster, puede tardar)…';
+    infoEl.textContent = 'Buscando (compara embeddings de registros y pide una sugerencia de nombre por cluster, puede tardar)…';
     try {
-      const r = await call('GET', '/api/supernode-candidates');
+      const r = await call('GET', '/api/category-candidates');
       if (!r.ok) { infoEl.textContent = 'Error: ' + r.error; return; }
-      infoEl.textContent = `${r.orphanCount} nodo(s) sin lugar en la jerarquía -- ${r.clusters.length} cluster(es) candidato(s).`;
+      infoEl.textContent = `${r.orphanCount} recuerdo(s) sin lugar en la jerarquía -- ${r.clusters.length} cluster(es) candidato(s).`;
       r.clusters.forEach((cluster, i) => cardsEl.appendChild(renderCluster(cluster, i)));
     } finally {
       runBtn.disabled = false;
@@ -1198,36 +1198,36 @@ function section(id, title, hint, bodyHtml) {
 }
 
 // --- Alias ---
-// Backfill guiado de alias (Etapa 6, hecho #497): list-alias-candidates.mjs
+// Backfill guiado de alias (Etapa 6, registro #497): list-alias-candidates.mjs
 // solo propone (determinístico + extracción verificada contra el texto real
-// de los hechos del nodo), set-node-aliases.mjs es el único que escribe.
-// Un alias no tiene sentido compartido entre dos nodos (colisión de
+// de los registros del recuerdo), set-memory-aliases.mjs es el único que escribe.
+// Un alias no tiene sentido compartido entre dos recuerdos (colisión de
 // identidad, no relación): el chequeo de colisión vive en el script, acá
 // solo se muestra lo que devuelva.
 {
-  const sec = section('aliases', 'Alias', 'Un alias es una forma natural de nombrar un nodo (nombre de pila, sigla), sin alias, el name interno (kebab-case) casi nunca aparece tal cual en prosa, y el sistema no puede reconocer menciones futuras. "Buscar candidatos" propone formas extraídas de los propios hechos del nodo (verificadas contra el texto real, nunca inventadas). Nada se aplica solo: revisa y aplica/quita abajo.',
-    `<label>Nodo (opcional, vacío = revisa todos los que tengan alias vacío)</label>
-     <input type="text" id="al-scan-node" list="al-nodes-list">
-     <datalist id="al-nodes-list"></datalist>
+  const sec = section('aliases', 'Alias', 'Un alias es una forma natural de nombrar un recuerdo (nombre de pila, sigla), sin alias, el name interno (kebab-case) casi nunca aparece tal cual en prosa, y el sistema no puede reconocer menciones futuras. "Buscar candidatos" propone formas extraídas de los propios registros del recuerdo (verificadas contra el texto real, nunca inventadas). Nada se aplica solo: revisa y aplica/quita abajo.',
+    `<label>recuerdo (opcional, vacío = revisa todos los que tengan alias vacío)</label>
+     <input type="text" id="al-scan-node" list="al-memories-list">
+     <datalist id="al-memories-list"></datalist>
      <button class="run" id="al-scan">Buscar candidatos</button>
 
      <label style="margin-top:22px">Aplicar alias</label>
-     <input type="text" id="al-add-node" placeholder="nodo" list="al-nodes-list">
+     <input type="text" id="al-add-node" placeholder="recuerdo" list="al-memories-list">
      <label>Alias a agregar (separados por coma)</label>
      <input type="text" id="al-add-values" placeholder="ej. Pedro Pérea, pedro-perez">
      <label>Motivo</label><input type="text" id="al-add-reason" placeholder="ej. backfill guiado, aprobado por el usuario">
      <button class="run secondary" id="al-add">Aplicar</button>
 
      <label style="margin-top:22px">Quitar alias</label>
-     <input type="text" id="al-rm-node" placeholder="nodo" list="al-nodes-list">
+     <input type="text" id="al-rm-node" placeholder="recuerdo" list="al-memories-list">
      <label>Alias a quitar (separados por coma)</label>
      <input type="text" id="al-rm-values" placeholder="ej. Diseño Biomédico 2, DB2">
-     <label>Motivo</label><input type="text" id="al-rm-reason" placeholder="ej. forma genérica, colisiona con otro nodo">
+     <label>Motivo</label><input type="text" id="al-rm-reason" placeholder="ej. forma genérica, colisiona con otro recuerdo">
      <button class="run secondary" id="al-rm">Quitar</button>`);
 
-  call('GET', '/api/nodes').then((r) => {
-    const list = sec.querySelector('#al-nodes-list');
-    for (const n of r.nodes ?? []) {
+  call('GET', '/api/memories').then((r) => {
+    const list = sec.querySelector('#al-memories-list');
+    for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
       opt.value = n.name;
       list.appendChild(opt);
@@ -1236,19 +1236,19 @@ function section(id, title, hint, bodyHtml) {
 
   sec.querySelector('#al-scan').addEventListener('click', async () => {
     const node = sec.querySelector('#al-scan-node').value.trim();
-    out(sec, await call('GET', '/api/alias-candidates' + (node ? '?node=' + encodeURIComponent(node) : '')));
+    out(sec, await call('GET', '/api/alias-candidates' + (node ? '?memory=' + encodeURIComponent(node) : '')));
   });
 
   sec.querySelector('#al-add').addEventListener('click', async () => {
     const node = sec.querySelector('#al-add-node').value.trim();
     const aliases = sec.querySelector('#al-add-values').value.trim();
     const reason = sec.querySelector('#al-add-reason').value.trim();
-    if (!node || !aliases || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan nodo/alias/motivo.' }); return; }
+    if (!node || !aliases || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan recuerdo/alias/motivo.' }); return; }
     const btn = sec.querySelector('#al-add');
     btn.disabled = true;
     btn.textContent = 'Aplicando…';
     try {
-      out(sec, await call('POST', '/api/set-node-aliases', { node, aliases, reason }));
+      out(sec, await call('POST', '/api/set-memory-aliases', { node, aliases, reason }));
     } finally {
       btn.disabled = false;
       btn.textContent = 'Aplicar';
@@ -1259,12 +1259,12 @@ function section(id, title, hint, bodyHtml) {
     const node = sec.querySelector('#al-rm-node').value.trim();
     const remove = sec.querySelector('#al-rm-values').value.trim();
     const reason = sec.querySelector('#al-rm-reason').value.trim();
-    if (!node || !remove || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan nodo/alias/motivo.' }); return; }
+    if (!node || !remove || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan recuerdo/alias/motivo.' }); return; }
     const btn = sec.querySelector('#al-rm');
     btn.disabled = true;
     btn.textContent = 'Quitando…';
     try {
-      out(sec, await call('POST', '/api/set-node-aliases', { node, remove, reason }));
+      out(sec, await call('POST', '/api/set-memory-aliases', { node, remove, reason }));
     } finally {
       btn.disabled = false;
       btn.textContent = 'Quitar';
@@ -1273,24 +1273,24 @@ function section(id, title, hint, bodyHtml) {
 }
 
 // --- Relaciones ---
-// Etapa 6: detect-node-mentions.mjs ya avisa/auto-crea al guardar un hecho
-// nuevo (ver "Guardar hecho"); esta sección es para revisar el histórico
-// completo (list-node-mentions.mjs) y para crear/borrar enlaces a mano
+// Etapa 6: detect-memory-mentions.mjs ya avisa/auto-crea al guardar un registro
+// nuevo (ver "Guardar registro"); esta sección es para revisar el histórico
+// completo (list-memory-mentions.mjs) y para crear/borrar enlaces a mano
 // cuando la auto-creación no alcanzó confianza suficiente. Ningún enlace se
 // crea solo desde acá salvo que pulses "Crear".
 {
-  const sec = section('relations', 'Relaciones', 'Enlaces persistentes nodo-a-nodo ("node_edges"), distinto de que un hecho puntual mencione a dos nodos a la vez. "Buscar candidatos" corre el escaneo de co-ocurrencia contra TODO el histórico ("list-node-mentions.mjs"), útil para auditar lo que la auto-creación no llegó a resolver sola. Crear/Borrar son siempre manuales.',
+  const sec = section('relations', 'Relaciones', 'Enlaces persistentes recuerdo-a-recuerdo ("memory_links"), distinto de que un registro puntual mencione a dos recuerdos a la vez. "Buscar candidatos" corre el escaneo de co-ocurrencia contra TODO el histórico ("list-memory-mentions.mjs"), útil para auditar lo que la auto-creación no llegó a resolver sola. Crear/Borrar son siempre manuales.',
     `<button class="run" id="rl-scan">Buscar candidatos (histórico completo)</button>
 
-     <label style="margin-top:22px">Ver enlaces de un nodo</label>
-     <input type="text" id="rl-view-node" placeholder="nodo" list="rl-nodes-list">
-     <datalist id="rl-nodes-list"></datalist>
+     <label style="margin-top:22px">Ver enlaces de un recuerdo</label>
+     <input type="text" id="rl-view-node" placeholder="recuerdo" list="rl-memories-list">
+     <datalist id="rl-memories-list"></datalist>
      <button class="run secondary" id="rl-view">Ver</button>
 
      <label style="margin-top:22px">Crear enlace</label>
      <div class="row">
-       <div><input type="text" id="rl-from" placeholder="from" list="rl-nodes-list"></div>
-       <div><input type="text" id="rl-to" placeholder="to" list="rl-nodes-list"></div>
+       <div><input type="text" id="rl-from" placeholder="from" list="rl-memories-list"></div>
+       <div><input type="text" id="rl-to" placeholder="to" list="rl-memories-list"></div>
      </div>
      <div class="row">
        <div><label>Relación</label><input type="text" id="rl-relation" placeholder="ej. colabora_con"></div>
@@ -1301,17 +1301,17 @@ function section(id, title, hint, bodyHtml) {
 
      <label style="margin-top:22px">Borrar enlace</label>
      <div class="row">
-       <div><input type="text" id="rl-un-from" placeholder="from" list="rl-nodes-list"></div>
-       <div><input type="text" id="rl-un-to" placeholder="to" list="rl-nodes-list"></div>
+       <div><input type="text" id="rl-un-from" placeholder="from" list="rl-memories-list"></div>
+       <div><input type="text" id="rl-un-to" placeholder="to" list="rl-memories-list"></div>
      </div>
      <label>Relación (opcional, obligatoria si el par tiene más de una)</label>
      <input type="text" id="rl-un-relation" placeholder="ej. colabora_con">
      <label>Motivo</label><input type="text" id="rl-un-reason" placeholder="ej. colisión de alias, no era relación real">
      <button class="run secondary" id="rl-unlink">Borrar</button>`);
 
-  call('GET', '/api/nodes').then((r) => {
-    const list = sec.querySelector('#rl-nodes-list');
-    for (const n of r.nodes ?? []) {
+  call('GET', '/api/memories').then((r) => {
+    const list = sec.querySelector('#rl-memories-list');
+    for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
       opt.value = n.name;
       list.appendChild(opt);
@@ -1322,8 +1322,8 @@ function section(id, title, hint, bodyHtml) {
 
   sec.querySelector('#rl-view').addEventListener('click', async () => {
     const node = sec.querySelector('#rl-view-node').value.trim();
-    if (!node) { out(sec, { ok: false, stdout: '', stderr: 'Falta el nodo.' }); return; }
-    out(sec, await call('GET', '/api/node-edges?node=' + encodeURIComponent(node)));
+    if (!node) { out(sec, { ok: false, stdout: '', stderr: 'Falta el recuerdo.' }); return; }
+    out(sec, await call('GET', '/api/memory-links?memory=' + encodeURIComponent(node)));
   });
 
   sec.querySelector('#rl-link').addEventListener('click', async () => {
@@ -1337,7 +1337,7 @@ function section(id, title, hint, bodyHtml) {
     btn.disabled = true;
     btn.textContent = 'Creando…';
     try {
-      out(sec, await call('POST', '/api/node-link', { from, to, relation, date, reason }));
+      out(sec, await call('POST', '/api/memory-link', { from, to, relation, date, reason }));
     } finally {
       btn.disabled = false;
       btn.textContent = 'Crear';
@@ -1354,7 +1354,7 @@ function section(id, title, hint, bodyHtml) {
     btn.disabled = true;
     btn.textContent = 'Borrando…';
     try {
-      out(sec, await call('POST', '/api/node-unlink', { from, to, relation, reason }));
+      out(sec, await call('POST', '/api/memory-unlink', { from, to, relation, reason }));
     } finally {
       btn.disabled = false;
       btn.textContent = 'Borrar';
@@ -1362,26 +1362,26 @@ function section(id, title, hint, bodyHtml) {
   });
 }
 
-// --- Recategorizar hecho ---
-// Distinto de Fusionar nodos (mueve TODOS los hechos de un nodo): esto
-// corrige un hecho puntual mal etiquetado sin tocar el resto del nodo (ver
-// hecho #498, caso real del hecho #412 en vault-overview en vez de
-// cabd-2026-2). No borra ni retracta el hecho, solo corrige a qué nodo
+// --- Recategorizar registro ---
+// Distinto de Fusionar recuerdos (mueve TODOS los registros de un recuerdo): esto
+// corrige un registro puntual mal etiquetado sin tocar el resto del recuerdo (ver
+// registro #498, caso real del registro #412 en vault-overview en vez de
+// cabd-2026-2). No borra ni retracta el registro, solo corrige a qué recuerdo
 // pertenece.
 {
-  const sec = section('recategorize', 'Recategorizar hecho', 'Reasigna UN hecho a otro nodo, sin tocar el resto del nodo original ("recategorize-fact.mjs"), para cuando la desambiguación automática se equivocó, o se guardó con --node a mano sin pensarlo. Usa "Retractar → Ver hecho(s)" si primero quieres confirmar el texto del id.',
-    `<label>Id del hecho</label><input type="text" id="rc-fact" placeholder="412">
+  const sec = section('recategorize', 'Recategorizar registro', 'Reasigna UN registro a otro recuerdo, sin tocar el resto del recuerdo original ("recategorize-record.mjs"), para cuando la desambiguación automática se equivocó, o se guardó con --memory a mano sin pensarlo. Usa "Retractar → Ver registro(s)" si primero quieres confirmar el texto del id.',
+    `<label>Id del registro</label><input type="text" id="rc-fact" placeholder="412">
      <div class="row">
-       <div><label>Nodo actual</label><input type="text" id="rc-from" list="rc-nodes-list"></div>
-       <div><label>Nodo correcto</label><input type="text" id="rc-to" list="rc-nodes-list"></div>
+       <div><label>recuerdo actual</label><input type="text" id="rc-from" list="rc-memories-list"></div>
+       <div><label>recuerdo correcto</label><input type="text" id="rc-to" list="rc-memories-list"></div>
      </div>
-     <datalist id="rc-nodes-list"></datalist>
-     <label>Motivo</label><input type="text" id="rc-reason" placeholder="ej. el hecho es sobre CABD, no sobre el vault en general">
+     <datalist id="rc-memories-list"></datalist>
+     <label>Motivo</label><input type="text" id="rc-reason" placeholder="ej. el registro es sobre CABD, no sobre el vault en general">
      <button class="run" id="rc-run">Reasignar</button>`);
 
-  call('GET', '/api/nodes').then((r) => {
-    const list = sec.querySelector('#rc-nodes-list');
-    for (const n of r.nodes ?? []) {
+  call('GET', '/api/memories').then((r) => {
+    const list = sec.querySelector('#rc-memories-list');
+    for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
       opt.value = n.name;
       list.appendChild(opt);
@@ -1393,12 +1393,12 @@ function section(id, title, hint, bodyHtml) {
     const from = sec.querySelector('#rc-from').value.trim();
     const to = sec.querySelector('#rc-to').value.trim();
     const reason = sec.querySelector('#rc-reason').value.trim();
-    if (!fact || !from || !to || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan id/nodo actual/nodo correcto/motivo.' }); return; }
+    if (!fact || !from || !to || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan id/recuerdo actual/recuerdo correcto/motivo.' }); return; }
     const btn = sec.querySelector('#rc-run');
     btn.disabled = true;
     btn.textContent = 'Reasignando…';
     try {
-      out(sec, await call('POST', '/api/recategorize-fact', { fact, from, to, reason }));
+      out(sec, await call('POST', '/api/recategorize-record', { fact, from, to, reason }));
     } finally {
       btn.disabled = false;
       btn.textContent = 'Reasignar';
@@ -1406,10 +1406,10 @@ function section(id, title, hint, bodyHtml) {
   });
 }
 
-// --- Guardar hecho ---
+// --- Guardar registro ---
 {
-  const sec = section('remember', 'Guardar hecho', 'Inserta un hecho nuevo ("remember.mjs"). Fecha y fuente son obligatorias. Antes de guardarlo, pasa por el filtro de contradicciones.',
-    `<label>Hecho (claim)</label><textarea id="rm-claim"></textarea>
+  const sec = section('remember', 'Guardar registro', 'Inserta un registro nuevo ("remember.mjs"). Fecha y fuente son obligatorias. Antes de guardarlo, pasa por el filtro de contradicciones.',
+    `<label>registro (claim)</label><textarea id="rm-claim"></textarea>
      <div class="row">
        <div><label>Fecha</label><input type="date" id="rm-date"></div>
        <div><label>Tipo</label>
@@ -1424,11 +1424,11 @@ function section(id, title, hint, bodyHtml) {
        <label for="rm-confirm-date">Confirmo que la fecha distinta de hoy es intencional (--confirm-date)</label>
      </div>
      <label>Fuente</label><input type="text" id="rm-source" placeholder="ej. conversación Claude Code, sesión de trabajo">
-     <label>Nodo(s) (opcional, separados por coma, empieza a escribir para ver sugerencias)</label>
-     <input type="text" id="rm-node" placeholder="ej. segundo-cerebro" list="rm-nodes-list">
-     <datalist id="rm-nodes-list"></datalist>
-     <div class="checkline"><input type="checkbox" id="rm-create-node"><label for="rm-create-node">Crear nodo nuevo, requiere escribir el nombre arriba en "Nodo(s)" (--create-node)</label></div>
-     <label style="margin-top:10px">Alias del nodo nuevo (opcional, separados por coma, solo aplica con "Crear nodo nuevo" y un único nodo)</label>
+     <label>recuerdo(s) (opcional, separados por coma, empieza a escribir para ver sugerencias)</label>
+     <input type="text" id="rm-node" placeholder="ej. segundo-cerebro" list="rm-memories-list">
+     <datalist id="rm-memories-list"></datalist>
+     <div class="checkline"><input type="checkbox" id="rm-create-memory"><label for="rm-create-memory">Crear recuerdo nuevo, requiere escribir el nombre arriba en "recuerdo(s)" (--create-memory)</label></div>
+     <label style="margin-top:10px">Alias del recuerdo nuevo (opcional, separados por coma, solo aplica con "Crear recuerdo nuevo" y un único recuerdo)</label>
      <input type="text" id="rm-aliases" placeholder="ej. Pedro Pérez, jefe">
      <div class="row">
        <div><label>Supersede a (ids, opcional)</label><input type="text" id="rm-supersedes" placeholder="12,15"></div>
@@ -1436,9 +1436,9 @@ function section(id, title, hint, bodyHtml) {
      </div>
      <button class="run" id="rm-run">Guardar</button>`);
 
-  call('GET', '/api/nodes').then((r) => {
-    const list = sec.querySelector('#rm-nodes-list');
-    for (const n of r.nodes ?? []) {
+  call('GET', '/api/memories').then((r) => {
+    const list = sec.querySelector('#rm-memories-list');
+    for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
       opt.value = n.name;
       list.appendChild(opt);
@@ -1465,7 +1465,7 @@ function section(id, title, hint, bodyHtml) {
       source: sec.querySelector('#rm-source').value.trim(),
       kind: sec.querySelector('#rm-kind').value,
       node: sec.querySelector('#rm-node').value.trim() || undefined,
-      createNode: sec.querySelector('#rm-create-node').checked || undefined,
+      createNode: sec.querySelector('#rm-create-memory').checked || undefined,
       aliases: sec.querySelector('#rm-aliases').value.trim() || undefined,
       supersedes: sec.querySelector('#rm-supersedes').value.trim() || undefined,
       distinct: sec.querySelector('#rm-distinct').checked || undefined,
@@ -1476,18 +1476,18 @@ function section(id, title, hint, bodyHtml) {
       out(sec, { ok: false, stdout: '', stderr: `La fecha (${body.date}) es distinta de hoy (${todayBogota()}), marca "Confirmo que la fecha distinta de hoy es intencional" antes de guardar.` });
       return;
     }
-    if (body.createNode && !body.node) {
-      out(sec, { ok: false, stdout: '', stderr: 'Marcaste "Crear nodo nuevo" pero el campo "Nodo(s)" está vacío, escribe ahí el nombre del nodo nuevo antes de guardar.' });
+    if (body.createNode && !body.memory) {
+      out(sec, { ok: false, stdout: '', stderr: 'Marcaste "Crear recuerdo nuevo" pero el campo "recuerdo(s)" está vacío, escribe ahí el nombre del recuerdo nuevo antes de guardar.' });
       return;
     }
     if (body.aliases && !body.createNode) {
-      out(sec, { ok: false, stdout: '', stderr: 'Escribiste alias pero no marcaste "Crear nodo nuevo", los alias solo aplican al crear un nodo.' });
+      out(sec, { ok: false, stdout: '', stderr: 'Escribiste alias pero no marcaste "Crear recuerdo nuevo", los alias solo aplican al crear un recuerdo.' });
       return;
     }
     // Sin esto, un usuario que se distrae entre el clic y la respuesta (o
     // que no ve el recuadro de salida más abajo) no tiene ninguna señal de
     // que el guardado ya corrió, y puede volver a hacer clic: insertando
-    // el mismo hecho dos veces (visto en vivo: #513 duplicado por #514,
+    // el mismo registro dos veces (visto en vivo: #513 duplicado por #514,
     // mismo contenido). El botón deshabilitado + "Guardando…" cubre el
     // primer caso; vaciar el claim solo en éxito real es la señal fuerte:
     // si el texto sigue ahí, no se guardó (o falló/bloqueó), así de simple.
@@ -1507,8 +1507,8 @@ function section(id, title, hint, bodyHtml) {
 
 // --- Guardar lote ---
 {
-  const sec = section('remember-batch', 'Guardar lote', 'Ingiere un lote de hechos en JSON ("remember-batch.mjs"). Pega un objeto con la forma {"facts":[...]}, generado por extracción automática o cualquier otra fuente.',
-    `<label>JSON</label><textarea id="rb-json" placeholder='{"facts":[{"claim":"...","date":"YYYY-MM-DD","source":"..."}]}'></textarea>
+  const sec = section('remember-batch', 'Guardar lote', 'Ingiere un lote de registros en JSON ("remember-batch.mjs"). Pega un objeto con la forma {"records":[...]}, generado por extracción automática o cualquier otra fuente.',
+    `<label>JSON</label><textarea id="rb-json" placeholder='{"records":[{"claim":"...","date":"YYYY-MM-DD","source":"..."}]}'></textarea>
      <div class="checkline">
        <input type="checkbox" id="rb-confirm-date">
        <label for="rb-confirm-date">Confirmo que las fechas distintas de hoy en el lote son intencionales (--confirm-date, ej. un timeline histórico)</label>
@@ -1525,12 +1525,12 @@ function section(id, title, hint, bodyHtml) {
 
 // --- Retractar ---
 {
-  const sec = section('forget', 'Retractar', 'Invalida un hecho vigente sin reemplazarlo ("forget.mjs"). Nunca borra la fila, el motivo queda anotado y sigue consultable con --all en Timeline. Para borrar de verdad basura sin ningún valor histórico (pruebas, duplicados de debugging), existe forget.mjs --id <id> --purge (o --node <nombre> --purge) por CLI, deliberadamente fuera de este panel, solo borra lo ya retractado, nunca un hecho vigente en un solo paso.',
+  const sec = section('forget', 'Retractar', 'Invalida un registro vigente sin reemplazarlo ("forget.mjs"). Nunca borra la fila, el motivo queda anotado y sigue consultable con --all en Timeline. Para borrar de verdad basura sin ningún valor histórico (pruebas, duplicados de debugging), existe forget.mjs --id <id> --purge (o --memory <nombre> --purge) por CLI, deliberadamente fuera de este panel, solo borra lo ya retractado, nunca un registro vigente en un solo paso.',
     `<label>Id(s) (separados por coma)</label><input type="text" id="fg-id" placeholder="159,160">
-     <button class="run secondary" id="fg-preview" style="margin-top:8px">Ver hecho(s)</button>
+     <button class="run secondary" id="fg-preview" style="margin-top:8px">Ver registro(s)</button>
      <label style="margin-top:16px">Motivo</label><input type="text" id="fg-reason" placeholder="ej. aprobado por error, ruido de desarrollo interno">
      <button class="run" id="fg-run" disabled>Retractar</button>
-     <div class="status" id="fg-status">Primero pulsa "Ver hecho(s)" para confirmar qué vas a retractar.</div>`);
+     <div class="status" id="fg-status">Primero pulsa "Ver registro(s)" para confirmar qué vas a retractar.</div>`);
 
   const idInput = sec.querySelector('#fg-id');
   const runBtn = sec.querySelector('#fg-run');
@@ -1542,14 +1542,14 @@ function section(id, title, hint, bodyHtml) {
     previewedFor = null;
     previewedFacts = [];
     runBtn.disabled = true;
-    statusEl.textContent = 'El id cambió, vuelve a pulsar "Ver hecho(s)" antes de retractar.';
+    statusEl.textContent = 'El id cambió, vuelve a pulsar "Ver registro(s)" antes de retractar.';
   }
   idInput.addEventListener('input', invalidatePreview);
 
   sec.querySelector('#fg-preview').addEventListener('click', async () => {
     const id = idInput.value.trim();
     if (!id) { out(sec, { ok: false, stdout: '', stderr: 'Falta el id.' }); return; }
-    const r = await call('GET', '/api/facts?id=' + encodeURIComponent(id));
+    const r = await call('GET', '/api/records?id=' + encodeURIComponent(id));
     out(sec, r);
     if (r.ok && !/^Ningún id existe\.?$/.test((r.stdout || '').trim())) {
       previewedFor = id;
@@ -1567,11 +1567,11 @@ function section(id, title, hint, bodyHtml) {
     const id = idInput.value.trim();
     const reason = sec.querySelector('#fg-reason').value.trim();
     if (!id || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan id/motivo.' }); return; }
-    if (previewedFor !== id) { out(sec, { ok: false, stdout: '', stderr: 'Vuelve a pulsar "Ver hecho(s)", el id no coincide con el último previsualizado.' }); return; }
+    if (previewedFor !== id) { out(sec, { ok: false, stdout: '', stderr: 'Vuelve a pulsar "Ver registro(s)", el id no coincide con el último previsualizado.' }); return; }
 
     const summary = previewedFacts.map((f) => `#${f.id} [${f.status}]: ${f.claim.slice(0, 100)}${f.claim.length > 100 ? '…' : ''}`).join('\n');
     const confirmed = window.confirm(
-      `¿Confirmas retractar ${previewedFacts.length} hecho(s)?\n\n${summary}\n\nMotivo: ${reason}`,
+      `¿Confirmas retractar ${previewedFacts.length} registro(s)?\n\n${summary}\n\nMotivo: ${reason}`,
     );
     if (!confirmed) { statusEl.textContent = 'Retracto cancelado por el usuario.'; return; }
 
@@ -1582,7 +1582,7 @@ function section(id, title, hint, bodyHtml) {
 
 // --- Modelos ---
 // Edita config/gemini-models.json y config/ollama-models.json: las listas
-// de respaldo que usan extract-facts.mjs y extract-page-facts.mjs cuando el
+// de respaldo que usan extract-records.mjs y extract-page-records.mjs cuando el
 // primer modelo responde 503 (sobrecargado). Un modelo por línea, en orden
 // de prioridad. Se recargan en "Extraer de sesión"/"Extraer de página" al
 // volver a abrir esas pestañas.
@@ -1620,17 +1620,17 @@ function section(id, title, hint, bodyHtml) {
 // comando exacto con los flags elegidos, para copiar y correr donde el
 // usuario prefiera.
 {
-  const sec = section('extract-facts', 'Extraer de sesión', 'No hay un único camino: depende de dónde estés. Elige tu caso.',
+  const sec = section('extract-records', 'Extraer de sesión', 'No hay un único camino: depende de dónde estés. Elige tu caso.',
     `<ul class="scenarios">
        <li><strong>Chat, Cowork, Code o CLI, en cualquier repo:</strong>
-         usa la skill <code>/extract-code-facts</code> + MyMCP. O pídele al LLM:
-         <em>"extrae los hechos de esta sesión y usa MyMCP para subirlos a nuestro segundo cerebro."</em></li>
+         usa la skill <code>/extract-code-records</code> + MyMCP. O pídele al LLM:
+         <em>"extrae los registros de esta sesión y usa MyMCP para subirlos a nuestro segundo cerebro."</em></li>
        <li><strong>Dentro de la carpeta local del segundo cerebro (ej. C:\\segundo-cerebro):</strong>
-         pídele al LLM <em>"extrae los hechos de la sesión de hoy y súbelos a nuestro segundo cerebro"</em>.
+         pídele al LLM <em>"extrae los registros de la sesión de hoy y súbelos a nuestro segundo cerebro"</em>.
          Si necesitas algo más preciso (fecha/hora exactas, proveedor, revisión interactiva), arma el
          comando de abajo y córrelo tú mismo en una terminal.</li>
      </ul>
-     <p class="hint" style="margin-top:22px">Arma el comando de "extract-facts.mjs" para tu propia terminal, donde sí puedes usar --review. Este botón no ejecuta nada: solo copia el comando.</p>
+     <p class="hint" style="margin-top:22px">Arma el comando de "extract-records.mjs" para tu propia terminal, donde sí puedes usar --review. Este botón no ejecuta nada: solo copia el comando.</p>
      <div class="row">
        <div><label>Fecha</label><input type="date" id="ef-date"></div>
        <div><label>Desde</label><input type="time" id="ef-from"></div>
@@ -1680,7 +1680,7 @@ function section(id, title, hint, bodyHtml) {
     const session = sec.querySelector('#ef-session').value.trim();
     const review = sec.querySelector('#ef-review').checked;
 
-    const parts = ['node', 'scripts/db/extract-facts.mjs'];
+    const parts = ['node', 'scripts/db/extract-records.mjs'];
     parts.push('--date', date || 'YYYY-MM-DD');
     parts.push('--from', from || 'HH:MM');
     parts.push('--to', to || 'HH:MM');
@@ -1712,13 +1712,13 @@ function section(id, title, hint, bodyHtml) {
 // --- Extraer de página ---
 // Revisión interactiva de verdad, en el navegador (2026-08-31): antes esta
 // sección solo armaba un comando de terminal, porque --review necesita TTY.
-// extract-page-facts.mjs ahora tiene un modo --json (sin preguntas por
-// stdin) que entrega los candidatos con sus nodos parecidos ya calculados;
+// extract-page-records.mjs ahora tiene un modo --json (sin preguntas por
+// stdin) que entrega los candidatos con sus recuerdos parecidos ya calculados;
 // esta sección arma las tarjetas de aprobar/editar/saltar acá mismo y los
 // inserta vía /api/remember-batch (el mismo endpoint de "Guardar lote", sin
 // código nuevo de escritura).
 {
-  const sec = section('extract-page-facts', 'Extraer de página', 'Extrae hechos candidatos del contenido de una página ("extract-page-facts.mjs") y los revisa acá mismo, sin terminal. Acepta un slug ya existente, o la ruta a cualquier archivo .md en disco, esté o no en la tabla "pages". Cada candidato trae nodos existentes parecidos por contenido, no solo el que sugiere el nombre del archivo.',
+  const sec = section('extract-page-records', 'Extraer de página', 'Extrae registros candidatos del contenido de una página ("extract-page-records.mjs") y los revisa acá mismo, sin terminal. Acepta un slug ya existente, o la ruta a cualquier archivo .md en disco, esté o no en la tabla "pages". Cada candidato trae recuerdos existentes parecidos por contenido, no solo el que sugiere el nombre del archivo.',
     `<label>Página (slug existente o ruta .md)</label>
      <input type="text" id="epf-page" placeholder="ej. projects/segundo-cerebro o C:\\notas\\ejemplo.md" list="epf-pages-list">
      <datalist id="epf-pages-list"></datalist>
@@ -1732,7 +1732,7 @@ function section(id, title, hint, bodyHtml) {
      </div>
      <button class="run" id="epf-extract">Extraer candidatos</button>
      <div class="status" id="epf-info"></div>
-     <datalist id="epf-nodes-list"></datalist>
+     <datalist id="epf-memories-list"></datalist>
      <div id="epf-cards"></div>
      <button class="run" id="epf-insert" style="display:none">Insertar aprobados</button>`);
 
@@ -1742,7 +1742,7 @@ function section(id, title, hint, bodyHtml) {
   const infoEl = sec.querySelector('#epf-info');
   const cardsEl = sec.querySelector('#epf-cards');
   const insertBtn = sec.querySelector('#epf-insert');
-  const nodesList = sec.querySelector('#epf-nodes-list');
+  const nodesList = sec.querySelector('#epf-memories-list');
 
   call('GET', '/api/pages').then((r) => {
     const list = sec.querySelector('#epf-pages-list');
@@ -1752,8 +1752,8 @@ function section(id, title, hint, bodyHtml) {
       list.appendChild(opt);
     }
   });
-  call('GET', '/api/nodes').then((r) => {
-    for (const n of r.nodes ?? []) {
+  call('GET', '/api/memories').then((r) => {
+    for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
       opt.value = n.name;
       nodesList.appendChild(opt);
@@ -1779,14 +1779,14 @@ function section(id, title, hint, bodyHtml) {
     card.className = 'fact-card';
     card.dataset.index = String(index);
     const suggestionsHtml = (fact.similarNodes ?? []).length
-      ? (fact.similarNodes ?? []).map((n) => `<span data-node="${n.node_name.replace(/"/g, '&quot;')}">${n.node_name} (${n.similarity.toFixed(2)})</span>`).join(', ')
+      ? (fact.similarNodes ?? []).map((n) => `<span data-node="${n.memory_name.replace(/"/g, '&quot;')}">${n.memory_name} (${n.similarity.toFixed(2)})</span>`).join(', ')
       : '(sin sugerencias)';
     card.innerHTML = `
       <div class="fc-top">
         <input type="checkbox" class="fc-include" checked>
         <label>Incluir #${index + 1} (${fact.kind})</label>
       </div>
-      <label>Hecho</label>
+      <label>registro</label>
       <textarea class="fc-claim">${fact.claim.replace(/</g, '&lt;')}</textarea>
       <div class="row">
         <div><label>Fecha</label><input type="date" class="fc-date" value="${fact.date ?? fallbackDate ?? ''}"></div>
@@ -1797,9 +1797,9 @@ function section(id, title, hint, bodyHtml) {
           </select>
         </div>
       </div>
-      <label>Nodo</label>
-      <input type="text" class="fc-node" value="${fact.node}" list="epf-nodes-list">
-      <div class="fc-suggestions">nodos parecidos: ${suggestionsHtml}</div>
+      <label>recuerdo</label>
+      <input type="text" class="fc-node" value="${fact.node}" list="epf-memories-list">
+      <div class="fc-suggestions">recuerdos parecidos: ${suggestionsHtml}</div>
       <div class="fc-fragment">"${(fact.sourceFragment ?? '').replace(/</g, '&lt;')}"</div>`;
     card.querySelector('.fc-kind').value = fact.kind;
     card.querySelector('.fc-include').addEventListener('change', (e) => card.classList.toggle('excluded', !e.target.checked));
@@ -1820,14 +1820,14 @@ function section(id, title, hint, bodyHtml) {
       const params = new URLSearchParams({ page });
       if (providerSel.value !== 'gemini') params.set('provider', providerSel.value);
       if (modelSel.value) params.set('model', modelSel.value);
-      const r = await call('GET', '/api/extract-page-facts?' + params.toString());
+      const r = await call('GET', '/api/extract-page-records?' + params.toString());
       if (!r.ok) { infoEl.textContent = 'Error: ' + r.error; return; }
       lastSource = r.source;
       const nodeInfo = r.liveNode && r.liveNode !== r.defaultNode ? `fusionado, vigente: "${r.liveNode}"` : r.liveNode ? 'ya existe' : 'nuevo';
-      infoEl.textContent = `Página: ${r.page.slug} (${r.page.type}) · nodo por defecto "${r.defaultNode}" (${nodeInfo}) · ${r.existingFactsCount} hecho(s) ya vigente(s) · ${r.facts.length} candidato(s).`;
-      if (r.facts.length === 0) return;
+      infoEl.textContent = `Página: ${r.page.slug} (${r.page.type}) · recuerdo por defecto "${r.defaultNode}" (${nodeInfo}) · ${r.existingFactsCount} registro(s) ya vigente(s) · ${r.records.length} candidato(s).`;
+      if (r.records.length === 0) return;
       const fallbackDate = r.page.updatedAt ? r.page.updatedAt.slice(0, 10) : '';
-      r.facts.forEach((f, i) => cardsEl.appendChild(renderCard(f, i, fallbackDate)));
+      r.records.forEach((f, i) => cardsEl.appendChild(renderCard(f, i, fallbackDate)));
       insertBtn.style.display = '';
     } finally {
       extractBtn.disabled = false;
@@ -1837,7 +1837,7 @@ function section(id, title, hint, bodyHtml) {
   insertBtn.addEventListener('click', async () => {
     const cards = [...cardsEl.querySelectorAll('.fact-card')].filter((c) => c.querySelector('.fc-include').checked);
     if (cards.length === 0) { out(sec, { ok: false, stdout: '', stderr: 'No hay ningún candidato incluido.' }); return; }
-    const facts = cards.map((c) => ({
+    const records = cards.map((c) => ({
       claim: c.querySelector('.fc-claim').value.trim(),
       date: c.querySelector('.fc-date').value || undefined,
       kind: c.querySelector('.fc-kind').value,
@@ -1845,7 +1845,7 @@ function section(id, title, hint, bodyHtml) {
       source: lastSource,
       createNode: true,
     }));
-    await runRememberBatchStream(sec, { facts }, insertBtn);
+    await runRememberBatchStream(sec, { records }, insertBtn);
   });
 }
 
@@ -1900,8 +1900,8 @@ function section(id, title, hint, bodyHtml) {
 
      <label style="margin-top:18px">Colores del grafo</label>
      <div class="row">
-       <div><label style="margin-top:0">Nodo normal</label><input type="color" id="cfg-graph-normal"></div>
-       <div><label style="margin-top:0">Nodo meta</label><input type="color" id="cfg-graph-meta"></div>
+       <div><label style="margin-top:0">recuerdo normal</label><input type="color" id="cfg-graph-normal"></div>
+       <div><label style="margin-top:0">recuerdo meta</label><input type="color" id="cfg-graph-meta"></div>
        <div><label style="margin-top:0">Resaltado</label><input type="color" id="cfg-graph-highlight"></div>
      </div>
      <button class="run secondary" id="cfg-graph-reset">Restablecer colores del grafo</button>

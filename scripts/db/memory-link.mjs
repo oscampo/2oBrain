@@ -1,17 +1,17 @@
-// Crea (o lista) una relación nodo-a-nodo persistente en node_edges,
-// distinta de que un hecho puntual mencione a dos nodos a la vez (fact_nodes
-// many-to-many, ver schema.sql): esto conecta dos nodos que existen
+// Crea (o lista) una relación recuerdo-a-recuerdo persistente en memory_links,
+// distinta de que un registro puntual mencione a dos recuerdos a la vez (record_memories
+// many-to-many, ver schema.sql): esto conecta dos recuerdos que existen
 // independientemente ("John colabora en Atlas", "Atlas está reportado en
-// el plan 2026-2"), sin depender de que algún hecho los mencione juntos.
+// el plan 2026-2"), sin depender de que algún registro los mencione juntos.
 // Siempre a mano, nunca inferida: mismo criterio fail-closed que
-// merge-nodes.mjs: una relación equivocada contamina cualquier consulta
+// merge-memories.mjs: una relación equivocada contamina cualquier consulta
 // futura de "qué se conecta con X".
 // Uso:
-//   node node-link.mjs --from john-smith --to atlas-2026 --relation "colabora_con" --date 2026-09-02 --reason "envió insumos para la presentación del viernes con Jane Doe"
-//   node node-link.mjs --list atlas-2026   (ambos sentidos: from y to)
+//   node memory-link.mjs --from john-smith --to atlas-2026 --relation "colabora_con" --date 2026-09-02 --reason "envió insumos para la presentación del viernes con Jane Doe"
+//   node memory-link.mjs --list atlas-2026   (ambos sentidos: from y to)
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
-import { createEdge, resolveLiveNode } from './lib/create-edge.mjs';
+import { createLink, resolveLiveMemory } from './lib/create-link.mjs';
 
 function parseArgs(argv) {
   const out = {};
@@ -30,8 +30,8 @@ const args = parseArgs(process.argv.slice(2));
 
 const USAGE =
   'Uso:\n' +
-  '  node node-link.mjs --from <nodo> --to <nodo> --relation "colabora_con" --date YYYY-MM-DD --reason "..."\n' +
-  '  node node-link.mjs --list <nodo>   (todas sus conexiones, en ambos sentidos)';
+  '  node memory-link.mjs --from <recuerdo> --to <recuerdo> --relation "colabora_con" --date YYYY-MM-DD --reason "..."\n' +
+  '  node memory-link.mjs --list <recuerdo>   (todas sus conexiones, en ambos sentidos)';
 
 if (!args.list && (!args.from || !args.to || !args.relation || !args.date || !args.reason)) {
   console.error(USAGE);
@@ -63,14 +63,14 @@ const client = new pg.Client({
 });
 await client.connect();
 
-// Resuelve un nombre a su nodo vigente siguiendo merged_into, o termina el
-// proceso con un mensaje claro -- resolveLiveNode (lib/create-edge.mjs) es
+// Resuelve un nombre a su recuerdo vigente siguiendo merged_into, o termina el
+// proceso con un mensaje claro -- resolveLiveMemory (lib/create-link.mjs) es
 // la lógica compartida, esto solo la adapta al patrón CLI (exit 1 en vez de
 // devolver {ok: false}).
 async function resolveLiveOrExit(name) {
-  const result = await resolveLiveNode(client, name);
+  const result = await resolveLiveMemory(client, name);
   if (!result.ok) {
-    console.error(`${result.error} Revisa el nombre con list-nodes.mjs.`);
+    console.error(`${result.error} Revisa el nombre con list-memories.mjs.`);
     await client.end();
     process.exit(1);
   }
@@ -80,8 +80,8 @@ async function resolveLiveOrExit(name) {
 if (args.list) {
   const node = await resolveLiveOrExit(args.list);
   const { rows } = await client.query(
-    `select from_node, to_node, relation, date, source from node_edges
-     where from_node = $1 or to_node = $1
+    `select from_memory, to_memory, relation, date, source from memory_links
+     where from_memory = $1 or to_memory = $1
      order by date desc`,
     [node],
   );
@@ -89,7 +89,7 @@ if (args.list) {
     console.log(`"${node}" no tiene ninguna conexión registrada.`);
   } else {
     for (const r of rows) {
-      const arrow = r.from_node === node ? `-> ${r.to_node}` : `<- ${r.from_node}`;
+      const arrow = r.from_memory === node ? `-> ${r.to_memory}` : `<- ${r.from_memory}`;
       console.log(`[${r.date.toISOString().slice(0, 10)}] ${node} ${arrow} (${r.relation})`);
       console.log(`  fuente: ${r.source}`);
     }
@@ -98,13 +98,13 @@ if (args.list) {
   process.exit();
 }
 
-const result = await createEdge(client, args.from, args.to, args.relation, args.reason, args.date);
+const result = await createLink(client, args.from, args.to, args.relation, args.reason, args.date);
 if (!result.ok) {
   console.error(result.error);
   await client.end();
   process.exit(1);
 }
 
-console.log(`Conectado: ${result.fromNode} -> ${result.toNode} (${result.relation})`);
+console.log(`Conectado: ${result.fromMemory} -> ${result.toMemory} (${result.relation})`);
 
 await client.end();

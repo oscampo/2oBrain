@@ -1,6 +1,6 @@
-// Backfill de embeddings para facts que quedaron con embedding = null (ej.
+// Backfill de embeddings para records que quedaron con embedding = null (ej.
 // tras la migración de dimensión a Voyage, 2026-08-22). remember.mjs ya
-// genera el embedding al insertar un hecho nuevo, este script es solo para
+// genera el embedding al insertar un registro nuevo, este script es solo para
 // rellenar los que quedaron atrás. input_type 'document' (mismo criterio
 // que embed-pages.mjs: es contenido almacenado, no una consulta).
 import { readFileSync } from 'node:fs';
@@ -29,15 +29,15 @@ const client = new pg.Client({
 await client.connect();
 
 const { rows } = await client.query(
-  'select id, claim from facts where embedding is null order by id',
+  'select id, claim from records where embedding is null order by id',
 );
-console.log(`Generando embeddings para ${rows.length} hechos sin embedding (Voyage)...`);
+console.log(`Generando embeddings para ${rows.length} registros sin embedding (Voyage)...`);
 console.log(`Sin tarjeta en la cuenta, throttled a ~3/min (${BATCH_DELAY_MS / 1000}s entre llamadas).`);
 
 for (let i = 0; i < rows.length; i++) {
   const row = rows[i];
   const vector = await embed(row.claim, 'document');
-  await client.query('update facts set embedding = $1 where id = $2', [
+  await client.query('update records set embedding = $1 where id = $2', [
     toVectorLiteral(vector),
     row.id,
   ]);

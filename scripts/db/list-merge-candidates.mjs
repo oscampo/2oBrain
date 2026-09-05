@@ -1,10 +1,10 @@
 // Herramienta de revisión, no de automatización: compara por embedding los
-// nombres (+ alias) de los nodos vigentes entre sí y superficie los pares
+// nombres (+ alias) de los recuerdos vigentes entre sí y superficie los pares
 // por encima de un umbral para que un humano decida si vale la pena
-// fusionarlos con merge-nodes.mjs. Nunca fusiona nada solo: a diferencia
-// de nodes_similar() (que compara contra hechos existentes para clasificar
-// UN hecho nuevo), esto compara nodos contra nodos, sin tocar `facts`.
-// Sin columna nodes.embedding que mantener (mismo criterio "cero
+// fusionarlos con merge-memories.mjs. Nunca fusiona nada solo: a diferencia
+// de memories_similar() (que compara contra registros existentes para clasificar
+// UN registro nuevo), esto compara recuerdos contra recuerdos, sin tocar `records`.
+// Sin columna memories.embedding que mantener (mismo criterio "cero
 // mantenimiento nuevo" de la Etapa 2): los embeddings se calculan al vuelo
 // en cada corrida, no se guardan.
 // Uso: node list-merge-candidates.mjs [--threshold 0.85]
@@ -59,24 +59,24 @@ const client = new pg.Client({
 });
 await client.connect();
 
-const { rows: nodes } = await client.query(
-  `select n.name, n.aliases, count(fn.fact_id) as fact_count
-   from nodes n
-   left join fact_nodes fn on fn.node_name = n.name
+const { rows: memories } = await client.query(
+  `select n.name, n.aliases, count(fn.record_id) as fact_count
+   from memories n
+   left join record_memories fn on fn.memory_name = n.name
    where n.merged_into is null
    group by n.name, n.aliases
    order by n.name`,
 );
 await client.end();
 
-if (nodes.length < 2) {
-  console.log('Menos de 2 nodos vigentes, nada que comparar.');
+if (memories.length < 2) {
+  console.log('Menos de 2 recuerdos vigentes, nada que comparar.');
   process.exit(0);
 }
 
-console.error(`Calculando embeddings de ${nodes.length} nodo(s)...`);
+console.error(`Calculando embeddings de ${memories.length} recuerdo(s)...`);
 const withEmbedding = [];
-for (const n of nodes) {
+for (const n of memories) {
   const text = [n.name, ...(n.aliases ?? [])].join(' / ');
   const embedding = await embed(text, 'document');
   withEmbedding.push({ ...n, embedding });
@@ -95,14 +95,14 @@ for (let i = 0; i < withEmbedding.length; i++) {
 pairs.sort((x, y) => y.similarity - x.similarity);
 
 if (pairs.length === 0) {
-  console.log(`Sin pares por encima de ${threshold} entre los ${nodes.length} nodos vigentes.`);
+  console.log(`Sin pares por encima de ${threshold} entre los ${memories.length} recuerdos vigentes.`);
 } else {
   console.log(`${pairs.length} par(es) candidato(s) a revisión (umbral ${threshold}):\n`);
   for (const p of pairs) {
     console.log(
-      `  (${p.similarity.toFixed(3)}) "${p.a.name}" (${p.a.fact_count} hechos) <-> "${p.b.name}" (${p.b.fact_count} hechos)`,
+      `  (${p.similarity.toFixed(3)}) "${p.a.name}" (${p.a.fact_count} registros) <-> "${p.b.name}" (${p.b.fact_count} registros)`,
     );
   }
   console.log('\nRevisión humana obligatoria, ninguno se fusiona solo. Si aplica:');
-  console.log('  node merge-nodes.mjs --from <nombre-a-retirar> --to <nombre-vigente> --reason "..."');
+  console.log('  node merge-memories.mjs --from <nombre-a-retirar> --to <nombre-vigente> --reason "..."');
 }

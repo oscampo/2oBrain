@@ -10,7 +10,7 @@
 // fallo de autenticacion.
 //
 // Misma logica que supabase/functions/mcp-server/index.ts (search/remember,
-// gate de contradicciones via facts_similar()), solo cambia el hosting y las
+// gate de contradicciones via records_similar()), solo cambia el hosting y las
 // rutas (aqui a nivel raiz, no bajo /mcp-server/*).
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -62,7 +62,7 @@ function escapeHtml(s: string): string {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const SIMILARITY_THRESHOLD = 0.6;
-// Bitácora de construcción del dashboard (28-ago-2026): hechos meta que citan
+// Bitácora de construcción del dashboard (28-ago-2026): registros meta que citan
 // preguntas de prueba textuales pueden rankear más alto que contenido real
 // sobre ese tema. Mismo criterio que scripts/db/search.mjs.
 const DASHBOARD_LOG_NODE = 'segundo-cerebro-dashboard-log';
@@ -92,12 +92,12 @@ async function rerank(query: string, documents: string[]): Promise<{ index: numb
   return data;
 }
 
-// Router de nodos (hallazgo 2026-08-31, ver PLAN-nodos.md): si la pregunta
-// nombra literalmente un nodo por su nombre o alias (ej. "estado del
-// proyecto COIL"), trae TODOS sus hechos vigentes en vez de confiar en que
-// RRF/rerank adivinen la relacion - no la adivinan cuando ningun hecho
-// individual repite el nombre del proyecto/nodo, solo habla de su
-// contenido. Mismo criterio y misma funcion SQL (node_match_facts) que
+// Router de recuerdos (hallazgo 2026-08-31, ver PLAN-recuerdos.md): si la pregunta
+// nombra literalmente un recuerdo por su nombre o alias (ej. "estado del
+// proyecto COIL"), trae TODOS sus registros vigentes en vez de confiar en que
+// RRF/rerank adivinen la relacion - no la adivinan cuando ningun registro
+// individual repite el nombre del proyecto/recuerdo, solo habla de su
+// contenido. Mismo criterio y misma funcion SQL (memory_match_records) que
 // scripts/db/search.mjs.
 const MAX_NODE_MATCH_FACTS = 15;
 
@@ -115,7 +115,7 @@ function nodeIsMatched(n: { name: string; aliases: string[] | null }, queryNorm:
   const segments = n.name.split(/[-_]/).filter((s) => s.length >= 4 && !/^\d+$/.test(s));
   return segments.some((s) => wordMatch(s, queryNorm));
 }
-function resolveLiveNode(name: string, byName: Map<string, { name: string; merged_into: string | null }>): string | null {
+function resolveLiveMemory(name: string, byName: Map<string, { name: string; merged_into: string | null }>): string | null {
   let current = name;
   const seen = new Set<string>();
   while (true) {
@@ -128,7 +128,7 @@ function resolveLiveNode(name: string, byName: Map<string, { name: string; merge
   }
 }
 
-// Tiering del gate de contradicciones (ver hecho #149/#152 en segundo-cerebro):
+// Tiering del gate de contradicciones (ver registro #149/#152 en segundo-cerebro):
 // primera pasada barata via Ollama Cloud antes de bloquear. Portado desde
 // scripts/db/lib/classify-duplicate.mjs, misma logica que
 // supabase/functions/mcp-server/index.ts. Nunca trata un error de red o una
@@ -143,19 +143,19 @@ async function classifyDuplicate(
   const candidateList = candidates
     .map((c) => `  #${c.id} (similitud ${c.similarity.toFixed(2)}): "${c.claim}"`)
     .join('\n');
-  const prompt = `Eres un clasificador que decide si un hecho nuevo, comparado con hechos ya \
+  const prompt = `Eres un clasificador que decide si un registro nuevo, comparado con registros ya \
 registrados y parecidos por embedding, es genuinamente distinto o si reemplaza \
 (supersede) a alguno de ellos por describir el mismo estado de cosas actualizado.
 
-Hecho nuevo: "${newClaim}"
+registro nuevo: "${newClaim}"
 
-Hechos vigentes parecidos:
+registros vigentes parecidos:
 ${candidateList}
 
 Responde SOLO con JSON, sin texto adicional, con esta forma exacta:
-{"verdict": "distinct" | "supersedes", "supersedes_ids": [ids numericos de los hechos que reemplaza, vacio si verdict es "distinct"], "confidence": numero entre 0 y 1, "reasoning": "una oracion breve en espanol"}
+{"verdict": "distinct" | "supersedes", "supersedes_ids": [ids numericos de los registros que reemplaza, vacio si verdict es "distinct"], "confidence": numero entre 0 y 1, "reasoning": "una oracion breve en espanol"}
 
-"supersedes" solo si el hecho nuevo describe el mismo asunto en un estado mas \
+"supersedes" solo si el registro nuevo describe el mismo asunto en un estado mas \
 reciente o corrige al anterior. "distinct" si es tematicamente parecido pero es \
 informacion genuinamente distinta (otro aspecto, otro momento no contradictorio, \
 otro sujeto). Si no estas seguro, baja la confidence en vez de adivinar.`;
@@ -207,17 +207,17 @@ otro sujeto). Si no estas seguro, baja la confidence en vez de adivinar.`;
   };
 }
 
-// Etapa 2 (PLAN-nodos.md, 2026-08-29): desambiguación de nodos. Mismo patrón
+// Etapa 2 (PLAN-recuerdos.md, 2026-08-29): desambiguación de recuerdos. Mismo patrón
 // que classifyDuplicate: Ollama Cloud, gpt-oss:20b-cloud, fail-closed en
-// cualquier fallo (red, cuota, JSON inválido, nodo "existing" inventado que
-// no está entre los candidatos). Ver scripts/db/lib/classify-node.mjs para
+// cualquier fallo (red, cuota, JSON inválido, recuerdo "existing" inventado que
+// no está entre los candidatos). Ver scripts/db/lib/classify-memory.mjs para
 // el diseño completo; esta es la misma lógica portada a Deno.
 const NODE_CLASSIFIER_MODEL = 'gpt-oss:20b-cloud';
 const NODE_CLASSIFIER_CONFIDENCE_THRESHOLD = 0.85;
 
 async function classifyNode(
   newClaim: string,
-  candidates: { node_name: string; examples: string[]; similarity: number; aliases?: string[] }[],
+  candidates: { memory_name: string; examples: string[]; similarity: number; aliases?: string[] }[],
 ): Promise<{ verdict: 'existing' | 'new'; node: string; confidence: number; reasoning: string } | null> {
   if (!OLLAMA_API_KEY) return null;
   if (candidates.length === 0) return null;
@@ -225,29 +225,29 @@ async function classifyNode(
   const candidateList = candidates
     .map((c) => {
       const aliasLine = c.aliases?.length ? `, alias: ${c.aliases.join(', ')}` : '';
-      return `  "${c.node_name}"${aliasLine} (similitud ${c.similarity.toFixed(2)}), ejemplos:\n${c.examples.map((ex) => `      - "${ex}"`).join('\n')}`;
+      return `  "${c.memory_name}"${aliasLine} (similitud ${c.similarity.toFixed(2)}), ejemplos:\n${c.examples.map((ex) => `      - "${ex}"`).join('\n')}`;
     })
     .join('\n');
-  const prompt = `Eres un clasificador que decide a qué nodo (tema/entidad) pertenece un hecho \
-nuevo dentro de un segundo cerebro personal. Cada nodo agrupa hechos sobre el mismo \
-asunto (un proyecto, una persona, un curso, una colaboración). Te doy los nodos \
-existentes más parecidos por embedding, cada uno con sus hechos más cercanos como \
+  const prompt = `Eres un clasificador que decide a qué recuerdo (tema/entidad) pertenece un registro \
+nuevo dentro de un segundo cerebro personal. Cada recuerdo agrupa registros sobre el mismo \
+asunto (un proyecto, una persona, un curso, una colaboración). Te doy los recuerdos \
+existentes más parecidos por embedding, cada uno con sus registros más cercanos como \
 ejemplo y, si los tiene, sus alias (otros nombres con los que se lo menciona).
 
-Hecho nuevo: "${newClaim}"
+registro nuevo: "${newClaim}"
 
-Nodos existentes parecidos:
+recuerdos existentes parecidos:
 ${candidateList}
 
 Responde SOLO con JSON, sin texto adicional, con esta forma exacta:
-{"verdict": "existing" | "new", "node": "nombre exacto de uno de los nodos de arriba si verdict es existing, o un nombre propuesto en kebab-case si verdict es new", "confidence": número entre 0 y 1, "reasoning": "una oración breve en español"}
+{"verdict": "existing" | "new", "node": "nombre exacto de uno de los recuerdos de arriba si verdict es existing, o un nombre propuesto en kebab-case si verdict es new", "confidence": número entre 0 y 1, "reasoning": "una oración breve en español"}
 
-"existing" solo si el hecho nuevo es genuinamente sobre el mismo asunto que ese nodo \
+"existing" solo si el registro nuevo es genuinamente sobre el mismo asunto que ese recuerdo \
 (mismo proyecto/persona/curso/colaboración, no solo un tema parecido en abstracto, \
-ej. dos cursos distintos que comparten infraestructura de GitHub NO son el mismo nodo). \
-"new" si ningún nodo de la lista es realmente el mismo asunto. \
-PRIORIDAD: si el hecho nuevo menciona literalmente (aunque sea parcialmente, ignorando \
-mayúsculas/tildes) el nombre o un alias de alguno de los nodos, esa coincidencia léxica \
+ej. dos cursos distintos que comparten infraestructura de GitHub NO son el mismo recuerdo). \
+"new" si ningún recuerdo de la lista es realmente el mismo asunto. \
+PRIORIDAD: si el registro nuevo menciona literalmente (aunque sea parcialmente, ignorando \
+mayúsculas/tildes) el nombre o un alias de alguno de los recuerdos, esa coincidencia léxica \
 pesa más que el parecido temático de los ejemplos, el nombre explícito es una señal \
 más fuerte y más confiable que la similitud de contenido, úsala para desempatar. \
 Si no estás seguro, baja la confidence en vez de adivinar.`;
@@ -275,7 +275,7 @@ Si no estás seguro, baja la confidence en vez de adivinar.`;
     return null;
   }
 
-  const validNodeNames = new Set(candidates.map((c) => c.node_name));
+  const validNodeNames = new Set(candidates.map((c) => c.memory_name));
   const confidence = Number(parsed.confidence);
   const node = typeof parsed.node === 'string' ? parsed.node.trim() : '';
 
@@ -306,25 +306,25 @@ const mcp = new McpServer({
 
 mcp.tool('search', {
   description:
-    'Busca hechos vigentes en el segundo cerebro por una pregunta en lenguaje natural. Devuelve los hechos mas relevantes, con su fuente.',
+    'Busca registros vigentes en el segundo cerebro por una pregunta en lenguaje natural. Devuelve los registros mas relevantes, con su fuente.',
   inputSchema: z.object({ query: z.string().describe('La pregunta o tema a buscar') }),
   handler: async ({ query }: { query: string }) => {
     const queryEmbedding = await embed(query, 'query');
     const queryNorm = normalizeText(query);
 
-    const { data: allNodes } = await supabase.from('nodes').select('name, aliases, merged_into');
+    const { data: allNodes } = await supabase.from('memories').select('name, aliases, merged_into');
     const byName = new Map<string, any>((allNodes ?? []).map((n: any) => [n.name, n]));
     const matchedLiveNodes = new Set<string>();
     for (const n of allNodes ?? []) {
       if (!nodeIsMatched(n, queryNorm)) continue;
-      const live = resolveLiveNode(n.name, byName);
+      const live = resolveLiveMemory(n.name, byName);
       if (live && live !== DASHBOARD_LOG_NODE) matchedLiveNodes.add(live);
     }
 
     const [{ data: factCandidates }, { data: nodeMatchRows }] = await Promise.all([
-      supabase.rpc('facts_search', { query_embedding: queryEmbedding, query_text: query, match_count: 10, exclude_node: DASHBOARD_LOG_NODE }),
+      supabase.rpc('records_search', { query_embedding: queryEmbedding, query_text: query, match_count: 10, exclude_memory: DASHBOARD_LOG_NODE }),
       matchedLiveNodes.size > 0
-        ? supabase.rpc('node_match_facts', { node_names: [...matchedLiveNodes], match_count: MAX_NODE_MATCH_FACTS })
+        ? supabase.rpc('memory_match_records', { node_names: [...matchedLiveNodes], match_count: MAX_NODE_MATCH_FACTS })
         : Promise.resolve({ data: [] as any[] }),
     ]);
 
@@ -334,37 +334,37 @@ mcp.tool('search', {
       return ranked.slice(0, topN).map((r) => ({ ...candidates[r.index], score: r.relevance_score }));
     }
 
-    // Incluye el/los nodo(s) en el texto que ve el reranker - sin esto, un
-    // hecho cuyo contenido nunca menciona el nombre del proyecto/nodo queda
+    // Incluye el/los recuerdo(s) en el texto que ve el reranker - sin esto, un
+    // registro cuyo contenido nunca menciona el nombre del proyecto/recuerdo queda
     // mal puntuado frente a una pregunta que si lo nombra (mismo hallazgo
     // 2026-08-31 que motivo el router de arriba).
-    const rerankedFacts = await rerankTop(factCandidates ?? [], (f) => (f.nodes ? `[${f.nodes}] ${f.claim}` : f.claim), 5);
+    const rerankedFacts = await rerankTop(factCandidates ?? [], (f) => (f.memories ? `[${f.memories}] ${f.claim}` : f.claim), 5);
 
     const nodeMatchFacts = nodeMatchRows ?? [];
     const nodeMatchTotal = nodeMatchFacts.length > 0 ? Number(nodeMatchFacts[0].total_count) : 0;
     const nodeMatchTruncated = nodeMatchTotal > nodeMatchFacts.length;
     const nodeMatchIds = new Set(nodeMatchFacts.map((f: any) => f.id));
-    // Los hechos del router de nodos van primero (garantizados completos
-    // para el/los nodo(s) nombrados), seguidos de los de la busqueda
+    // Los registros del router de recuerdos van primero (garantizados completos
+    // para el/los recuerdo(s) nombrados), seguidos de los de la busqueda
     // hibrida general que no se repitan.
-    const facts = [
+    const records = [
       ...nodeMatchFacts.map((f: any) => ({ ...f, score: null as number | null })),
       ...rerankedFacts.filter((f: any) => !nodeMatchIds.has(f.id)),
     ];
 
-    let text = '--- Hechos vigentes ---\n';
+    let text = '--- registros vigentes ---\n';
     if (matchedLiveNodes.size > 0) {
       const suffix = nodeMatchTruncated
-        ? ` (mostrando ${MAX_NODE_MATCH_FACTS} de ${nodeMatchTotal}, pide "estado del nodo X" para el resto)`
+        ? ` (mostrando ${MAX_NODE_MATCH_FACTS} de ${nodeMatchTotal}, pide "estado del recuerdo X" para el resto)`
         : '';
-      text += `(nodo(s) detectado(s) en la pregunta: ${[...matchedLiveNodes].join(', ')}${suffix})\n`;
+      text += `(recuerdo(s) detectado(s) en la pregunta: ${[...matchedLiveNodes].join(', ')}${suffix})\n`;
     }
 
-    if (facts.length === 0) text += 'Sin resultados.\n';
+    if (records.length === 0) text += 'Sin resultados.\n';
     else
-      for (const f of facts) {
-        const scoreLabel = f.score == null ? '[nodo]' : `[${f.score.toFixed(4)}]`;
-        text += `\n${scoreLabel} #${f.id} [${f.date}] ${f.claim}\n  fuente: ${f.source} - tipo: ${f.kind}${f.nodes ? ` - nodos: ${f.nodes}` : ''}\n`;
+      for (const f of records) {
+        const scoreLabel = f.score == null ? '[recuerdo]' : `[${f.score.toFixed(4)}]`;
+        text += `\n${scoreLabel} #${f.id} [${f.date}] ${f.claim}\n  fuente: ${f.source} - tipo: ${f.kind}${f.memories ? ` - recuerdos: ${f.memories}` : ''}\n`;
       }
 
     return { content: [{ type: 'text', text }] };
@@ -373,17 +373,17 @@ mcp.tool('search', {
 
 mcp.tool('remember', {
   description:
-    'Registra un hecho atomico con fecha y fuente obligatorias en el segundo cerebro. Antes de insertar, busca hechos vigentes parecidos por embedding; si encuentra candidatos, se niega a insertar salvo que se pase supersedes o distinct explicito. El nodo (o nodos) debe existir de antemano en la tabla nodes salvo que se pase createNode.',
+    'Registra un registro atomico con fecha y fuente obligatorias en el segundo cerebro. Antes de insertar, busca registros vigentes parecidos por embedding; si encuentra candidatos, se niega a insertar salvo que se pase supersedes o distinct explicito. El recuerdo (o recuerdos) debe existir de antemano en la tabla memories salvo que se pase createNode.',
   inputSchema: z.object({
-    claim: z.string().describe('Texto claro y autocontenido del hecho'),
+    claim: z.string().describe('Texto claro y autocontenido del registro'),
     date: z.string().describe('Fecha YYYY-MM-DD, nunca inferida de texto libre'),
-    source: z.string().describe('De donde salio el hecho'),
+    source: z.string().describe('De donde salio el registro'),
     kind: z.enum(['fact', 'event', 'preference', 'commitment']).default('fact'),
-    node: z.union([z.string(), z.array(z.string())]).optional().describe('Nodo(s) existente(s) a los que se liga el hecho (string separado por comas, o array)'),
-    createNode: z.boolean().optional().describe('Crea el/los nodo(s) si no existen todavia, en vez de fallar'),
-    supersedes: z.array(z.number()).optional().describe('IDs de hechos vigentes que este reemplaza'),
+    node: z.union([z.string(), z.array(z.string())]).optional().describe('recuerdo(s) existente(s) a los que se liga el registro (string separado por comas, o array)'),
+    createNode: z.boolean().optional().describe('Crea el/los recuerdo(s) si no existen todavia, en vez de fallar'),
+    supersedes: z.array(z.number()).optional().describe('IDs de registros vigentes que este reemplaza'),
     distinct: z.boolean().optional().describe('Confirma que es distinto pese al parecido con candidatos'),
-    confirmDate: z.boolean().optional().describe('Obligatorio si date no es la fecha real de hoy (America/Bogota) -- confirma que un hecho con fecha distinta es intencional (historico, backfill), no un error de no verificar la fecha antes de llamar'),
+    confirmDate: z.boolean().optional().describe('Obligatorio si date no es la fecha real de hoy (America/Bogota) -- confirma que un registro con fecha distinta es intencional (historico, backfill), no un error de no verificar la fecha antes de llamar'),
   }),
   handler: async (args: {
     claim: string;
@@ -403,16 +403,16 @@ mcp.tool('remember', {
       };
     }
 
-    // Mismo criterio que remember.mjs/remember-batch.mjs (2026-09-03, hechos
+    // Mismo criterio que remember.mjs/remember-batch.mjs (2026-09-03, registros
     // #528/#530): bloquea por defecto si date no es hoy, salvo confirmDate
-    // explicito -- evita el error real que motivo esto (hecho #525, grabado
+    // explicito -- evita el error real que motivo esto (registro #525, grabado
     // con fecha vieja por no verificar antes de llamar).
     const todayBogota = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
     if (args.date !== todayBogota && !args.confirmDate) {
       return {
         content: [{
           type: 'text',
-          text: `date ${args.date} es distinto de hoy (${todayBogota} en America/Bogota). Si es un hecho historico o backfill intencional, pasa confirmDate: true. Si fue sin querer, corrige date y vuelve a intentar.`,
+          text: `date ${args.date} es distinto de hoy (${todayBogota} en America/Bogota). Si es un registro historico o backfill intencional, pasa confirmDate: true. Si fue sin querer, corrige date y vuelve a intentar.`,
         }],
         isError: true,
       };
@@ -420,7 +420,7 @@ mcp.tool('remember', {
 
     const embedding = await embed(args.claim, 'document');
 
-    const { data: candidates } = await supabase.rpc('facts_similar', {
+    const { data: candidates } = await supabase.rpc('records_similar', {
       query_embedding: embedding,
       match_count: 5,
     });
@@ -440,12 +440,12 @@ mcp.tool('remember', {
     }
 
     if (similar.length > 0 && supersedesIds.length === 0 && !distinct) {
-      let text = `Hay ${similar.length} hecho(s) vivo(s) parecido(s), resuelvelo antes de insertar:\n`;
+      let text = `Hay ${similar.length} registro(s) vivo(s) parecido(s), resuelvelo antes de insertar:\n`;
       for (const c of similar) {
-        text += `\n#${c.id} [${c.date}] (similitud ${c.similarity.toFixed(2)}) ${c.claim}\n  fuente: ${c.source}${c.nodes ? ` - nodos: ${c.nodes}` : ''}\n`;
+        text += `\n#${c.id} [${c.date}] (similitud ${c.similarity.toFixed(2)}) ${c.claim}\n  fuente: ${c.source}${c.memories ? ` - recuerdos: ${c.memories}` : ''}\n`;
       }
       text +=
-        '\nSi este hecho reemplaza a alguno, vuelve a llamar con supersedes: [ids]. Si es genuinamente distinto, llama con distinct: true.';
+        '\nSi este registro reemplaza a alguno, vuelve a llamar con supersedes: [ids]. Si es genuinamente distinto, llama con distinct: true.';
       return { content: [{ type: 'text', text }], isError: true };
     }
 
@@ -465,35 +465,35 @@ mcp.tool('remember', {
       }
     }
 
-    // Etapa 2 (PLAN-nodos.md, 2026-08-29): desambiguación automática. Corre
+    // Etapa 2 (PLAN-recuerdos.md, 2026-08-29): desambiguación automática. Corre
     // SIEMPRE, incluso con node explícito (Etapa 0), pero solo bloquea
     // cuando node no vino: con node explícito es solo un aviso en el texto
     // de respuesta, nunca sobreescribe la elección del llamador.
-    const { data: nodeCandidateRows } = await supabase.rpc('nodes_similar', {
+    const { data: nodeCandidateRows } = await supabase.rpc('memories_similar', {
       query_embedding: embedding,
       match_count: 5,
     });
     const nodeCandidates = (nodeCandidateRows ?? []).map((r: any) => ({
-      node_name: r.node_name,
+      memory_name: r.memory_name,
       examples: r.examples,
       similarity: r.similarity,
       aliases: r.aliases,
     }));
     const nodeVerdict = nodeCandidates.length > 0 ? await classifyNode(args.claim, nodeCandidates) : null;
 
-    let requestedNodes = args.node == null ? [] : Array.isArray(args.node) ? args.node : args.node.split(',').map((s) => s.trim()).filter(Boolean);
+    let requestedNodes = args.memory == null ? [] : Array.isArray(args.memory) ? args.memory : args.memory.split(',').map((s) => s.trim()).filter(Boolean);
     let nodeAdvisory = '';
 
     if (requestedNodes.length === 0) {
       if (!nodeVerdict || nodeVerdict.confidence < NODE_CLASSIFIER_CONFIDENCE_THRESHOLD) {
         let text = 'No se pasó node y la desambiguación automática no alcanzó confianza suficiente.\n';
         if (nodeCandidates.length > 0) {
-          text += '\nNodos existentes más parecidos:\n';
+          text += '\nrecuerdos existentes más parecidos:\n';
           for (const c of nodeCandidates) {
-            text += `  "${c.node_name}" (similitud ${c.similarity.toFixed(2)}):\n${c.examples.map((ex: string) => `      - ${ex}`).join('\n')}\n`;
+            text += `  "${c.memory_name}" (similitud ${c.similarity.toFixed(2)}):\n${c.examples.map((ex: string) => `      - ${ex}`).join('\n')}\n`;
           }
         } else {
-          text += '\n(no hay hechos con embedding en ningún nodo todavía para comparar)\n';
+          text += '\n(no hay registros con embedding en ningún recuerdo todavía para comparar)\n';
         }
         text += '\nPasa node (nombre existente), o node + createNode: true si es genuinamente uno nuevo.';
         return { content: [{ type: 'text', text }], isError: true };
@@ -502,13 +502,13 @@ mcp.tool('remember', {
         return {
           content: [{
             type: 'text',
-            text: `El clasificador (${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}) propone un nodo NUEVO: "${nodeVerdict.node}" (${nodeVerdict.reasoning})\nSi es correcto, vuelve a llamar con node: "${nodeVerdict.node}", createNode: true.`,
+            text: `El clasificador (${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}) propone un recuerdo NUEVO: "${nodeVerdict.node}" (${nodeVerdict.reasoning})\nSi es correcto, vuelve a llamar con node: "${nodeVerdict.node}", createNode: true.`,
           }],
           isError: true,
         };
       }
       requestedNodes = [nodeVerdict.node];
-      nodeAdvisory = `(nodo auto-resuelto por ${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}: ${nodeVerdict.reasoning})`;
+      nodeAdvisory = `(recuerdo auto-resuelto por ${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}: ${nodeVerdict.reasoning})`;
     } else if (
       nodeVerdict &&
       nodeVerdict.confidence >= NODE_CLASSIFIER_CONFIDENCE_THRESHOLD &&
@@ -516,13 +516,13 @@ mcp.tool('remember', {
     ) {
       nodeAdvisory =
         `(aviso: la desambiguación (confianza ${nodeVerdict.confidence.toFixed(2)}) sugiere ` +
-        `${nodeVerdict.verdict === 'new' ? `un nodo nuevo distinto: "${nodeVerdict.node}"` : `el nodo existente "${nodeVerdict.node}"`}` +
+        `${nodeVerdict.verdict === 'new' ? `un recuerdo nuevo distinto: "${nodeVerdict.node}"` : `el recuerdo existente "${nodeVerdict.node}"`}` +
         ` en vez de ${requestedNodes.map((n) => `"${n}"`).join(', ')}, se respeta tu elección explícita.)`;
     }
 
-    // Resuelve node: cada nombre debe existir en `nodes` (fail-closed contra
-    // typos que crearian un nodo fantasma), salvo createNode explicito. Si un
-    // nodo fue fusionado a otro (merged_into), sigue la cadena al vigente,
+    // Resuelve node: cada nombre debe existir en `memories` (fail-closed contra
+    // typos que crearian un recuerdo fantasma), salvo createNode explicito. Si un
+    // recuerdo fue fusionado a otro (merged_into), sigue la cadena al vigente,
     // mismo criterio que remember.mjs/remember-batch.mjs.
     const resolvedNodes: string[] = [];
     for (const name of requestedNodes) {
@@ -531,10 +531,10 @@ mcp.tool('remember', {
       let row: { name: string; merged_into: string | null } | null = null;
       while (true) {
         if (seen.has(current)) {
-          return { content: [{ type: 'text', text: `Ciclo de merged_into detectado en nodos empezando por "${name}".` }], isError: true };
+          return { content: [{ type: 'text', text: `Ciclo de merged_into detectado en recuerdos empezando por "${name}".` }], isError: true };
         }
         seen.add(current);
-        const { data: found } = await supabase.from('nodes').select('name, merged_into').eq('name', current).maybeSingle();
+        const { data: found } = await supabase.from('memories').select('name, merged_into').eq('name', current).maybeSingle();
         if (!found) { row = null; break; }
         row = found;
         if (!row.merged_into) break;
@@ -543,18 +543,18 @@ mcp.tool('remember', {
       if (row) {
         resolvedNodes.push(row.name);
       } else if (args.createNode) {
-        await supabase.from('nodes').upsert({ name }, { onConflict: 'name', ignoreDuplicates: true });
+        await supabase.from('memories').upsert({ name }, { onConflict: 'name', ignoreDuplicates: true });
         resolvedNodes.push(name);
       } else {
         return {
-          content: [{ type: 'text', text: `Nodo "${name}" no existe en la tabla nodes. Pasa createNode: true si es genuinamente uno nuevo.` }],
+          content: [{ type: 'text', text: `recuerdo "${name}" no existe en la tabla memories. Pasa createNode: true si es genuinamente uno nuevo.` }],
           isError: true,
         };
       }
     }
 
     const { data: inserted, error } = await supabase
-      .from('facts')
+      .from('records')
       .insert({
         claim: args.claim,
         kind: args.kind ?? 'fact',
@@ -571,19 +571,19 @@ mcp.tool('remember', {
 
     if (resolvedNodes.length > 0) {
       await supabase
-        .from('fact_nodes')
-        .upsert(resolvedNodes.map((node_name) => ({ fact_id: inserted.id, node_name })), { onConflict: 'fact_id,node_name', ignoreDuplicates: true });
+        .from('record_memories')
+        .upsert(resolvedNodes.map((memory_name) => ({ record_id: inserted.id, memory_name })), { onConflict: 'record_id,memory_name', ignoreDuplicates: true });
     }
 
     if (supersedesIds.length > 0) {
       await supabase
-        .from('facts')
+        .from('records')
         .update({ valid_until: new Date().toISOString(), superseded_by: inserted.id })
         .in('id', supersedesIds);
     }
 
     let text = `Registrado #${inserted.id}: [${inserted.date}] ${inserted.claim}`;
-    if (resolvedNodes.length > 0) text += `\nNodo(s): ${resolvedNodes.join(', ')}`;
+    if (resolvedNodes.length > 0) text += `\nrecuerdo(s): ${resolvedNodes.join(', ')}`;
     if (nodeAdvisory) text += `\n${nodeAdvisory}`;
     if (supersedesIds.length > 0) text += `\nReemplazo a #${supersedesIds.join(', #')}.`;
     else if (similar.length > 0 && distinct) text += `\nConfirmado como distinto pese al parecido.`;

@@ -1,12 +1,12 @@
-// Etapa 2 (PLAN-nodos.md, 2026-08-29): desambiguación de nodos. Recibe un
-// hecho nuevo y los ~5 nodos más parecidos (via nodes_similar(), búsqueda
-// vectorial sobre hechos existentes agrupados por nodo: ver schema.sql), y
+// Etapa 2 (PLAN-recuerdos.md, 2026-08-29): desambiguación de recuerdos. Recibe un
+// registro nuevo y los ~5 recuerdos más parecidos (via memories_similar(), búsqueda
+// vectorial sobre registros existentes agrupados por recuerdo: ver schema.sql), y
 // decide a cuál pertenece o si es genuinamente uno nuevo. Mismo patrón y
 // mismo modelo que lib/classify-duplicate.mjs (Ollama Cloud, gpt-oss:20b-cloud,
 // tiering barato). Fail-closed por diseño de la Etapa 0: cualquier fallo (red,
-// cuota, JSON inválido, nombre de nodo inventado que no está entre los
+// cuota, JSON inválido, nombre de recuerdo inventado que no está entre los
 // candidatos) devuelve null: el llamador (remember.mjs) nunca inserta con
-// nodo nulo o placeholder, bloquea y deja que un humano decida.
+// recuerdo nulo o placeholder, bloquea y deja que un humano decida.
 import { readFileSync } from 'node:fs';
 
 const MODEL = 'gpt-oss:20b-cloud';
@@ -34,29 +34,29 @@ function buildPrompt(newClaim, candidates) {
     .map((c) => {
       const examples = c.examples.map((ex) => `      - "${ex}"`).join('\n');
       const aliasLine = c.aliases?.length ? `, alias: ${c.aliases.join(', ')}` : '';
-      return `  "${c.node_name}"${aliasLine} (similitud ${c.similarity.toFixed(2)}), ejemplos:\n${examples}`;
+      return `  "${c.memory_name}"${aliasLine} (similitud ${c.similarity.toFixed(2)}), ejemplos:\n${examples}`;
     })
     .join('\n');
-  return `Eres un clasificador que decide a qué nodo (tema/entidad) pertenece un hecho \
-nuevo dentro de un segundo cerebro personal. Cada nodo agrupa hechos sobre el mismo \
-asunto (un proyecto, una persona, un curso, una colaboración). Te doy los nodos \
-existentes más parecidos por embedding, cada uno con sus hechos más cercanos como \
+  return `Eres un clasificador que decide a qué recuerdo (tema/entidad) pertenece un registro \
+nuevo dentro de un segundo cerebro personal. Cada recuerdo agrupa registros sobre el mismo \
+asunto (un proyecto, una persona, un curso, una colaboración). Te doy los recuerdos \
+existentes más parecidos por embedding, cada uno con sus registros más cercanos como \
 ejemplo y, si los tiene, sus alias (otros nombres con los que se lo menciona).
 
-Hecho nuevo: "${newClaim}"
+registro nuevo: "${newClaim}"
 
-Nodos existentes parecidos:
+recuerdos existentes parecidos:
 ${candidateList}
 
 Responde SOLO con JSON, sin texto adicional, con esta forma exacta:
-{"verdict": "existing" | "new", "node": "nombre exacto de uno de los nodos de arriba si verdict es existing, o un nombre propuesto en kebab-case si verdict es new", "confidence": número entre 0 y 1, "reasoning": "una oración breve en español"}
+{"verdict": "existing" | "new", "node": "nombre exacto de uno de los recuerdos de arriba si verdict es existing, o un nombre propuesto en kebab-case si verdict es new", "confidence": número entre 0 y 1, "reasoning": "una oración breve en español"}
 
-"existing" solo si el hecho nuevo es genuinamente sobre el mismo asunto que ese nodo \
+"existing" solo si el registro nuevo es genuinamente sobre el mismo asunto que ese recuerdo \
 (mismo proyecto/persona/curso/colaboración, no solo un tema parecido en abstracto, \
-ej. dos cursos distintos que comparten infraestructura de GitHub NO son el mismo nodo). \
-"new" si ningún nodo de la lista es realmente el mismo asunto. \
-PRIORIDAD: si el hecho nuevo menciona literalmente (aunque sea parcialmente, ignorando \
-mayúsculas/tildes) el nombre o un alias de alguno de los nodos, esa coincidencia léxica \
+ej. dos cursos distintos que comparten infraestructura de GitHub NO son el mismo recuerdo). \
+"new" si ningún recuerdo de la lista es realmente el mismo asunto. \
+PRIORIDAD: si el registro nuevo menciona literalmente (aunque sea parcialmente, ignorando \
+mayúsculas/tildes) el nombre o un alias de alguno de los recuerdos, esa coincidencia léxica \
 pesa más que el parecido temático de los ejemplos, el nombre explícito es una señal \
 más fuerte y más confiable que la similitud de contenido, úsala para desempatar. \
 Si no estás seguro, baja la confidence en vez de adivinar.`;
@@ -64,10 +64,10 @@ Si no estás seguro, baja la confidence en vez de adivinar.`;
 
 /**
  * @param {string} newClaim
- * @param {{node_name: string, examples: string[], similarity: number, aliases?: string[]}[]} candidates
+ * @param {{memory_name: string, examples: string[], similarity: number, aliases?: string[]}[]} candidates
  * @returns {Promise<{verdict: 'existing'|'new', node: string, confidence: number, reasoning: string} | null>}
  *   null si el clasificador está deshabilitado, o si falla por cualquier motivo
- *   (red, timeout, JSON inválido, nodo "existing" que no está entre los
+ *   (red, timeout, JSON inválido, recuerdo "existing" que no está entre los
  *   candidatos), el llamador debe tratar null exactamente igual que si nunca
  *   se hubiera intentado clasificar.
  */
@@ -92,12 +92,12 @@ export async function classifyNode(newClaim, candidates) {
       signal: AbortSignal.timeout(20_000),
     });
   } catch (err) {
-    console.error(`  (clasificador de nodos Ollama Cloud no disponible: ${err.message}, cae a bloqueo manual)`);
+    console.error(`  (clasificador de recuerdos Ollama Cloud no disponible: ${err.message}, cae a bloqueo manual)`);
     return null;
   }
 
   if (!res.ok) {
-    console.error(`  (clasificador de nodos Ollama Cloud falló: ${res.status}, cae a bloqueo manual)`);
+    console.error(`  (clasificador de recuerdos Ollama Cloud falló: ${res.status}, cae a bloqueo manual)`);
     return null;
   }
 
@@ -107,11 +107,11 @@ export async function classifyNode(newClaim, candidates) {
     const cleaned = response.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
     parsed = JSON.parse(cleaned);
   } catch (err) {
-    console.error(`  (respuesta del clasificador de nodos no es JSON válido: ${err.message}, cae a bloqueo manual)`);
+    console.error(`  (respuesta del clasificador de recuerdos no es JSON válido: ${err.message}, cae a bloqueo manual)`);
     return null;
   }
 
-  const validNodeNames = new Set(candidates.map((c) => c.node_name));
+  const validNodeNames = new Set(candidates.map((c) => c.memory_name));
   const confidence = Number(parsed.confidence);
   const node = typeof parsed.node === 'string' ? parsed.node.trim() : '';
 
@@ -123,7 +123,7 @@ export async function classifyNode(newClaim, candidates) {
     node === '' ||
     (parsed.verdict === 'existing' && !validNodeNames.has(node))
   ) {
-    console.error(`  (respuesta del clasificador de nodos con forma inesperada: ${JSON.stringify(parsed)}, cae a bloqueo manual)`);
+    console.error(`  (respuesta del clasificador de recuerdos con forma inesperada: ${JSON.stringify(parsed)}, cae a bloqueo manual)`);
     return null;
   }
 

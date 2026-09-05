@@ -3,13 +3,13 @@
 // al backend real: no hay multi-fuente que pueda divergir (una sola base
 // compartida, no copias), así que ese chequeo no aplica; los que sí aplican
 // son duplicados de contenido, embeddings faltantes/desactualizados, RLS
-// regresando a estar apagado (ya pasó una vez, hecho #108), datos de `facts`
+// regresando a estar apagado (ya pasó una vez, registro #108), datos de `records`
 // inconsistentes, y (agregado 2026-09-03 al notar que el rediseño node del
 // 2026-08-29 nunca se reflejó aquí) drift de la arquitectura node: RLS de
-// nodes/fact_nodes/node_edges/node_pair_checks, node_edges/node_pair_checks
-// que quedaron apuntando a un nodo ya fusionado (merge-nodes.mjs no las
-// reasigna, solo fact_nodes), y colisión de alias entre nodos vigentes
-// (merge-nodes.mjs pliega alias sin pasar por check-alias-collision.mjs).
+// memories/record_memories/memory_links/memory_pair_checks, memory_links/memory_pair_checks
+// que quedaron apuntando a un recuerdo ya fusionado (merge-memories.mjs no las
+// reasigna, solo record_memories), y colisión de alias entre recuerdos vigentes
+// (merge-memories.mjs pliega alias sin pasar por check-alias-collision.mjs).
 // Pensado para el job `brain-hygiene` de HEARTBEAT.md.
 // Uso: node doctor.mjs
 import { readFileSync } from 'node:fs';
@@ -49,17 +49,17 @@ function report(label, rows, describe) {
   }
 }
 
-// RLS regresando a estar apagado (incidente real, hecho #108/#109): sin esto,
+// RLS regresando a estar apagado (incidente real, registro #108/#109): sin esto,
 // cualquier tabla queda legible/escribible por cualquiera con la publishable
 // key. Extendido a las tablas del rediseño node (2026-08-29/2026-09-02),
 // schema.sql las habilita todas, pero este chequeo se había quedado en el
-// par original (pages/facts) y nunca se actualizó al agregar nodes/
-// node_edges/node_pair_checks/fact_nodes.
+// par original (pages/records) y nunca se actualizó al agregar memories/
+// memory_links/memory_pair_checks/record_memories.
 const { rows: rls } = await client.query(
   `select relname, relrowsecurity
    from pg_class
    where relnamespace = 'public'::regnamespace
-     and relname in ('pages', 'facts', 'nodes', 'fact_nodes', 'node_edges', 'node_pair_checks')`,
+     and relname in ('pages', 'records', 'memories', 'record_memories', 'memory_links', 'memory_pair_checks')`,
 );
 const rlsOff = rls.filter((r) => !r.relrowsecurity);
 report('RLS activo en todas las tablas', rlsOff, (r) => `${r.relname}: RLS DESACTIVADO`);
@@ -89,18 +89,18 @@ const { rows: dupContent } = await client.query(
 report('Contenido duplicado entre páginas', dupContent, (r) => r.slugs.join(', '));
 
 const { rows: noEmbedFacts } = await client.query(
-  `select id, claim from facts where valid_until is null and embedding is null order by id`,
+  `select id, claim from records where valid_until is null and embedding is null order by id`,
 );
-report('Hechos vigentes con embedding', noEmbedFacts, (r) => `#${r.id} ${r.claim.slice(0, 80)}`);
+report('registros vigentes con embedding', noEmbedFacts, (r) => `#${r.id} ${r.claim.slice(0, 80)}`);
 
 const { rows: futureDated } = await client.query(
-  `select id, date, claim from facts where date > current_date order by date desc`,
+  `select id, date, claim from records where date > current_date order by date desc`,
 );
-report('Hechos sin fecha futura', futureDated, (r) => `#${r.id} [${r.date.toISOString().slice(0, 10)}] ${r.claim.slice(0, 80)}`);
+report('registros sin fecha futura', futureDated, (r) => `#${r.id} [${r.date.toISOString().slice(0, 10)}] ${r.claim.slice(0, 80)}`);
 
 // Corregido 2026-08-30 (causa raíz de la resurrección accidental de #159/160,
-// dos veces -- ver hechos #175/#180/#290/#336): `valid_until` seteado con
-// `superseded_by` null es el estado normal y permanente de cualquier hecho
+// dos veces -- ver registros #175/#180/#290/#336): `valid_until` seteado con
+// `superseded_by` null es el estado normal y permanente de cualquier registro
 // retractado con `forget.mjs` (retractar sin reemplazo nunca tiene
 // superseded_by, por diseño), no una inconsistencia. La única mitad
 // genuinamente rota es la otra: `superseded_by` seteado sin `valid_until` --
@@ -108,70 +108,70 @@ report('Hechos sin fecha futura', futureDated, (r) => `#${r.id} [${r.date.toISOS
 // resolver --supersedes, así que si aparece uno sin el otro es un bug real,
 // no una retractación legítima.
 const { rows: inconsistentSupersede } = await client.query(
-  `select id, claim, valid_until, superseded_by from facts
+  `select id, claim, valid_until, superseded_by from records
    where valid_until is null and superseded_by is not null
    order by id`,
 );
 report(
-  'Hechos con superseded_by consistente (valid_until presente)',
+  'registros con superseded_by consistente (valid_until presente)',
   inconsistentSupersede,
   (r) => `#${r.id} valid_until=${r.valid_until ?? 'null'} superseded_by=${r.superseded_by ?? 'null'}`,
 );
 
-// Rediseño node (2026-08-29): node es obligatorio para hechos vigentes
-// (ver PLAN-nodos.md), aunque remember.mjs todavía no lo fuerza a nivel de
+// Rediseño node (2026-08-29): node es obligatorio para registros vigentes
+// (ver PLAN-recuerdos.md), aunque remember.mjs todavía no lo fuerza a nivel de
 // esquema (la propuesta+desambiguación automática es Etapa 2). Este chequeo
-// es la red de seguridad mientras tanto: si algo se cuela sin nodo, que se
+// es la red de seguridad mientras tanto: si algo se cuela sin recuerdo, que se
 // note aquí, no que se acumule en silencio como pasó con los 92 huérfanos
 // de page_slug que se migraron a mano hoy.
 const { rows: noNode } = await client.query(
-  `select id, claim from facts
-   where valid_until is null and id not in (select fact_id from fact_nodes)
+  `select id, claim from records
+   where valid_until is null and id not in (select record_id from record_memories)
    order by id`,
 );
-report('Hechos vigentes con al menos un nodo', noNode, (r) => `#${r.id} ${r.claim.slice(0, 80)}`);
+report('registros vigentes con al menos un recuerdo', noNode, (r) => `#${r.id} ${r.claim.slice(0, 80)}`);
 
-// merge-nodes.mjs (2026-09-02) reasigna fact_nodes al fusionar, pero nunca
-// tocó node_edges ni node_pair_checks (confirmado leyendo el script: solo
-// hace insert/delete sobre fact_nodes y update sobre nodes.merged_into) --
-// si un nodo con edges o pair_checks propios se fusiona después, esas filas
-// quedan apuntando a un nombre muerto en vez de resolver al nodo vigente.
+// merge-memories.mjs (2026-09-02) reasigna record_memories al fusionar, pero nunca
+// tocó memory_links ni memory_pair_checks (confirmado leyendo el script: solo
+// hace insert/delete sobre record_memories y update sobre memories.merged_into) --
+// si un recuerdo con edges o pair_checks propios se fusiona después, esas filas
+// quedan apuntando a un nombre muerto en vez de resolver al recuerdo vigente.
 const { rows: deadEdges } = await client.query(
-  `select ne.from_node, ne.to_node, ne.relation, nf.merged_into as from_dead, nt.merged_into as to_dead
-   from node_edges ne
-   join nodes nf on nf.name = ne.from_node
-   join nodes nt on nt.name = ne.to_node
+  `select ne.from_memory, ne.to_memory, ne.relation, nf.merged_into as from_dead, nt.merged_into as to_dead
+   from memory_links ne
+   join memories nf on nf.name = ne.from_memory
+   join memories nt on nt.name = ne.to_memory
    where nf.merged_into is not null or nt.merged_into is not null
-   order by ne.from_node, ne.to_node`,
+   order by ne.from_memory, ne.to_memory`,
 );
 report(
-  'node_edges sin nodos fusionados (merged_into)',
+  'memory_links sin recuerdos fusionados (merged_into)',
   deadEdges,
-  (r) => `${r.from_node}${r.from_dead ? ` (fusionado -> ${r.from_dead})` : ''} -> ${r.to_node}${r.to_dead ? ` (fusionado -> ${r.to_dead})` : ''} (${r.relation})`,
+  (r) => `${r.from_memory}${r.from_dead ? ` (fusionado -> ${r.from_dead})` : ''} -> ${r.to_memory}${r.to_dead ? ` (fusionado -> ${r.to_dead})` : ''} (${r.relation})`,
 );
 
 const { rows: deadPairChecks } = await client.query(
-  `select npc.node_a, npc.node_b, na.merged_into as a_dead, nb.merged_into as b_dead
-   from node_pair_checks npc
-   join nodes na on na.name = npc.node_a
-   join nodes nb on nb.name = npc.node_b
+  `select npc.memory_a, npc.memory_b, na.merged_into as a_dead, nb.merged_into as b_dead
+   from memory_pair_checks npc
+   join memories na on na.name = npc.memory_a
+   join memories nb on nb.name = npc.memory_b
    where na.merged_into is not null or nb.merged_into is not null
-   order by npc.node_a, npc.node_b`,
+   order by npc.memory_a, npc.memory_b`,
 );
 report(
-  'node_pair_checks sin nodos fusionados (merged_into)',
+  'memory_pair_checks sin recuerdos fusionados (merged_into)',
   deadPairChecks,
-  (r) => `${r.node_a}${r.a_dead ? ` (fusionado -> ${r.a_dead})` : ''} <-> ${r.node_b}${r.b_dead ? ` (fusionado -> ${r.b_dead})` : ''}`,
+  (r) => `${r.memory_a}${r.a_dead ? ` (fusionado -> ${r.a_dead})` : ''} <-> ${r.memory_b}${r.b_dead ? ` (fusionado -> ${r.b_dead})` : ''}`,
 );
 
-// Colisión de alias entre nodos vigentes (ver lib/check-alias-collision.mjs,
-// hecho #497: "DB2" colisionó entre db2-2026-2 y DB2-gestion-github). Se
-// bloquea al ESCRIBIR vía set-node-aliases.mjs/remember.mjs --aliases, pero
-// merge-nodes.mjs pliega el nombre+alias del nodo origen como alias del
+// Colisión de alias entre recuerdos vigentes (ver lib/check-alias-collision.mjs,
+// registro #497: "DB2" colisionó entre db2-2026-2 y DB2-gestion-github). Se
+// bloquea al ESCRIBIR vía set-memory-aliases.mjs/remember.mjs --aliases, pero
+// merge-memories.mjs pliega el nombre+alias del recuerdo origen como alias del
 // destino SIN pasar por ese chequeo -- una fusión puede colar una colisión
 // que el resto del sistema nunca habría permitido crear a mano.
 const { rows: liveNodes } = await client.query(
-  `select name, aliases from nodes where merged_into is null order by name`,
+  `select name, aliases from memories where merged_into is null order by name`,
 );
 const aliasOwners = new Map();
 for (const n of liveNodes) {
@@ -185,7 +185,7 @@ const aliasCollisions = [...aliasOwners.entries()]
   .filter(([, owners]) => owners.size > 1)
   .map(([form, owners]) => ({ form, owners: [...owners] }));
 report(
-  'Alias sin colisión entre nodos vigentes',
+  'Alias sin colisión entre recuerdos vigentes',
   aliasCollisions,
   (r) => `"${r.form}" reclamado por: ${r.owners.join(', ')}`,
 );
