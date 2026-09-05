@@ -366,10 +366,19 @@ por cada opción marcada, y debajo un conjunto fijo de sub-supernodos (salvo
 aparte -- alargaría la entrevista sin necesidad real, y el usuario siempre
 puede crear otros después con el mismo comando:
 
-- **Trabajo** → `proyectos`, `contactos`, `reuniones`
-- **Personal** → `habitos`, `rutinas`, `espiritualidad`, `salud`
-- **Estudio** → `cursos`, `apuntes`, `tareas`
-- **Comunidad** → `reuniones`, `pendientes`, `contactos`
+Cada sub-supernodo lleva el nombre de su rama como sufijo
+(`<tipo>-<supernodo>`, el mismo esquema que Oscar ya usa en su propio
+segundo cerebro: `proyectos-uao`, `proyectos-personales`) -- no por
+prolijidad, sino porque los nombres de nodo son únicos globalmente, no por
+rama (ver más abajo), y esto evita la colisión de raíz en vez de tener que
+resolverla caso por caso cuando el usuario marca más de una rama:
+
+- **Trabajo** → `proyectos-trabajo`, `contactos-trabajo`, `reuniones-trabajo`
+- **Personal** → `habitos-personal`, `rutinas-personal`,
+  `espiritualidad-personal`, `salud-personal`
+- **Estudio** → `cursos-estudio`, `apuntes-estudio`, `tareas-estudio`
+- **Comunidad** → `reuniones-comunidad`, `pendientes-comunidad`,
+  `contactos-comunidad`
 - **Otro**: no tiene sub-supernodos fijos -- no hay forma de anticipar la
   forma de una categoría que el propio checklist no supo nombrar. Pregunta
   el nombre ("¿cómo la llamarías?") y crea solo el nodo raíz con ese
@@ -377,44 +386,35 @@ puede crear otros después con el mismo comando:
 
 ```bash
 node scripts/db/create-node.mjs --name trabajo
-node scripts/db/create-node.mjs --name proyectos --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name contactos --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name reuniones --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name proyectos-trabajo --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name contactos-trabajo --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name reuniones-trabajo --parent trabajo --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
 
 node scripts/db/create-node.mjs --name personal
-node scripts/db/create-node.mjs --name habitos --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name rutinas --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name espiritualidad --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name salud --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name habitos-personal --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name rutinas-personal --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name espiritualidad-personal --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name salud-personal --parent personal --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
 
 node scripts/db/create-node.mjs --name estudio
-node scripts/db/create-node.mjs --name cursos --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name apuntes --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name tareas --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name cursos-estudio --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name apuntes-estudio --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name tareas-estudio --parent estudio --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
 
 node scripts/db/create-node.mjs --name comunidad
-node scripts/db/create-node.mjs --name reuniones --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name pendientes --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
-node scripts/db/create-node.mjs --name contactos --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name reuniones-comunidad --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name pendientes-comunidad --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
+node scripts/db/create-node.mjs --name contactos-comunidad --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
 
 node scripts/db/create-node.mjs --name <nombre-que-dio-el-usuario>
 ```
 
 (Solo crea los de la rama que el usuario marcó -- si marcó únicamente
-"Trabajo", no crees `personal`, `estudio`, `comunidad` ni sus hijos.
-
-Ojo con `reuniones` y `contactos`: se repiten como nombre entre Trabajo y
-Comunidad, y los nombres de nodo son únicos globalmente, no por rama --
-`create-node.mjs` es idempotente ante un nombre ya existente: si el usuario
-marcó ambas ramas, el segundo `create-node.mjs --name reuniones --parent
-comunidad` NO crea un nodo nuevo, enlaza el mismo nodo "reuniones" que ya
-existe bajo Trabajo a Comunidad también (un nodo puede tener más de un
-`pertenece_a`). No es un error, pero sí una decisión real -- pregúntale al
-usuario si marca ambas ramas: *"Trabajo y Comunidad usan por defecto un
-solo nodo 'reuniones' y uno de 'contactos' compartido entre las dos, ¿te
-sirve así o prefieres separarlos (ej. 'reuniones-comunidad',
-'contactos-comunidad')?"* Si prefiere separarlos, usa esos nombres en vez
-de los de arriba solo para la rama de Comunidad.)
+"Trabajo", no crees `personal`, `estudio`, `comunidad` ni sus hijos. Con el
+sufijo por rama, ninguno de estos nombres colisiona entre sí sin importar
+cuántas ramas se marquen a la vez -- si el usuario marca, por ejemplo,
+Trabajo y Comunidad, obtiene `contactos-trabajo` y `contactos-comunidad`
+como nodos genuinamente separados, no uno compartido.)
 
 Si algún comando bloquea por colisión de nombre/alias (no la salta ni
 siquiera `--force`, es una protección distinta): es señal de que la Fase 5
