@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="utf-8" />
-<title>2nd-brain — dashboard</title>
+<title>2nd-brain dashboard</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <script src="/vendor/d3.v7.min.js"></script>
 <style>
@@ -130,7 +130,7 @@
   .gph-node.gph-meta .gph-count { fill: var(--graph-meta, var(--warn)); }
   /* Alto contraste (hallazgo del usuario): el relleno semitransparente de abajo
      deja ver la línea/flecha de la conexión por debajo, dificultando leer el
-     número — no es problema de orden de capas (los links ya se dibujan antes
+     número, no es problema de orden de capas (los links ya se dibujan antes
      que los nodos), es que la transparencia deja pasar lo de atrás. En
      oscuro/claro se deja igual (el borde es sutil ahí, el usuario confirmó que no
      molesta); en alto contraste, relleno sólido + número en --accent-text
@@ -160,7 +160,7 @@
 <body>
 <header>
   <h1>2nd-brain dashboard</h1>
-  <span class="badge">solo local — 127.0.0.1</span>
+  <span class="badge">solo local: 127.0.0.1</span>
 </header>
 <div class="layout">
   <nav id="nav"></nav>
@@ -257,10 +257,10 @@ function escapeHtml(s) {
 }
 
 // Renderer de Markdown minimalista, a propósito (sin librería externa, sin
-// build step) — cubre solo lo que las respuestas sintetizadas por LLM
+// build step): cubre solo lo que las respuestas sintetizadas por LLM
 // (node-status.mjs, synthesize.mjs) realmente producen: encabezados #/##/###,
 // **negrita**, *cursiva*, listas "- " y "1. ", "---" como separador, tablas
-// GFM ("| col | col |"), párrafos. No es un parser de Markdown general — no
+// GFM ("| col | col |"), párrafos. No es un parser de Markdown general: no
 // hace falta serlo para este uso.
 function renderMarkdown(md) {
   const lines = escapeHtml(md).split(/\r?\n/);
@@ -279,7 +279,7 @@ function renderMarkdown(md) {
   function inline(s) {
     // Los code spans (`...`) se extraen primero para que su contenido
     // (guiones bajos, asteriscos de identificadores de código) no se
-    // confunda con énfasis — se restauran al final como <code>.
+    // confunda con énfasis: se restauran al final como <code>.
     const codeSpans = [];
     s = s.replace(/`([^`]+?)`/g, (_, code) => {
       codeSpans.push(code);
@@ -308,7 +308,7 @@ function renderMarkdown(md) {
     if (!line) { flushPara(); closeList(); continue; }
     // Tabla GFM: una fila con "|" seguida de una fila separadora
     // ("|---|---|") confirma que es una tabla y no una lista/párrafo con
-    // barras sueltas — sin esa segunda línea, no se trata como tabla.
+    // barras sueltas: sin esa segunda línea, no se trata como tabla.
     if (line.includes('|') && isTableSeparator((lines[i + 1] || '').trim())) {
       flushPara(); closeList();
       const header = splitTableRow(line);
@@ -358,7 +358,7 @@ function renderMarkdown(md) {
 }
 
 // Variante de out() para respuestas de síntesis (prosa de un LLM, no salida
-// tabular/plana de un script) — renderiza el markdown en vez de mostrarlo
+// tabular/plana de un script): renderiza el markdown en vez de mostrarlo
 // crudo. stderr (progreso/errores del synthesize) se mantiene como texto
 // plano aparte, nunca como prosa.
 function outMarkdown(container, result, text) {
@@ -389,7 +389,7 @@ function todayBogota() {
 }
 
 // --- Configuración (tema, color de acento, colores del grafo, densidad,
-// reducir movimiento) — persistida en localStorage, por navegador, no
+// reducir movimiento): persistida en localStorage, por navegador, no
 // sincronizada entre máquinas. Sección "Configuración" al final del nav.
 const SETTINGS_KEY = 'segundo-cerebro-dashboard-settings-v1';
 const DEFAULT_SETTINGS = {
@@ -435,7 +435,7 @@ function applySettings() {
 
   html.dataset.density = settings.density;
 
-  // Override de color de acento: bloqueado en alto contraste a propósito —
+  // Override de color de acento: bloqueado en alto contraste a propósito,
   // esos temas existen para garantizar un contraste mínimo, y un acento
   // elegido a mano podría romper esa garantía sin que quien lo elige se dé
   // cuenta (pidió alto contraste, no "casi" alto contraste).
@@ -466,7 +466,7 @@ async function call(method, url, body) {
   try {
     return await res.json();
   } catch {
-    // respuesta no-JSON (ej. 404 plano de una ruta que no existe) — no dejar
+    // respuesta no-JSON (ej. 404 plano de una ruta que no existe): no dejar
     // que esto se propague sin capturar, un llamador esperando el objeto
     // {ok, ...} de vuelta se quedaría colgado si esto lanza.
     return { ok: false, error: `${res.status} ${res.statusText}` };
@@ -545,8 +545,8 @@ function section(id, title, hint, bodyHtml) {
 // "Ver datos crudos" los muestra sin volver a buscar (ya se pidieron ambos
 // en la misma corrida).
 {
-  const sec = section('search', 'Buscar', 'Busca en páginas y hechos combinando texto y significado ("search.mjs") y redacta una respuesta a partir de los fragmentos encontrados. El proveedor/modelo de la síntesis se elige en Configuración. Activa "Ver datos crudos" para ver los fragmentos originales (sin redactar) en vez de o además de la respuesta.',
-    `<label>Pregunta</label><input type="text" id="search-q" placeholder="ej. presupuesto del proyecto Atlas">
+  const sec = section('search', 'Buscar', 'Busca en páginas y hechos combinando texto y significado ("search.mjs") y redacta una respuesta a partir de los fragmentos encontrados. El proveedor/modelo de la síntesis se elige en Configuración. Activa "Ver datos crudos" para ver los fragmentos originales (sin redactar) en vez de o además de la respuesta. Escribe "#123" (o varios separados por coma, ej. "#94, #95") para traer esos hechos por id exacto ("get-facts.mjs"), sin buscar ni sintetizar.',
+    `<label>Pregunta</label><input type="text" id="search-q" placeholder="ej. presupuesto del proyecto Atlas, o #123">
      <div class="checkline" style="margin-top:10px"><input type="checkbox" id="search-raw"><label for="search-raw">Ver datos crudos</label></div>
      <button class="run" id="search-run">Buscar</button>
      <div id="search-answer"></div>
@@ -576,12 +576,25 @@ function section(id, title, hint, bodyHtml) {
     rawBox.style.display = rawCheckbox.checked ? 'block' : 'none';
   });
 
+  // "#123" o "#94, #95" trae esos hechos por id exacto (get-facts.mjs), sin
+  // buscar ni sintetizar.
+  const FACT_ID_PATTERN = /^#?\d+(\s*,\s*#?\d+)*$/;
+
   sec.querySelector('#search-run').addEventListener('click', async () => {
     const q = sec.querySelector('#search-q').value.trim();
     if (!q) return;
     answerEl.innerHTML = '<p class="hint">Buscando…</p>';
     rawBox.innerHTML = '';
     rawBox.style.display = rawCheckbox.checked ? 'block' : 'none';
+
+    if (FACT_ID_PATTERN.test(q)) {
+      const ids = q.split(',').map((s) => s.trim().replace(/^#/, '')).join(',');
+      const r = await call('GET', '/api/facts?id=' + encodeURIComponent(ids));
+      const text = r.ok ? (r.stdout || 'Ningún id existe.') : (r.stderr || r.error || 'get-facts.mjs falló');
+      renderRaw(text, !r.ok);
+      renderAnswer(text, !r.ok);
+      return;
+    }
 
     const r = await call('GET', '/api/search?q=' + encodeURIComponent(q));
     if (!r.ok) {
@@ -605,7 +618,7 @@ function section(id, title, hint, bodyHtml) {
 
 // --- Timeline ---
 {
-  const sec = section('timeline', 'Timeline', 'Lista hechos en orden cronológico ("timeline.mjs"). No es un buscador. Déjalo vacío para ver los más recientes de todo el sistema. Escribe un nodo para ver solo sus hechos — empieza a teclear para ver los nodos existentes. No acepta términos de búsqueda libres; para eso usa "Buscar".',
+  const sec = section('timeline', 'Timeline', 'Lista hechos en orden cronológico ("timeline.mjs"). No es un buscador. Déjalo vacío para ver los más recientes de todo el sistema. Escribe un nodo para ver solo sus hechos, empieza a teclear para ver los nodos existentes. No acepta términos de búsqueda libres; para eso usa "Buscar".',
     `<label>Nodo (opcional, empieza a escribir para ver sugerencias)</label>
      <input type="text" id="tl-node" placeholder="ej. segundo-cerebro" list="tl-nodes-list">
      <datalist id="tl-nodes-list"></datalist>
@@ -646,7 +659,7 @@ function section(id, title, hint, bodyHtml) {
          </select>
        </div>
        <div><label style="margin-top:10px">Modelo (opcional, override sin fallback)</label>
-         <select id="ns-model"><option value="">(auto — probar en orden)</option></select>
+         <select id="ns-model"><option value="">(auto, probar en orden)</option></select>
        </div>
      </div>
      <button class="run" id="ns-run">Ver estado</button>`);
@@ -655,7 +668,7 @@ function section(id, title, hint, bodyHtml) {
   const nsModelSel = sec.querySelector('#ns-model');
 
   async function loadNsModelOptions() {
-    nsModelSel.innerHTML = '<option value="">(auto — probar en orden)</option>';
+    nsModelSel.innerHTML = '<option value="">(auto, probar en orden)</option>';
     const r = await call('GET', '/api/model-config?provider=' + nsProviderSel.value);
     for (const m of r.fallbackOrder ?? []) {
       const opt = document.createElement('option');
@@ -911,14 +924,14 @@ function section(id, title, hint, bodyHtml) {
       nodeSel.attr('transform', (d) => `translate(${d.x},${d.y})`);
     }
 
-    // alphaDecay SIEMPRE normal — es lo que hace que el layout converja bien
+    // alphaDecay SIEMPRE normal: es lo que hace que el layout converja bien
     // separado (probado: alphaDecay alto no solo quita la animación, apaga
     // la física antes de que el charge/collide tengan tiempo de separar los
     // nodos, quedan amontonados; y el arrastre pierde la inercia porque
     // decae casi instantáneo incluso durante el drag, hallazgo real de
     // el usuario). "Reducir movimiento" adelanta la simulación entera de un
     // jalón (tick() manual en loop, sin pintar) antes del primer render, en
-    // vez de tocar la física en sí — layout final idéntico, solo sin
+    // vez de tocar la física en sí: layout final idéntico, solo sin
     // animación visible de asentamiento. simulation.restart() al final deja
     // el arrastre con inercia normal después.
     simulation = d3.forceSimulation(nodes)
@@ -1189,11 +1202,11 @@ function section(id, title, hint, bodyHtml) {
 // solo propone (determinístico + extracción verificada contra el texto real
 // de los hechos del nodo), set-node-aliases.mjs es el único que escribe.
 // Un alias no tiene sentido compartido entre dos nodos (colisión de
-// identidad, no relación) — el chequeo de colisión vive en el script, acá
+// identidad, no relación): el chequeo de colisión vive en el script, acá
 // solo se muestra lo que devuelva.
 {
-  const sec = section('aliases', 'Alias', 'Un alias es una forma natural de nombrar un nodo (nombre de pila, sigla) — sin alias, el name interno (kebab-case) casi nunca aparece tal cual en prosa, y el sistema no puede reconocer menciones futuras. "Buscar candidatos" propone formas extraídas de los propios hechos del nodo (verificadas contra el texto real, nunca inventadas). Nada se aplica solo: revisa y aplica/quita abajo.',
-    `<label>Nodo (opcional — vacío = revisa todos los que tengan alias vacío)</label>
+  const sec = section('aliases', 'Alias', 'Un alias es una forma natural de nombrar un nodo (nombre de pila, sigla), sin alias, el name interno (kebab-case) casi nunca aparece tal cual en prosa, y el sistema no puede reconocer menciones futuras. "Buscar candidatos" propone formas extraídas de los propios hechos del nodo (verificadas contra el texto real, nunca inventadas). Nada se aplica solo: revisa y aplica/quita abajo.',
+    `<label>Nodo (opcional, vacío = revisa todos los que tengan alias vacío)</label>
      <input type="text" id="al-scan-node" list="al-nodes-list">
      <datalist id="al-nodes-list"></datalist>
      <button class="run" id="al-scan">Buscar candidatos</button>
@@ -1266,7 +1279,7 @@ function section(id, title, hint, bodyHtml) {
 // cuando la auto-creación no alcanzó confianza suficiente. Ningún enlace se
 // crea solo desde acá salvo que pulses "Crear".
 {
-  const sec = section('relations', 'Relaciones', 'Enlaces persistentes nodo-a-nodo ("node_edges") — distinto de que un hecho puntual mencione a dos nodos a la vez. "Buscar candidatos" corre el escaneo de co-ocurrencia contra TODO el histórico ("list-node-mentions.mjs"), útil para auditar lo que la auto-creación no llegó a resolver sola. Crear/Borrar son siempre manuales.',
+  const sec = section('relations', 'Relaciones', 'Enlaces persistentes nodo-a-nodo ("node_edges"), distinto de que un hecho puntual mencione a dos nodos a la vez. "Buscar candidatos" corre el escaneo de co-ocurrencia contra TODO el histórico ("list-node-mentions.mjs"), útil para auditar lo que la auto-creación no llegó a resolver sola. Crear/Borrar son siempre manuales.',
     `<button class="run" id="rl-scan">Buscar candidatos (histórico completo)</button>
 
      <label style="margin-top:22px">Ver enlaces de un nodo</label>
@@ -1291,7 +1304,7 @@ function section(id, title, hint, bodyHtml) {
        <div><input type="text" id="rl-un-from" placeholder="from" list="rl-nodes-list"></div>
        <div><input type="text" id="rl-un-to" placeholder="to" list="rl-nodes-list"></div>
      </div>
-     <label>Relación (opcional — obligatoria si el par tiene más de una)</label>
+     <label>Relación (opcional, obligatoria si el par tiene más de una)</label>
      <input type="text" id="rl-un-relation" placeholder="ej. colabora_con">
      <label>Motivo</label><input type="text" id="rl-un-reason" placeholder="ej. colisión de alias, no era relación real">
      <button class="run secondary" id="rl-unlink">Borrar</button>`);
@@ -1356,7 +1369,7 @@ function section(id, title, hint, bodyHtml) {
 // cabd-2026-2). No borra ni retracta el hecho, solo corrige a qué nodo
 // pertenece.
 {
-  const sec = section('recategorize', 'Recategorizar hecho', 'Reasigna UN hecho a otro nodo, sin tocar el resto del nodo original ("recategorize-fact.mjs") — para cuando la desambiguación automática se equivocó, o se guardó con --node a mano sin pensarlo. Usa "Retractar → Ver hecho(s)" si primero quieres confirmar el texto del id.',
+  const sec = section('recategorize', 'Recategorizar hecho', 'Reasigna UN hecho a otro nodo, sin tocar el resto del nodo original ("recategorize-fact.mjs"), para cuando la desambiguación automática se equivocó, o se guardó con --node a mano sin pensarlo. Usa "Retractar → Ver hecho(s)" si primero quieres confirmar el texto del id.',
     `<label>Id del hecho</label><input type="text" id="rc-fact" placeholder="412">
      <div class="row">
        <div><label>Nodo actual</label><input type="text" id="rc-from" list="rc-nodes-list"></div>
@@ -1414,8 +1427,8 @@ function section(id, title, hint, bodyHtml) {
      <label>Nodo(s) (opcional, separados por coma, empieza a escribir para ver sugerencias)</label>
      <input type="text" id="rm-node" placeholder="ej. segundo-cerebro" list="rm-nodes-list">
      <datalist id="rm-nodes-list"></datalist>
-     <div class="checkline"><input type="checkbox" id="rm-create-node"><label for="rm-create-node">Crear nodo nuevo — requiere escribir el nombre arriba en "Nodo(s)" (--create-node)</label></div>
-     <label style="margin-top:10px">Alias del nodo nuevo (opcional, separados por coma — solo aplica con "Crear nodo nuevo" y un único nodo)</label>
+     <div class="checkline"><input type="checkbox" id="rm-create-node"><label for="rm-create-node">Crear nodo nuevo, requiere escribir el nombre arriba en "Nodo(s)" (--create-node)</label></div>
+     <label style="margin-top:10px">Alias del nodo nuevo (opcional, separados por coma, solo aplica con "Crear nodo nuevo" y un único nodo)</label>
      <input type="text" id="rm-aliases" placeholder="ej. Pedro Pérez, jefe">
      <div class="row">
        <div><label>Supersede a (ids, opcional)</label><input type="text" id="rm-supersedes" placeholder="12,15"></div>
@@ -1435,7 +1448,7 @@ function section(id, title, hint, bodyHtml) {
   const dateInput = sec.querySelector('#rm-date');
   const confirmDateWrap = sec.querySelector('#rm-confirm-date-wrap');
   const confirmDateCheck = sec.querySelector('#rm-confirm-date');
-  dateInput.value = todayBogota(); // default: hoy — mismo motivo que el bloqueo de #528, reduce el caso de guardar sin darse cuenta con la fecha equivocada
+  dateInput.value = todayBogota(); // default: hoy, mismo motivo que el bloqueo de #528, reduce el caso de guardar sin darse cuenta con la fecha equivocada
 
   function syncConfirmDateVisibility() {
     const mismatched = dateInput.value && dateInput.value !== todayBogota();
@@ -1460,20 +1473,20 @@ function section(id, title, hint, bodyHtml) {
     };
     if (!body.claim || !body.date || !body.source) { out(sec, { ok: false, stdout: '', stderr: 'Faltan claim/fecha/fuente.' }); return; }
     if (body.date !== todayBogota() && !body.confirmDate) {
-      out(sec, { ok: false, stdout: '', stderr: `La fecha (${body.date}) es distinta de hoy (${todayBogota()}) — marca "Confirmo que la fecha distinta de hoy es intencional" antes de guardar.` });
+      out(sec, { ok: false, stdout: '', stderr: `La fecha (${body.date}) es distinta de hoy (${todayBogota()}), marca "Confirmo que la fecha distinta de hoy es intencional" antes de guardar.` });
       return;
     }
     if (body.createNode && !body.node) {
-      out(sec, { ok: false, stdout: '', stderr: 'Marcaste "Crear nodo nuevo" pero el campo "Nodo(s)" está vacío — escribe ahí el nombre del nodo nuevo antes de guardar.' });
+      out(sec, { ok: false, stdout: '', stderr: 'Marcaste "Crear nodo nuevo" pero el campo "Nodo(s)" está vacío, escribe ahí el nombre del nodo nuevo antes de guardar.' });
       return;
     }
     if (body.aliases && !body.createNode) {
-      out(sec, { ok: false, stdout: '', stderr: 'Escribiste alias pero no marcaste "Crear nodo nuevo" — los alias solo aplican al crear un nodo.' });
+      out(sec, { ok: false, stdout: '', stderr: 'Escribiste alias pero no marcaste "Crear nodo nuevo", los alias solo aplican al crear un nodo.' });
       return;
     }
     // Sin esto, un usuario que se distrae entre el clic y la respuesta (o
     // que no ve el recuadro de salida más abajo) no tiene ninguna señal de
-    // que el guardado ya corrió, y puede volver a hacer clic — insertando
+    // que el guardado ya corrió, y puede volver a hacer clic: insertando
     // el mismo hecho dos veces (visto en vivo: #513 duplicado por #514,
     // mismo contenido). El botón deshabilitado + "Guardando…" cubre el
     // primer caso; vaciar el claim solo en éxito real es la señal fuerte:
@@ -1512,7 +1525,7 @@ function section(id, title, hint, bodyHtml) {
 
 // --- Retractar ---
 {
-  const sec = section('forget', 'Retractar', 'Invalida un hecho vigente sin reemplazarlo ("forget.mjs"). Nunca borra la fila — el motivo queda anotado y sigue consultable con --all en Timeline. Para borrar de verdad basura sin ningún valor histórico (pruebas, duplicados de debugging), existe forget.mjs --id <id> --purge (o --node <nombre> --purge) por CLI, deliberadamente fuera de este panel — solo borra lo ya retractado, nunca un hecho vigente en un solo paso.',
+  const sec = section('forget', 'Retractar', 'Invalida un hecho vigente sin reemplazarlo ("forget.mjs"). Nunca borra la fila, el motivo queda anotado y sigue consultable con --all en Timeline. Para borrar de verdad basura sin ningún valor histórico (pruebas, duplicados de debugging), existe forget.mjs --id <id> --purge (o --node <nombre> --purge) por CLI, deliberadamente fuera de este panel, solo borra lo ya retractado, nunca un hecho vigente en un solo paso.',
     `<label>Id(s) (separados por coma)</label><input type="text" id="fg-id" placeholder="159,160">
      <button class="run secondary" id="fg-preview" style="margin-top:8px">Ver hecho(s)</button>
      <label style="margin-top:16px">Motivo</label><input type="text" id="fg-reason" placeholder="ej. aprobado por error, ruido de desarrollo interno">
@@ -1529,7 +1542,7 @@ function section(id, title, hint, bodyHtml) {
     previewedFor = null;
     previewedFacts = [];
     runBtn.disabled = true;
-    statusEl.textContent = 'El id cambió — vuelve a pulsar "Ver hecho(s)" antes de retractar.';
+    statusEl.textContent = 'El id cambió, vuelve a pulsar "Ver hecho(s)" antes de retractar.';
   }
   idInput.addEventListener('input', invalidatePreview);
 
@@ -1543,10 +1556,10 @@ function section(id, title, hint, bodyHtml) {
       previewedFacts = [...(r.stdout || '').matchAll(/#(\d+) \[[\d-]+\] \[([^\]]+)\] (.+)/g)]
         .map((m) => ({ id: m[1], status: m[2], claim: m[3] }));
       runBtn.disabled = false;
-      statusEl.textContent = `Contenido verificado para el id "${id}" — ya puedes retractar.`;
+      statusEl.textContent = `Contenido verificado para el id "${id}", ya puedes retractar.`;
     } else {
       invalidatePreview();
-      statusEl.textContent = 'No se pudo previsualizar — revisa el id.';
+      statusEl.textContent = 'No se pudo previsualizar, revisa el id.';
     }
   });
 
@@ -1554,7 +1567,7 @@ function section(id, title, hint, bodyHtml) {
     const id = idInput.value.trim();
     const reason = sec.querySelector('#fg-reason').value.trim();
     if (!id || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan id/motivo.' }); return; }
-    if (previewedFor !== id) { out(sec, { ok: false, stdout: '', stderr: 'Vuelve a pulsar "Ver hecho(s)" — el id no coincide con el último previsualizado.' }); return; }
+    if (previewedFor !== id) { out(sec, { ok: false, stdout: '', stderr: 'Vuelve a pulsar "Ver hecho(s)", el id no coincide con el último previsualizado.' }); return; }
 
     const summary = previewedFacts.map((f) => `#${f.id} [${f.status}]: ${f.claim.slice(0, 100)}${f.claim.length > 100 ? '…' : ''}`).join('\n');
     const confirmed = window.confirm(
@@ -1568,17 +1581,17 @@ function section(id, title, hint, bodyHtml) {
 }
 
 // --- Modelos ---
-// Edita config/gemini-models.json y config/ollama-models.json — las listas
+// Edita config/gemini-models.json y config/ollama-models.json: las listas
 // de respaldo que usan extract-facts.mjs y extract-page-facts.mjs cuando el
 // primer modelo responde 503 (sobrecargado). Un modelo por línea, en orden
 // de prioridad. Se recargan en "Extraer de sesión"/"Extraer de página" al
 // volver a abrir esas pestañas.
 {
   const sec = section('models', 'Modelos', 'Edita las listas de modelos de respaldo para extracción, una por proveedor (Gemini y Ollama Cloud). Escribe un modelo por línea. El primero de la lista es el primero que se prueba.',
-    `<label>Gemini — config/gemini-models.json</label>
+    `<label>Gemini: config/gemini-models.json</label>
      <textarea id="mc-gemini" placeholder="gemini-flash-latest"></textarea>
      <button class="run" id="mc-gemini-save">Guardar</button>
-     <label style="margin-top:24px">Ollama Cloud — config/ollama-models.json</label>
+     <label style="margin-top:24px">Ollama Cloud: config/ollama-models.json</label>
      <textarea id="mc-ollama" placeholder="gpt-oss:120b-cloud"></textarea>
      <button class="run" id="mc-ollama-save">Guardar</button>`);
 
@@ -1628,10 +1641,10 @@ function section(id, title, hint, bodyHtml) {
          <select id="ef-provider"><option value="gemini">gemini</option><option value="ollama">ollama</option></select>
        </div>
        <div><label>Modelo (opcional, override sin fallback)</label>
-         <select id="ef-model"><option value="">(auto — probar en orden)</option></select>
+         <select id="ef-model"><option value="">(auto, probar en orden)</option></select>
        </div>
      </div>
-     <label>Sesión (opcional, id del .jsonl — vacío = la más reciente)</label>
+     <label>Sesión (opcional, id del .jsonl, vacío = la más reciente)</label>
      <input type="text" id="ef-session">
      <div class="checkline"><input type="checkbox" id="ef-review"><label for="ef-review">Revisión interactiva (--review, requiere terminal real)</label></div>
      <label style="margin-top:16px">Comando</label>
@@ -1643,7 +1656,7 @@ function section(id, title, hint, bodyHtml) {
   const cmdEl = sec.querySelector('#ef-cmd');
 
   async function loadModelOptions() {
-    modelSel.innerHTML = '<option value="">(auto — probar en orden)</option>';
+    modelSel.innerHTML = '<option value="">(auto, probar en orden)</option>';
     const r = await call('GET', '/api/model-config?provider=' + providerSel.value);
     for (const m of r.fallbackOrder ?? []) {
       const opt = document.createElement('option');
@@ -1691,13 +1704,13 @@ function section(id, title, hint, bodyHtml) {
       sec.querySelector('#ef-copy').textContent = 'Copiado';
       setTimeout(() => { sec.querySelector('#ef-copy').textContent = 'Copiar comando'; }, 1500);
     } catch {
-      // clipboard puede fallar sin HTTPS/permiso — el texto ya está seleccionable (user-select: all)
+      // clipboard puede fallar sin HTTPS/permiso: el texto ya está seleccionable (user-select: all)
     }
   });
 }
 
 // --- Extraer de página ---
-// Revisión interactiva de verdad, en el navegador (2026-08-31) — antes esta
+// Revisión interactiva de verdad, en el navegador (2026-08-31): antes esta
 // sección solo armaba un comando de terminal, porque --review necesita TTY.
 // extract-page-facts.mjs ahora tiene un modo --json (sin preguntas por
 // stdin) que entrega los candidatos con sus nodos parecidos ya calculados;
@@ -1714,7 +1727,7 @@ function section(id, title, hint, bodyHtml) {
          <select id="epf-provider"><option value="gemini">gemini</option><option value="ollama">ollama</option></select>
        </div>
        <div><label>Modelo (opcional, override sin fallback)</label>
-         <select id="epf-model"><option value="">(auto — probar en orden)</option></select>
+         <select id="epf-model"><option value="">(auto, probar en orden)</option></select>
        </div>
      </div>
      <button class="run" id="epf-extract">Extraer candidatos</button>
@@ -1748,7 +1761,7 @@ function section(id, title, hint, bodyHtml) {
   });
 
   async function loadModelOptions() {
-    modelSel.innerHTML = '<option value="">(auto — probar en orden)</option>';
+    modelSel.innerHTML = '<option value="">(auto, probar en orden)</option>';
     const r = await call('GET', '/api/model-config?provider=' + providerSel.value);
     for (const m of r.fallbackOrder ?? []) {
       const opt = document.createElement('option');
@@ -1811,7 +1824,7 @@ function section(id, title, hint, bodyHtml) {
       if (!r.ok) { infoEl.textContent = 'Error: ' + r.error; return; }
       lastSource = r.source;
       const nodeInfo = r.liveNode && r.liveNode !== r.defaultNode ? `fusionado, vigente: "${r.liveNode}"` : r.liveNode ? 'ya existe' : 'nuevo';
-      infoEl.textContent = `Página: ${r.page.slug} (${r.page.type}) — nodo por defecto "${r.defaultNode}" (${nodeInfo}) — ${r.existingFactsCount} hecho(s) ya vigente(s) — ${r.facts.length} candidato(s).`;
+      infoEl.textContent = `Página: ${r.page.slug} (${r.page.type}) · nodo por defecto "${r.defaultNode}" (${nodeInfo}) · ${r.existingFactsCount} hecho(s) ya vigente(s) · ${r.facts.length} candidato(s).`;
       if (r.facts.length === 0) return;
       const fallbackDate = r.page.updatedAt ? r.page.updatedAt.slice(0, 10) : '';
       r.facts.forEach((f, i) => cardsEl.appendChild(renderCard(f, i, fallbackDate)));
