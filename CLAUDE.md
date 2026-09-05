@@ -235,11 +235,16 @@ eso es la fuente más pobre, no la única. Antes de seguir, ofrécele
 explícitamente enriquecer el arranque con una fuente ya escrita, en vez de
 (o además de) lo que acaba de contar:
 
-- **Documentos**: *"¿Tienes alguna nota, propuesta o documento (.md, PDF,
-  lo que sea) de alguno de tus proyectos activos? Si me dices la ruta, lo
-  leo y te propongo los hechos concretos a guardar antes de escribir nada
- , nunca invento, solo extraigo lo que el documento realmente dice."*
-  Para un `.md`, usa `scripts/db/extract-page-facts.mjs --page <ruta>
+- **Documentos y notas dispersas**: la fuente más común no es un solo
+  documento prolijo sino ideas repartidas entre varias herramientas a la
+  vez -- pregúntalo así, no solo "¿tienes un documento?": *"¿Tienes notas,
+  propuestas o ideas guardadas en algún lado -- un archivo (.md, PDF...),
+  una app de notas (Evernote, Keep, Notion...), favoritos/marcados
+  guardados en el navegador o en una app, un cuaderno físico? Si me dices
+  dónde, lo reviso y te propongo los hechos concretos a guardar antes de
+  escribir nada, nunca invento, solo extraigo lo que el material
+  realmente dice."* El tratamiento depende del formato, no de la fuente:
+  para un `.md`, usa `scripts/db/extract-page-facts.mjs --page <ruta>
   --json` -- NUNCA `--review`: esa bandera exige una terminal interactiva
   real, el propio script la rechaza de inmediato si no la tiene ("stdin no
   es TTY"), y correrla vos como agente nunca tiene una (mismo motivo por
@@ -250,9 +255,18 @@ explícitamente enriquecer el arranque con una fuente ya escrita, en vez de
   descarta cada uno con él antes de guardar nada. Los aprobados se
   guardan con `remember-batch.mjs --file <archivo>` (o por stdin), nunca
   uno por uno con `remember.mjs`, para reusar el chequeo de contradicción
-  del lote completo. Para otros formatos, léelo tú mismo con tus
-  herramientas y redacta los hechos a mano siguiendo el mismo criterio
-  (atómicos, fechados, con fuente).
+  del lote completo. Cualquier otro formato (exportación `.enex` de
+  Evernote, `.html` de una nota o de favoritos del navegador, PDF, texto
+  pegado directo en el chat) NO pasa por `extract-page-facts.mjs` -- ese
+  script solo acepta `.md` en disco o un slug ya existente en `pages`.
+  Léelo tú mismo con tus herramientas (es texto plano o marcado por
+  dentro, no necesita conversión) y redacta los hechos a mano siguiendo
+  el mismo criterio (atómicos, fechados, con fuente), mostrando cada uno
+  antes de guardarlo igual que con `--json`. Si son fotos de un cuaderno
+  físico, el usuario necesita transcribirlas primero -- esta fase no hace
+  OCR. Si son marcadores/favoritos sin contenido propio (solo enlaces),
+  decide con el usuario si vale la pena guardarlos como hechos o dejarlos
+  fuera por ser demasiados o poco informativos.
 - **Correo**: si tienes un MCP de correo conectado en esta sesión (Gmail u
   otro), ofrécele buscar antecedentes reales de un proyecto que mencionó
   ("¿busco en tu bandeja los últimos correos sobre [proyecto X] para
