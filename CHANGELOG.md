@@ -5,6 +5,27 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.2.1 (2026-09-06)
+
+Sin cambios en `scripts/db/schema.sql` -- segura de aplicar sin tocar la
+base de datos.
+
+- **"Candidatos de categoría" ahora propone enlazar/anidar en la jerarquía
+  existente**, no solo crear una categoría nueva: si un huérfano (o un
+  cluster de huérfanos) encaja con una categoría/subcategoría ya existente
+  (por parecido con sus hijos actuales), la tarjeta lo propone así --
+  siempre editable, revisión humana obligatoria intacta.
+- **Corrige bug real**: la detección de "huérfano" solo contaba enlaces
+  `pertenece_a`, así que un recuerdo con cualquier otro tipo de relación
+  (`colabora_con`, `usado_para_calificar`, etc.) salía como huérfano en
+  esta herramienta aunque ya estuviera conectado según la sección Grafo.
+  Ahora cuenta cualquier `memory_link`, mismo criterio que Grafo.
+- **Aviso para instalaciones existentes**: si tu `relation` de jerarquía
+  tiene algún typo (ej. `'pertenece a'` con espacio en vez de guion bajo),
+  ese enlace queda invisible tanto para el chequeo de huérfanos como para
+  el encaje contra categorías existentes -- revisa `select distinct
+  relation from memory_links` si algo no encaja como esperas.
+
 ## v0.2.0 (2026-09-06)
 
 Sin cambios en `scripts/db/schema.sql` -- segura de aplicar sin tocar la

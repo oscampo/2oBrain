@@ -1192,32 +1192,57 @@ function section(id, title, hint, bodyHtml) {
 }
 
 // --- Candidatos de categoría ---
-// recuerdos de dominio sin lugar en la jerarquía (ni hijo ni padre de ningún
-// pertenece_a) agrupados por similitud de sus registros, ver
+// 2026-09-04: recuerdos de dominio sin lugar en la jerarquía (ni hijo ni padre de
+// ningún pertenece_a) agrupados por similitud de sus registros -- ver
 // list-category-candidates.mjs para el diseño completo y por qué quedó bajo
 // demanda (el usuario la corre cuando siente el grafo desordenado) en vez de
-// una sugerencia proactiva.
+// una sugerencia proactiva (idea descartada tras discutirla, mismo patrón
+// que ya se probó y se abandonó con el hook Stop).
 //
-// Arma una tarjeta por cluster (nombre sugerido editable, miembros con
-// checkbox para excluir alguno) y crea + liga en el navegador
-// (/api/create-memory, /api/memory-link): revisión humana obligatoria, nada se
-// crea hasta pulsar el botón de la tarjeta.
+// Primera versión solo mostraba texto plano con comandos para copiar a una
+// terminal -- Oscar notó que era el único candidato sin ninguna acción
+// posible desde el dashboard, a diferencia de "Extraer de página". Esta
+// versión arma una tarjeta por cluster (nombre sugerido editable, miembros
+// con checkbox para excluir alguno) y crea + liga en el navegador
+// (/api/create-memory, /api/memory-link) -- revisión humana obligatoria sigue
+// intacta: nada se crea hasta pulsar el botón de la tarjeta.
 {
-  const sec = section('category-candidates', 'Candidatos de categoría', 'Recuerdos de dominio que no están ligados a nada en la jerarquía (ni son hijos ni son padres de otro recuerdo vía "pertenece_a"), agrupados por similitud temática de sus registros, con un nombre de categoría sugerido. Un huérfano sin ningún parecido sigue apareciendo con su propia tarjeta de 1 miembro, no necesita esperar a tener "hermanos". Nada se crea solo: revisa/edita el nombre y los miembros de cada tarjeta y confirma.',
+  const sec = section('category-candidates', 'Candidatos de categoría', 'Recuerdos de dominio que no están ligados a nada en la jerarquía (ni son hijos ni son padres de otro recuerdo vía "pertenece_a"), agrupados por similitud temática de sus registros. Si el grupo encaja con una categoría/subcategoría ya existente (por el parecido con sus hijos actuales), se propone enlazarlo/anidarlo ahí en vez de crear una nueva -- editable, siempre puedes elegir "categoría nueva" en su lugar. Nada se crea solo: revisa/edita cada tarjeta y confirma.',
     `<button class="run" id="sc-run">Buscar candidatos</button>
      <div class="status" id="sc-info"></div>
+     <datalist id="sc-memories-list"></datalist>
      <div id="sc-cards"></div>`);
 
   const runBtn = sec.querySelector('#sc-run');
   const infoEl = sec.querySelector('#sc-info');
   const cardsEl = sec.querySelector('#sc-cards');
 
+  call('GET', '/api/memories').then((r) => {
+    const list = sec.querySelector('#sc-memories-list');
+    for (const n of r.memories ?? []) {
+      const opt = document.createElement('option');
+      opt.value = n.name;
+      list.appendChild(opt);
+    }
+  });
+
+  // Dos caminos posibles, elegibles con radio (revisión humana obligatoria:
+  // la propuesta automática -- existingCategory si lo hubo, si no
+  // categoría nueva -- viene preseleccionada, pero siempre se puede
+  // cambiar antes de confirmar):
+  //   - "existing": enlaza a una categoría ya existente. Un solo miembro
+  //     se liga directo (categoría-recuerdo); más de uno primero crea una
+  //     SUBCATEGORÍA nueva bajo esa categoría y liga ahí (categoría-
+  //     subcategoría-recuerdo), no los liga sueltos a la categoría misma.
+  //   - "new": categoría nueva de un solo nivel, con los miembros como
+  //     hijos directos -- comportamiento original.
   function renderCluster(cluster, index) {
     const card = document.createElement('div');
     card.className = 'fact-card';
+    const isGroup = cluster.members.length > 1;
     const membersHtml = cluster.members
       .map(
-        (m, i) => `
+        (m) => `
       <div class="fc-top">
         <input type="checkbox" class="sc-member-include" data-name="${m.name.replace(/"/g, '&quot;')}" checked>
         <label>${m.name} (${m.factCount} registro(s))</label>
@@ -1225,51 +1250,122 @@ function section(id, title, hint, bodyHtml) {
       <div class="fc-fragment">"${(m.example ?? '').replace(/</g, '&lt;')}"</div>`,
       )
       .join('');
+
+    const hasExistingMatch = Boolean(cluster.existingCategory);
+    const modeName = `sc-mode-${index}`;
+    const existingHint = hasExistingMatch
+      ? `Sugerido: similitud ${cluster.existingSimilarity.toFixed(2)} con "${cluster.existingMatchedVia}".`
+      : 'Sin coincidencia automática -- escribe una categoría existente si aplica.';
+
     card.innerHTML = `
-      <label>Nombre de la categoría (editable)${cluster.suggestedReasoning ? ` -- sugerido: ${cluster.suggestedReasoning}` : ' (sin sugerencia automática, escribe una)'}</label>
-      <input type="text" class="sc-name" value="${cluster.suggestedName ?? ''}" placeholder="nombre-en-kebab-case">
-      <label style="margin-top:14px">Miembros a ligar (desmarca los que no apliquen)</label>
+      <label>Miembros a incluir (desmarca los que no apliquen)</label>
       ${membersHtml}
+
+      <div class="fc-mode-row" style="margin-top:16px">
+        <label><input type="radio" name="${modeName}" class="sc-mode" value="existing" ${hasExistingMatch ? 'checked' : ''}>
+          ${isGroup ? 'Nueva subcategoría bajo categoría existente' : 'Enlazar a categoría existente'}</label>
+        <label style="margin-left:16px"><input type="radio" name="${modeName}" class="sc-mode" value="new" ${hasExistingMatch ? '' : 'checked'}>
+          Categoría nueva</label>
+      </div>
+
+      <div class="sc-existing-box" style="margin-top:10px">
+        <label>Categoría existente</label>
+        <input type="text" class="sc-existing-category" list="sc-memories-list" value="${cluster.existingCategory ?? ''}">
+        <div class="hint" style="margin-top:4px">${existingHint}</div>
+        ${isGroup ? `<label style="margin-top:10px">Nombre de la subcategoría nueva</label>
+          <input type="text" class="sc-sub-name" value="${cluster.suggestedName ?? ''}" placeholder="nombre-en-kebab-case">` : ''}
+      </div>
+
+      <div class="sc-new-box" style="margin-top:10px; display:none">
+        <label>Nombre de la categoría nueva${cluster.suggestedReasoning ? ` -- sugerido: ${cluster.suggestedReasoning}` : ''}</label>
+        <input type="text" class="sc-new-name" value="${hasExistingMatch ? '' : (cluster.suggestedName ?? '')}" placeholder="nombre-en-kebab-case">
+      </div>
+
       <div class="row" style="margin-top:14px">
         <div><label>Fecha</label><input type="date" class="sc-date"></div>
       </div>
       <label>Motivo</label>
       <input type="text" class="sc-reason" placeholder="ej. agrupa la infraestructura de GitHub Classroom, antes sin categoría">
-      <button class="run secondary sc-create">Crear categoría y ligar</button>`;
+      <button class="run secondary sc-create"></button>`;
     card.querySelector('.sc-date').value = todayBogota();
 
-    card.querySelector('.sc-create').addEventListener('click', async () => {
-      const name = card.querySelector('.sc-name').value.trim();
+    const existingBox = card.querySelector('.sc-existing-box');
+    const newBox = card.querySelector('.sc-new-box');
+    const createBtn = card.querySelector('.sc-create');
+
+    function currentMode() {
+      return card.querySelector('.sc-mode:checked').value;
+    }
+    function refreshMode() {
+      const existing = currentMode() === 'existing';
+      existingBox.style.display = existing ? '' : 'none';
+      newBox.style.display = existing ? 'none' : '';
+      createBtn.textContent = existing
+        ? (isGroup ? 'Crear subcategoría y ligar' : 'Enlazar a categoría existente')
+        : 'Crear categoría y ligar';
+    }
+    card.querySelectorAll('.sc-mode').forEach((r) => r.addEventListener('change', refreshMode));
+    refreshMode();
+
+    createBtn.addEventListener('click', async () => {
       const date = card.querySelector('.sc-date').value;
       const reason = card.querySelector('.sc-reason').value.trim();
       const members = [...card.querySelectorAll('.sc-member-include')].filter((cb) => cb.checked).map((cb) => cb.dataset.name);
-      if (!name) { out(card, { ok: false, stdout: '', stderr: 'Falta el nombre de la categoría.' }); return; }
       if (members.length === 0) { out(card, { ok: false, stdout: '', stderr: 'No hay ningún miembro incluido.' }); return; }
       if (!reason) { out(card, { ok: false, stdout: '', stderr: 'Falta el motivo (queda como fuente de cada enlace).' }); return; }
-      const btn = card.querySelector('.sc-create');
-      btn.disabled = true;
-      btn.textContent = 'Creando…';
+
+      const mode = currentMode();
+      let targetCategory; // a qué recuerdo se liga cada miembro al final
+      let createFirst = null; // {name, parent} si hay que crear un recuerdo nuevo antes de ligar
+
+      if (mode === 'existing') {
+        const existingCategory = card.querySelector('.sc-existing-category').value.trim();
+        if (!existingCategory) { out(card, { ok: false, stdout: '', stderr: 'Falta la categoría existente.' }); return; }
+        if (isGroup) {
+          const subName = card.querySelector('.sc-sub-name').value.trim();
+          if (!subName) { out(card, { ok: false, stdout: '', stderr: 'Falta el nombre de la subcategoría.' }); return; }
+          targetCategory = subName;
+          createFirst = { name: subName, parent: existingCategory };
+        } else {
+          targetCategory = existingCategory; // un solo miembro: liga directo, nada que crear
+        }
+      } else {
+        const newName = card.querySelector('.sc-new-name').value.trim();
+        if (!newName) { out(card, { ok: false, stdout: '', stderr: 'Falta el nombre de la categoría.' }); return; }
+        targetCategory = newName;
+        createFirst = { name: newName, parent: null };
+      }
+
+      createBtn.disabled = true;
+      const origLabel = createBtn.textContent;
+      createBtn.textContent = 'Aplicando…';
       try {
-        // force: true: la desambiguación semántica de create-memory.mjs
-        // compara el nombre nuevo contra recuerdos temáticamente parecidos, pero
-        // acá la premisa del cluster YA es "parecido a estos miembros", por
-        // construcción, sin esto el chequeo bloquea el caso normal de este
-        // flujo. La colisión de nombre/alias sigue corriendo sin --force,
-        // esa sí aplica igual aquí.
-        const createResult = await call('POST', '/api/create-memory', { name, force: true });
-        if (!createResult.ok) { out(card, createResult); return; }
-        let lines = [createResult.stdout];
+        let lines = [];
+        if (createFirst) {
+          // force: true -- la desambiguación semántica de create-memory.mjs
+          // compara el nombre nuevo contra recuerdos temáticamente parecidos,
+          // pero acá la premisa del grupo YA es "parecido a estos miembros"
+          // (o, en el caso de subcategoría, ya se decidió a mano), por
+          // construcción -- sin esto, el chequeo bloquea el caso normal de
+          // este flujo (visto en vivo probando esta misma tarjeta,
+          // 2026-09-04). La colisión de nombre/alias sigue corriendo sin
+          // --force, esa sí aplica igual aquí.
+          const createPayload = { name: createFirst.name, force: true };
+          if (createFirst.parent) { createPayload.parent = createFirst.parent; createPayload.date = date; createPayload.reason = reason; }
+          const createResult = await call('POST', '/api/create-memory', createPayload);
+          lines.push(createResult.stdout);
+          if (!createResult.ok) { out(card, { ok: false, stdout: lines.join('\n'), stderr: createResult.stderr || createResult.error || '' }); return; }
+        }
         let anyFailed = false;
         for (const member of members) {
-          const linkResult = await call('POST', '/api/memory-link', { from: member, to: name, relation: 'pertenece_a', date, reason });
+          const linkResult = await call('POST', '/api/memory-link', { from: member, to: targetCategory, relation: 'pertenece_a', date, reason });
           lines.push(linkResult.stdout || linkResult.stderr || linkResult.error);
           if (!linkResult.ok) anyFailed = true;
         }
         out(card, { ok: !anyFailed, stdout: lines.join('\n'), stderr: '' });
-        if (!anyFailed) card.querySelector('.sc-create').textContent = 'registro';
       } finally {
-        btn.disabled = false;
-        if (btn.textContent === 'Creando…') btn.textContent = 'Crear categoría y ligar';
+        createBtn.disabled = false;
+        createBtn.textContent = origLabel;
       }
     });
 
@@ -1289,7 +1385,7 @@ function section(id, title, hint, bodyHtml) {
       // Huérfanos sin cluster (2026-09-06, hallazgo de Oscar): antes no se
       // mostraba ni un nombre cuando ninguno superaba el umbral con otro --
       // se renderizan igual, cada uno como su propia tarjeta de 1 miembro,
-      // misma acción "crear categoría y ligar" que un cluster real.
+      // misma acción que un cluster real.
       unclustered.forEach((single, i) => cardsEl.appendChild(renderCluster(single, r.clusters.length + i)));
     } finally {
       runBtn.disabled = false;
