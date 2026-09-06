@@ -460,8 +460,8 @@ app.post('/api/set-memory-aliases', async (c) => {
 // pensarlo (ver registro #498, caso real del registro #412).
 app.post('/api/recategorize-record', async (c) => {
   const body = await c.req.json().catch(() => null);
-  if (!body?.fact || !body?.from || !body?.to || !body?.reason) {
-    return c.json({ ok: false, error: 'faltan fact/from/to/reason' }, 400);
+  if (!body?.record || !body?.from || !body?.to || !body?.reason) {
+    return c.json({ ok: false, error: 'faltan record/from/to/reason' }, 400);
   }
   return respond(c, runScript('recategorize-record.mjs', ['--record', String(body.record), '--from', body.from, '--to', body.to, '--reason', body.reason]));
 });

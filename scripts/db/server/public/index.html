@@ -671,10 +671,10 @@ function section(id, title, hint, bodyHtml) {
   });
 
   sec.querySelector('#tl-run').addEventListener('click', async () => {
-    const node = sec.querySelector('#tl-memory').value.trim();
+    const memory = sec.querySelector('#tl-memory').value.trim();
     const all = sec.querySelector('#tl-all').checked;
     const params = new URLSearchParams();
-    if (node) params.set('node', node);
+    if (memory) params.set('memory', memory);
     if (all) params.set('all', '1');
     const r = await call('GET', '/api/timeline?' + params.toString());
     out(sec, r);
@@ -725,11 +725,11 @@ function section(id, title, hint, bodyHtml) {
   });
 
   sec.querySelector('#ns-run').addEventListener('click', async () => {
-    const node = sec.querySelector('#ns-memory').value.trim();
-    if (!node) { outMarkdown(sec, { ok: false }, 'Falta el recuerdo.'); return; }
+    const memory = sec.querySelector('#ns-memory').value.trim();
+    if (!memory) { outMarkdown(sec, { ok: false }, 'Falta el recuerdo.'); return; }
     const provider = nsProviderSel.value;
     const model = nsModelSel.value;
-    const params = new URLSearchParams({ node, provider });
+    const params = new URLSearchParams({ memory, provider });
     if (model) params.set('model', model);
     const btn = sec.querySelector('#ns-run');
     btn.disabled = true;
@@ -1271,20 +1271,20 @@ function section(id, title, hint, bodyHtml) {
   });
 
   sec.querySelector('#al-scan').addEventListener('click', async () => {
-    const node = sec.querySelector('#al-scan-memory').value.trim();
-    out(sec, await call('GET', '/api/alias-candidates' + (node ? '?memory=' + encodeURIComponent(node) : '')));
+    const memory = sec.querySelector('#al-scan-memory').value.trim();
+    out(sec, await call('GET', '/api/alias-candidates' + (memory ? '?memory=' + encodeURIComponent(memory) : '')));
   });
 
   sec.querySelector('#al-add').addEventListener('click', async () => {
-    const node = sec.querySelector('#al-add-memory').value.trim();
+    const memory = sec.querySelector('#al-add-memory').value.trim();
     const aliases = sec.querySelector('#al-add-values').value.trim();
     const reason = sec.querySelector('#al-add-reason').value.trim();
-    if (!node || !aliases || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan recuerdo/alias/motivo.' }); return; }
+    if (!memory || !aliases || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan recuerdo/alias/motivo.' }); return; }
     const btn = sec.querySelector('#al-add');
     btn.disabled = true;
     btn.textContent = 'Aplicando…';
     try {
-      out(sec, await call('POST', '/api/set-memory-aliases', { node, aliases, reason }));
+      out(sec, await call('POST', '/api/set-memory-aliases', { memory, aliases, reason }));
     } finally {
       btn.disabled = false;
       btn.textContent = 'Aplicar';
@@ -1292,15 +1292,15 @@ function section(id, title, hint, bodyHtml) {
   });
 
   sec.querySelector('#al-rm').addEventListener('click', async () => {
-    const node = sec.querySelector('#al-rm-memory').value.trim();
+    const memory = sec.querySelector('#al-rm-memory').value.trim();
     const remove = sec.querySelector('#al-rm-values').value.trim();
     const reason = sec.querySelector('#al-rm-reason').value.trim();
-    if (!node || !remove || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan recuerdo/alias/motivo.' }); return; }
+    if (!memory || !remove || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan recuerdo/alias/motivo.' }); return; }
     const btn = sec.querySelector('#al-rm');
     btn.disabled = true;
     btn.textContent = 'Quitando…';
     try {
-      out(sec, await call('POST', '/api/set-memory-aliases', { node, remove, reason }));
+      out(sec, await call('POST', '/api/set-memory-aliases', { memory, remove, reason }));
     } finally {
       btn.disabled = false;
       btn.textContent = 'Quitar';
@@ -1425,16 +1425,16 @@ function section(id, title, hint, bodyHtml) {
   });
 
   sec.querySelector('#rc-run').addEventListener('click', async () => {
-    const fact = sec.querySelector('#rc-record').value.trim();
+    const record = sec.querySelector('#rc-record').value.trim();
     const from = sec.querySelector('#rc-from').value.trim();
     const to = sec.querySelector('#rc-to').value.trim();
     const reason = sec.querySelector('#rc-reason').value.trim();
-    if (!fact || !from || !to || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan id/recuerdo actual/recuerdo correcto/motivo.' }); return; }
+    if (!record || !from || !to || !reason) { out(sec, { ok: false, stdout: '', stderr: 'Faltan id/recuerdo actual/recuerdo correcto/motivo.' }); return; }
     const btn = sec.querySelector('#rc-run');
     btn.disabled = true;
     btn.textContent = 'Reasignando…';
     try {
-      out(sec, await call('POST', '/api/recategorize-record', { fact, from, to, reason }));
+      out(sec, await call('POST', '/api/recategorize-record', { record, from, to, reason }));
     } finally {
       btn.disabled = false;
       btn.textContent = 'Reasignar';
@@ -1451,7 +1451,7 @@ function section(id, title, hint, bodyHtml) {
        <div><label>Tipo</label>
          <select id="rm-kind">
            <option value="fact">fact</option><option value="event">event</option>
-           <option value="preference">preference</option><option value="commitment">commitment</option>
+           <option value="commitment">commitment</option>
          </select>
        </div>
      </div>
@@ -1500,7 +1500,7 @@ function section(id, title, hint, bodyHtml) {
       date: sec.querySelector('#rm-date').value,
       source: sec.querySelector('#rm-source').value.trim(),
       kind: sec.querySelector('#rm-kind').value,
-      node: sec.querySelector('#rm-memory').value.trim() || undefined,
+      memory: sec.querySelector('#rm-memory').value.trim() || undefined,
       createNode: sec.querySelector('#rm-create-memory').checked || undefined,
       aliases: sec.querySelector('#rm-aliases').value.trim() || undefined,
       supersedes: sec.querySelector('#rm-supersedes').value.trim() || undefined,
@@ -1919,7 +1919,7 @@ function section(id, title, hint, bodyHtml) {
         <div><label>Tipo</label>
           <select class="fc-kind">
             <option value="fact">fact</option><option value="event">event</option>
-            <option value="preference">preference</option><option value="commitment">commitment</option>
+            <option value="commitment">commitment</option>
           </select>
         </div>
       </div>
