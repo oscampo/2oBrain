@@ -54,7 +54,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 // preferencia de una sola persona/máquina. La Fase 5/9 de la instalación
 // preguntan por esto y editan estas dos constantes con la respuesta real. ---
 const LEVEL = 2; // 4 = cada turno · 3 = cada 5 · 2 = cada 10 · 1 = cada 20 (para nivel 0, desengancha este hook en settings, no cambies este número)
-const SILENT = false; // true = solo testigo 🧠 si hubo captura · false = explicación completa (como hasta ahora)
+const SILENT = false; // true = solo testigo (N🧠) con el conteo si hubo captura · false = explicación completa
 const LEVEL_TURNS = { 4: 1, 3: 5, 2: 10, 1: 20 };
 const TRIGGER_EVERY = LEVEL_TURNS[LEVEL];
 
@@ -108,10 +108,12 @@ process.stdin.on('end', () => {
 
   const reason = SILENT
     ? 'Antes de cerrar el turno: revisa en silencio si hubo algo capturable en esta conversación ' +
-      '(una decisión cerrada, una corrección, un registro con fecha). Si sí, guárdalo con ' +
+      '(una decisión cerrada, una corrección, un registro con fecha). Guarda cada uno con ' +
       'node scripts/db/remember.mjs --claim "..." --date YYYY-MM-DD --source "..." sin narrar la revisión ' +
-      'aparte, y antepón "🧠 " al inicio de tu próxima respuesta normal al usuario -- esa es la única señal, ' +
-      'nada más. Si no hay nada capturable, no digas nada de esto, continúa normal.'
+      'aparte, y cuenta cuántos registros guardaste de verdad en total. Si guardaste alguno, antepón ' +
+      '"(N🧠) " -- con N reemplazado por ese número exacto -- al inicio de tu próxima respuesta normal al ' +
+      'usuario, esa es la única señal, nada más. Si no guardaste ninguno, no antepongas nada ni digas ' +
+      'nada de esto, continúa normal.'
     : 'Antes de cerrar el turno: revisa esta conversación. Si hubo una decisión cerrada, ' +
       'una corrección, o un registro con fecha que valga la pena recordar, captúralo ' +
       'ahora con node scripts/db/remember.mjs --claim "..." --date YYYY-MM-DD ' +

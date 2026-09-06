@@ -312,9 +312,9 @@ no le pidas que la memorice:
 0 - Nunca -- solo cuando yo diga "guarda esto"
 ```
 Y aparte, independiente del nivel: cuando SÍ encuentre algo, ¿prefiere que
-se lo explique completo cada vez, o que solo aparezca un 🧠 al inicio de
-la siguiente respuesta como señal de que algo se guardó, sin interrumpir
-con una explicación aparte?
+se lo explique completo cada vez, o que solo aparezca un testigo tipo
+"(2🧠)" al inicio de la siguiente respuesta, con el número real de
+registros guardados, sin interrumpir con una explicación aparte?
 → Anota ambas respuestas, se aplican en la Fase 9 (tú editas las
 constantes del hook, no el usuario).
 

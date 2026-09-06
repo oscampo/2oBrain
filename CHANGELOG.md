@@ -5,6 +5,16 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.4.1 (2026-09-06)
+
+Precisión sobre v0.4.0, mismo día. Sin cambios en `schema.sql`.
+
+- **El testigo del modo `SILENT` incluye conteo**: no es un ícono fijo,
+  es `"(N🧠)"` con N = cuántos registros se guardaron de verdad en esa
+  revisión, antepuesto a la siguiente respuesta normal. Cero registros,
+  cero testigo (decisión de Oscar sobre v0.4.0, que solo dejaba un 🧠 sin
+  número).
+
 ## v0.4.0 (2026-09-06)
 
 Sin cambios en `schema.sql`.
