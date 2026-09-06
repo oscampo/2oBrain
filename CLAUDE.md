@@ -260,80 +260,31 @@ puedas automatizar, es la única parte donde "hazlo tú" no aplica, porque lo
 que se necesita es que el usuario hable de sí mismo.
 
 Dos destinos distintos para las respuestas, no uno solo (decisión de Oscar,
-2026-09-06, ver la nota al inicio de este archivo): lo que es un HECHO
-sobre el usuario (nombre, a qué se dedica, proyectos) se guarda como
-`records` reales bajo una categoría `usuario`, igual que cualquier otro
-hecho del segundo cerebro -- alcanzable con `search`/`memory-status.mjs`
-desde cualquier cliente MCP, no solo desde Claude Code. Lo que es
-INSTRUCCIÓN de cómo comportarse (voz, cuándo preguntar antes de actuar) se
-escribe directo en la sección "Cómo trabajar con el usuario" de este mismo
-archivo, arriba del todo -- ya no en un archivo aparte.
+2026-09-06, ver la nota al inicio de este archivo): el nombre y el rol del
+usuario, lo único genuinamente estable, se guardan como `records` reales
+bajo una categoría `usuario` -- deliberadamente acotada a eso, nada de
+proyectos/actividades (son dinámicos, se capturan solos con el uso normal
+de `remember.mjs`, ver Fase 6, no necesitan vivir en un resumen de
+identidad que se desactualiza en silencio). Alcanzable con
+`search`/`memory-status.mjs` desde cualquier cliente MCP, no solo desde
+Claude Code. Lo que es INSTRUCCIÓN de cómo comportarse (voz, cuándo
+preguntar antes de actuar) se escribe directo en la sección "Cómo trabajar
+con el usuario" de este mismo archivo, arriba del todo -- ya no en un
+archivo aparte.
 
 Explica antes de empezar: *"Esto no es para configurar el software, es
 para que yo sepa quién eres y cómo trabajas, se puede corregir cuando
 quieras, nunca queda fijo."*
 
-**PREGUNTA**: ¿Cómo te llamas, y en qué zona horaria trabajas?
-→ Crea la categoría y guarda el primer registro tú mismo:
+**PREGUNTA**: ¿Cómo te llamas, y a qué te dedicas (tu rol o profesión, no
+tus proyectos actuales, esos van en la Fase 6)?
+→ Crea la categoría y guarda el registro tú mismo:
 ```bash
-node scripts/db/remember.mjs --claim "El usuario se llama <nombre>, zona horaria <zona>." --date YYYY-MM-DD --source "entrevista de instalación, Fase 5" --memory usuario --create-memory
+node scripts/db/remember.mjs --claim "El usuario se llama <nombre>, <rol/profesión>." --date YYYY-MM-DD --source "entrevista de instalación, Fase 5" --memory usuario --create-memory
 ```
 
-**PREGUNTA**: ¿A qué te dedicas? ¿Qué proyectos/roles activos tienes
-ahora mismo que yo debería conocer de entrada?
-→ Guarda cada hecho concreto como su propio registro contra `usuario`
-(`--memory usuario`, ya no necesita `--create-memory`, existe desde la
-pregunta anterior). No inventes ni completes con suposiciones, si el
-usuario da poco detalle, guarda solo eso; se completa con el tiempo, no de
-una vez, con el uso normal de `remember.mjs` día a día.
-
-No dependas solo de que el usuario te lo cuente de memoria en este momento,
-eso es la fuente más pobre, no la única. Antes de seguir, ofrécele
-explícitamente enriquecer el arranque con una fuente ya escrita, en vez de
-(o además de) lo que acaba de contar:
-
-- **Documentos y notas dispersas**: la fuente más común no es un solo
-  documento prolijo sino ideas repartidas entre varias herramientas a la
-  vez -- pregúntalo así, no solo "¿tienes un documento?": *"¿Tienes notas,
-  propuestas o ideas guardadas en algún lado -- un archivo (.md, PDF...),
-  una app de notas (Evernote, Keep, Notion...), favoritos/marcados
-  guardados en el navegador o en una app, un cuaderno físico? Si me dices
-  dónde, lo reviso y te propongo los registros concretos a guardar antes de
-  escribir nada, nunca invento, solo extraigo lo que el material
-  realmente dice."* El tratamiento depende del formato, no de la fuente:
-  para un `.md`, usa `scripts/db/extract-page-records.mjs --page <ruta>
-  --json` -- NUNCA `--review`: esa bandera exige una terminal interactiva
-  real, el propio script la rechaza de inmediato si no la tiene ("stdin no
-  es TTY"), y correrla vos como agente nunca tiene una (mismo motivo por
-  el que el dashboard la reemplazó por `--json`, ver comentarios de
-  `extract-page-records.mjs`). `--json` entrega los candidatos ya
-  estructurados con recuerdos parecidos calculados; muéstraselos tú mismo al
-  usuario en la conversación, uno por uno o en bloque, y aprueba/edita/
-  descarta cada uno con él antes de guardar nada. Los aprobados se
-  guardan con `remember-batch.mjs --file <archivo>` (o por stdin), nunca
-  uno por uno con `remember.mjs`, para reusar el chequeo de contradicción
-  del lote completo. Cualquier otro formato (exportación `.enex` de
-  Evernote, `.html` de una nota o de favoritos del navegador, PDF, texto
-  pegado directo en el chat) NO pasa por `extract-page-records.mjs` -- ese
-  script solo acepta `.md` en disco o un slug ya existente en `pages`.
-  Léelo tú mismo con tus herramientas (es texto plano o marcado por
-  dentro, no necesita conversión) y redacta los registros a mano siguiendo
-  el mismo criterio (atómicos, fechados, con fuente), mostrando cada uno
-  antes de guardarlo igual que con `--json`. Si son fotos de un cuaderno
-  físico, el usuario necesita transcribirlas primero -- esta fase no hace
-  OCR. Si son marcadores/favoritos sin contenido propio (solo enlaces),
-  decide con el usuario si vale la pena guardarlos como registros o dejarlos
-  fuera por ser demasiados o poco informativos.
-- **Correo**: si tienes un MCP de correo conectado en esta sesión (Gmail u
-  otro), ofrécele buscar antecedentes reales de un proyecto que mencionó
-  ("¿busco en tu bandeja los últimos correos sobre [proyecto X] para
-  armar la cronología?") en vez de pedirle que la reconstruya de memoria.
-  Muéstrale los registros candidatos ANTES de guardar nada, el usuario
-  aprueba/edita/descarta, igual que con cualquier extracción automática
-  (ver `skills/segundo-cerebro-capture/SKILL.md`).
-
-Si no tiene nada a mano y no quiere que busques en el correo, sigue solo
-con lo que contó, esto es un ofrecimiento, no un requisito para avanzar.
+No le preguntes por proyectos, notas dispersas, ni correo en esta fase
+(ver el porqué arriba) -- eso es la Fase 6.
 
 **PREGUNTA**: ¿Cómo prefieres que trabaje contigo? Por ejemplo: ¿directo
 y crítico, o más exploratorio? ¿idioma por defecto? ¿preguntar antes de
@@ -480,17 +431,61 @@ registro que tenía una categoría real ahí era autodescriptivo, "esto agrupa t
 cosa", no contenido). El contenido real lo traen los registros que vengan
 después.
 
-**PREGUNTA**: ofrece enriquecer la estructura ahora mismo con registros reales,
-mismo espíritu que la Fase 5 (documentos/correo antes que memoria):
-*"¿Tienes algo activo ya mismo en alguna de las ramas que creamos --un
-proyecto de trabajo, un hábito o rutina personal, un curso, un pendiente de
-la junta/comunidad-- que quieras que registre de una vez? Si tienes un MCP
-de correo conectado en esta sesión, puedo buscar antecedentes de un
-proyecto que menciones, igual que ofrecí en la Fase 5."* Adapta la pregunta
-a las ramas que el usuario realmente marcó -- no le preguntes por Estudio
-si no la marcó.
+**PREGUNTA**: ofrece enriquecer la estructura ahora mismo con registros
+reales: *"¿Tienes algo activo ya mismo en alguna de las ramas que creamos
+--un proyecto de trabajo, un hábito o rutina personal, un curso, un
+pendiente de la junta/comunidad-- que quieras que registre de una vez?"*
+Adapta la pregunta a las ramas que el usuario realmente marcó -- no le
+preguntes por Estudio si no la marcó.
 
-Si el usuario da algo (a mano, o vía correo), por cada registro candidato:
+No dependas solo de que lo cuente de memoria en este momento, eso es la
+fuente más pobre, no la única. Ofrécele explícitamente enriquecer con una
+fuente ya escrita, en vez de (o además de) lo que acaba de contar:
+
+- **Documentos y notas dispersas**: la fuente más común no es un solo
+  documento prolijo sino ideas repartidas entre varias herramientas a la
+  vez -- pregúntalo así, no solo "¿tienes un documento?": *"¿Tienes notas,
+  propuestas o ideas guardadas en algún lado -- un archivo (.md, PDF...),
+  una app de notas (Evernote, Keep, Notion...), favoritos/marcados
+  guardados en el navegador o en una app, un cuaderno físico? Si me dices
+  dónde, lo reviso y te propongo los registros concretos a guardar antes de
+  escribir nada, nunca invento, solo extraigo lo que el material
+  realmente dice."* El tratamiento depende del formato, no de la fuente:
+  para un `.md`, usa `scripts/db/extract-page-records.mjs --page <ruta>
+  --json` -- NUNCA `--review`: esa bandera exige una terminal interactiva
+  real, el propio script la rechaza de inmediato si no la tiene ("stdin no
+  es TTY"), y correrla vos como agente nunca tiene una (mismo motivo por
+  el que el dashboard la reemplazó por `--json`, ver comentarios de
+  `extract-page-records.mjs`). `--json` entrega los candidatos ya
+  estructurados con recuerdos parecidos calculados; muéstraselos tú mismo al
+  usuario en la conversación, uno por uno o en bloque, y aprueba/edita/
+  descarta cada uno con él antes de guardar nada. Los aprobados se
+  guardan con `remember-batch.mjs --file <archivo>` (o por stdin), nunca
+  uno por uno con `remember.mjs`, para reusar el chequeo de contradicción
+  del lote completo. Cualquier otro formato (exportación `.enex` de
+  Evernote, `.html` de una nota o de favoritos del navegador, PDF, texto
+  pegado directo en el chat) NO pasa por `extract-page-records.mjs` -- ese
+  script solo acepta `.md` en disco o un slug ya existente en `pages`.
+  Léelo tú mismo con tus herramientas (es texto plano o marcado por
+  dentro, no necesita conversión) y redacta los registros a mano siguiendo
+  el mismo criterio (atómicos, fechados, con fuente), mostrando cada uno
+  antes de guardarlo igual que con `--json`. Si son fotos de un cuaderno
+  físico, el usuario necesita transcribirlas primero -- esta fase no hace
+  OCR. Si son marcadores/favoritos sin contenido propio (solo enlaces),
+  decide con el usuario si vale la pena guardarlos como registros o dejarlos
+  fuera por ser demasiados o poco informativos.
+- **Correo**: si tienes un MCP de correo conectado en esta sesión (Gmail u
+  otro), ofrécele buscar antecedentes reales de un proyecto que mencionó
+  ("¿busco en tu bandeja los últimos correos sobre [proyecto X] para
+  armar la cronología?") en vez de pedirle que la reconstruya de memoria.
+  Muéstrale los registros candidatos ANTES de guardar nada, el usuario
+  aprueba/edita/descarta, igual que con cualquier extracción automática
+  (ver `skills/segundo-cerebro-capture/SKILL.md`).
+
+Si no tiene nada a mano y no quiere que busques en el correo, sigue solo
+con lo que contó, esto es un ofrecimiento, no un requisito para avanzar.
+
+Si el usuario da algo (a mano, vía documento, o vía correo), por cada registro candidato:
 
 1. Decide tú, por el contexto de la pregunta que lo originó, a qué
    subcategoría pertenece (`proyectos`, `habitos`, etc.) -- no hace falta
@@ -503,8 +498,8 @@ Si el usuario da algo (a mano, o vía correo), por cada registro candidato:
    paso anterior):
    `node scripts/db/remember.mjs --claim "..." --date YYYY-MM-DD --source "..." --memory <nombre-recuerdo>`
 
-Muéstrale cada registro candidato antes de guardarlo, igual que en la Fase 5 --
-nunca inventes, solo lo que la fuente real dice.
+Muéstrale cada registro candidato antes de guardarlo -- nunca inventes,
+solo lo que la fuente real dice.
 
 Si no tiene nada a mano todavía, sigue solo con la estructura vacía -- no es
 un requisito, sirve igual como punto de partida para cuando use

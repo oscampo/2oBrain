@@ -5,6 +5,23 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.3.1 (2026-09-06)
+
+Corrección sobre v0.3.0, mismo día, antes de que nadie instalara todavía.
+Sin cambios en `schema.sql`.
+
+- **`usuario` se acota a nombre y rol(es), exclusivamente** (decisión de
+  Oscar): la v0.3.0 original guardaba ahí también proyectos, valores,
+  setup técnico y contexto vigente -- todo eso es dinámico, y ya se cubre
+  con la captura normal de registros (`remember.mjs` día a día) o con
+  recuerdos propios más específicos (ej. una tesis va en `tesis-uao`, no
+  repetida en `usuario`). Un resumen de identidad que también intenta ser
+  un resumen de actividad se desactualiza en silencio.
+- **Fase 5 simplificada**: una sola pregunta (nombre + rol), sin pedir
+  proyectos activos. El ofrecimiento de enriquecer con documentos/notas
+  dispersas/correo se movió a la Fase 6 (es contenido de proyectos, no de
+  identidad, ahí tiene mejor casa).
+
 ## v0.3.0 (2026-09-06)
 
 **Cambio de arquitectura, no un fix**. Sin cambios en `schema.sql` -- segura
