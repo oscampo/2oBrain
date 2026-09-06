@@ -5,6 +5,35 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.4.0 (2026-09-06)
+
+Sin cambios en `schema.sql`.
+
+- **Hook `Stop` rediseñado con "niveles de proactividad"** (decisión de
+  Oscar, motivada por un hueco real encontrado en `D:\UAObrain`: el
+  cooldown de 2h no volvía a dispararse durante un tramo de trabajo denso
+  con varios commits/decisiones en poco tiempo real). El cooldown por
+  TIEMPO se reemplaza por un contador de TURNOS -- agnóstico de dominio a
+  propósito (no cuenta commits de git, para no sesgar el mecanismo a
+  sesiones de código, generaliza igual a una conversación sobre hábitos o
+  la planeación de un campamento). Niveles configurables en el propio
+  script (`LEVEL`): 4 = cada turno, 3 = cada 5, 2 = cada 10, 1 = cada 20, 0
+  = nunca (solo captura bajo pedido explícito, no engancha el hook).
+- **Segundo eje independiente: `SILENT`**. Mismo contrato de silencio que
+  ya rige `HEARTBEAT.md`: si está activo, la revisión sigue con la misma
+  cadencia pero no narra nada salvo un testigo "🧠" al inicio de la
+  siguiente respuesta si de verdad se guardó algo.
+- Fase 5 y Fase 9 actualizadas: la entrevista ahora pregunta nivel +
+  preferencia de silencio, y la activación exige probar el contador a
+  mano (la cantidad de veces que corresponda al nivel elegido) antes de
+  enganchar el hook de verdad.
+- Límite conocido, documentado en el propio script: `Stop` dispara una vez
+  por turno EXTERNO completo, sin importar cuántas herramientas corran
+  adentro -- una sesión con pocos turnos pero cada uno enorme puede seguir
+  subestimándose. Sin ajuste sin sesgar a un dominio, se acepta como
+  límite del respaldo (el mecanismo principal sigue siendo el juicio
+  proactivo, no este hook).
+
 ## v0.3.2 (2026-09-06)
 
 Precisión sobre v0.3.1, mismo día. Sin cambios en `schema.sql`.

@@ -301,12 +301,22 @@ todavía, deja el default del template (directo, sin relleno, confirma
 antes de acciones irreversibles) y dilo explícitamente, no le fuerces a
 decidir algo que no le importa todavía.
 
-**PREGUNTA**: ¿Hay alguna captura automática de registros que quieras activa
-desde ya? (el hook `Stop` de Claude Code, que revisa al cerrar cada turno
-si hay algo capturable, ver Fase 9) ¿O prefieres empezar solo con captura
-manual ("guarda este registro")?
-→ Anota la respuesta, se aplica en la Fase 9 (tú activas el hook, no el
-usuario).
+**PREGUNTA**: ¿qué tanto quieres que el sistema revise por su cuenta si
+hay algo sin guardar? (el hook `Stop`, ver Fase 9) Muéstrale la escalera,
+no le pidas que la memorice:
+```
+4 - Cada turno (el más insistente, ya se probó y resultó costoso)
+3 - Cada ~5 turnos
+2 - Cada ~10 turnos (default razonable si no tiene preferencia)
+1 - Cada ~20 turnos (el más discreto, sin apagarlo del todo)
+0 - Nunca -- solo cuando yo diga "guarda esto"
+```
+Y aparte, independiente del nivel: cuando SÍ encuentre algo, ¿prefiere que
+se lo explique completo cada vez, o que solo aparezca un 🧠 al inicio de
+la siguiente respuesta como señal de que algo se guardó, sin interrumpir
+con una explicación aparte?
+→ Anota ambas respuestas, se aplican en la Fase 9 (tú editas las
+constantes del hook, no el usuario).
 
 **PREGUNTA**: `HEARTBEAT.md` trae 5 chequeos ya construidos (ambient-delta,
 brain-hygiene, commitments-check, memory-prune, morning-briefing), todos
@@ -588,12 +598,20 @@ nunca asumas que un deploy funcionó solo porque el comando no dio error.
 Según la respuesta de la Fase 5, actívalos tú mismo, no describas los pasos
 para que el usuario los siga:
 
-- **Hook `Stop`** (recordatorio de captura al cerrar turno): agrégalo tú a
-  la configuración de hooks de Claude Code (edita el `settings.json`
-  correspondiente) apuntando a `scripts/hooks/stop-capture-check.mjs`;
-  revisa la sintaxis vigente de hooks de Claude Code antes de escribirla
-  (cambia entre versiones, no la asumas de memoria), no le pidas al
-  usuario que la escriba él.
+- **Hook `Stop`** (recordatorio de captura al cerrar turno): antes de
+  activarlo, edita tú mismo las constantes `LEVEL` y `SILENT` al inicio de
+  `scripts/hooks/stop-capture-check.mjs` con el nivel y la preferencia de
+  silencio que dio el usuario en la Fase 5 (`LEVEL_TURNS` en el propio
+  script documenta qué número corresponde a cada nivel). Pruébalo a mano
+  antes de engancharlo de verdad: corre `echo '{"session_id":"prueba"}' |
+  node scripts/hooks/stop-capture-check.mjs` el número de veces que
+  corresponda al nivel elegido y confirma que dispara justo en la última,
+  no antes. Luego sí agrégalo a la configuración de hooks de Claude Code
+  (edita el `settings.json` correspondiente) apuntando al script; revisa
+  la sintaxis vigente de hooks de Claude Code antes de escribirla (cambia
+  entre versiones, no la asumas de memoria), no le pidas al usuario que la
+  escriba él. Si eligió nivel 0, no lo actives del todo, la captura queda
+  solo bajo pedido explícito.
 - **Hook `post-commit`**: corre tú `git config core.hooksPath
   scripts/hooks/git` en este repo, una sola vez.
 - **Hook `UserPromptSubmit` (`greeting-gate.mjs`)**: detecta un saludo de
