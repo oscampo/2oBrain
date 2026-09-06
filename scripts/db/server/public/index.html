@@ -74,15 +74,30 @@
   ul.scenarios code { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: calc(12px * var(--ui-scale)); }
   ul.scenarios em { color: var(--muted); font-style: normal; }
   label { display: block; font-size: calc(12px * var(--ui-scale)); color: var(--muted); margin: 10px 0 4px; }
-  input[type=text], input[type=date], input[type=time], input[type=number], input[type=color], select, textarea {
-    width: 100%; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+  /* Convención (2026-09-06, acordada con el usuario): todo campo editable
+     por el usuario lleva un tinte del color de acento al 18% de fondo, para
+     que se distinga a simple vista de texto de solo lectura (ej. el nombre
+     de categoría sugerido en "Candidatos de categoría" no se notaba como
+     editable). Mismo porcentaje que ya usaban los nodos del grafo
+     (.gph-circle/.gph-dot) -- se generaliza aquí como el lenguaje visual
+     único para "esto lo puedes cambiar". input[type=color] queda fuera: es
+     un selector visual, no un campo de texto. */
+  input[type=text], input[type=date], input[type=time], input[type=number], select, textarea {
+    width: 100%; background: color-mix(in srgb, var(--accent) 18%, var(--panel)); border: 1px solid var(--border); color: var(--text);
     padding: calc(7px * var(--ui-scale)) 9px; border-radius: 6px; font-size: calc(13px * var(--ui-scale)); font-family: inherit;
   }
-  input[type=color] { padding: 4px; height: calc(34px * var(--ui-scale)); cursor: pointer; }
+  input[type=color] {
+    width: 100%; border: 1px solid var(--border);
+    padding: 4px; height: calc(34px * var(--ui-scale)); border-radius: 6px; cursor: pointer;
+  }
   textarea { font-family: ui-monospace, monospace; min-height: 90px; resize: vertical; }
   .row { display: flex; gap: 12px; }
   .row > div { flex: 1; }
   .checkline { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+  .confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+  .confirm-box { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 20px; max-width: 520px; width: 90%; max-height: 80vh; overflow-y: auto; }
+  .confirm-message { white-space: pre-wrap; font-family: inherit; color: var(--text); font-size: calc(13px * var(--ui-scale)); margin: 0 0 16px; }
+  .confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
   .checkline label { margin: 0; }
   button.run {
     margin-top: 16px; background: var(--accent); color: var(--accent-text); border: none; padding: calc(8px * var(--ui-scale)) 18px;
@@ -196,6 +211,7 @@ const SECTIONS = [
   { id: 'remember-batch', label: 'Guardar lote', group: 'registros' },
   { id: 'forget', label: 'Retractar', group: 'registros' },
   { id: 'recategorize', label: 'Recategorizar registro', group: 'registros', advanced: true },
+  { id: 'set-kind', label: 'Cambiar tipo de registro', group: 'registros', advanced: true },
   { id: 'purge-record', label: 'Borrar registro', group: 'registros', advanced: true },
 
   { id: 'merge-memories', label: 'Fusionar recuerdos', group: 'recuerdos', advanced: true },
@@ -274,6 +290,48 @@ function needsRestartHint(result, resolvedText) {
   if (result.error) return true;
   if (result.ok) return false;
   return !result.stdout && !result.stderr && !resolvedText;
+}
+
+// Reemplaza window.confirm() en todo el dashboard (2026-09-06, bug real
+// reportado por el usuario): el navegador embebido de Claude Desktop no
+// muestra el diálogo nativo -- confirm() vuelve false silenciosamente sin
+// que aparezca nada en pantalla, así que cualquier acción irreversible
+// (Retractar, Borrar registro, Borrar recuerdo, Cambiar tipo) parecía
+// "cancelada por el usuario" sin que el usuario hiciera nada. Modal propio
+// en DOM/CSS puro, funciona igual en cualquier navegador.
+function confirmAction(message) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    const box = document.createElement('div');
+    box.className = 'confirm-box';
+    const text = document.createElement('pre');
+    text.className = 'confirm-message';
+    text.textContent = message;
+    const actions = document.createElement('div');
+    actions.className = 'confirm-actions';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'run secondary';
+    cancelBtn.textContent = 'Cancelar';
+    const okBtn = document.createElement('button');
+    okBtn.className = 'run';
+    okBtn.textContent = 'Confirmar';
+    actions.appendChild(cancelBtn);
+    actions.appendChild(okBtn);
+    box.appendChild(text);
+    box.appendChild(actions);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    function close(result) {
+      overlay.remove();
+      resolve(result);
+    }
+    cancelBtn.addEventListener('click', () => close(false));
+    okBtn.addEventListener('click', () => close(true));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
+    okBtn.focus();
+  });
 }
 
 function out(container, result) {
@@ -1145,7 +1203,7 @@ function section(id, title, hint, bodyHtml) {
 // (/api/create-memory, /api/memory-link): revisión humana obligatoria, nada se
 // crea hasta pulsar el botón de la tarjeta.
 {
-  const sec = section('category-candidates', 'Candidatos de categoría', 'recuerdos de dominio que no están ligados a nada en la jerarquía (ni son hijos ni son padres de otro recuerdo vía "pertenece_a"), agrupados por similitud temática de sus registros, con un nombre de categoría sugerido. Nada se crea solo: revisa/edita el nombre y los miembros de cada tarjeta y confirma.',
+  const sec = section('category-candidates', 'Candidatos de categoría', 'Recuerdos de dominio que no están ligados a nada en la jerarquía (ni son hijos ni son padres de otro recuerdo vía "pertenece_a"), agrupados por similitud temática de sus registros, con un nombre de categoría sugerido. Un huérfano sin ningún parecido sigue apareciendo con su propia tarjeta de 1 miembro, no necesita esperar a tener "hermanos". Nada se crea solo: revisa/edita el nombre y los miembros de cada tarjeta y confirma.',
     `<button class="run" id="sc-run">Buscar candidatos</button>
      <div class="status" id="sc-info"></div>
      <div id="sc-cards"></div>`);
@@ -1168,7 +1226,7 @@ function section(id, title, hint, bodyHtml) {
       )
       .join('');
     card.innerHTML = `
-      <label>Nombre del categoría${cluster.suggestedReasoning ? ` -- sugerido: ${cluster.suggestedReasoning}` : ' (sin sugerencia automática, escribe uno)'}</label>
+      <label>Nombre de la categoría (editable)${cluster.suggestedReasoning ? ` -- sugerido: ${cluster.suggestedReasoning}` : ' (sin sugerencia automática, escribe una)'}</label>
       <input type="text" class="sc-name" value="${cluster.suggestedName ?? ''}" placeholder="nombre-en-kebab-case">
       <label style="margin-top:14px">Miembros a ligar (desmarca los que no apliquen)</label>
       ${membersHtml}
@@ -1185,7 +1243,7 @@ function section(id, title, hint, bodyHtml) {
       const date = card.querySelector('.sc-date').value;
       const reason = card.querySelector('.sc-reason').value.trim();
       const members = [...card.querySelectorAll('.sc-member-include')].filter((cb) => cb.checked).map((cb) => cb.dataset.name);
-      if (!name) { out(card, { ok: false, stdout: '', stderr: 'Falta el nombre del categoría.' }); return; }
+      if (!name) { out(card, { ok: false, stdout: '', stderr: 'Falta el nombre de la categoría.' }); return; }
       if (members.length === 0) { out(card, { ok: false, stdout: '', stderr: 'No hay ningún miembro incluido.' }); return; }
       if (!reason) { out(card, { ok: false, stdout: '', stderr: 'Falta el motivo (queda como fuente de cada enlace).' }); return; }
       const btn = card.querySelector('.sc-create');
@@ -1225,8 +1283,14 @@ function section(id, title, hint, bodyHtml) {
     try {
       const r = await call('GET', '/api/category-candidates');
       if (!r.ok) { infoEl.textContent = 'Error: ' + r.error; return; }
-      infoEl.textContent = `${r.orphanCount} recuerdo(s) sin lugar en la jerarquía -- ${r.clusters.length} cluster(es) candidato(s).`;
+      const unclustered = r.unclustered ?? [];
+      infoEl.textContent = `${r.orphanCount} recuerdo(s) sin lugar en la jerarquía -- ${r.clusters.length} cluster(es) candidato(s), ${unclustered.length} huérfano(s) sin agrupar.`;
       r.clusters.forEach((cluster, i) => cardsEl.appendChild(renderCluster(cluster, i)));
+      // Huérfanos sin cluster (2026-09-06, hallazgo de Oscar): antes no se
+      // mostraba ni un nombre cuando ninguno superaba el umbral con otro --
+      // se renderizan igual, cada uno como su propia tarjeta de 1 miembro,
+      // misma acción "crear categoría y ligar" que un cluster real.
+      unclustered.forEach((single, i) => cardsEl.appendChild(renderCluster(single, r.clusters.length + i)));
     } finally {
       runBtn.disabled = false;
     }
@@ -1442,6 +1506,75 @@ function section(id, title, hint, bodyHtml) {
   });
 }
 
+// --- Cambiar tipo de registro ---
+// set-record-kind.mjs, 2026-09-06: nace de un caso real (compromisos
+// guardados con kind='commitment' cuando en realidad describían un estado
+// ya aplicado, no una acción pendiente) -- hasta ahora esto se corregía a
+// mano vía SQL directo, sin ninguna herramienta ni de dashboard ni de CLI.
+// Distinto de Recategorizar (que mueve el registro a otro recuerdo): esto
+// solo cambia la etiqueta hecho/evento/compromiso, sin tocar a qué recuerdo
+// pertenece. Mismo patrón previsualizar-antes-de-habilitar que Retractar/
+// Borrar registro -- no es destructivo, pero confirmar el texto real evita
+// cambiar el registro equivocado.
+{
+  const sec = section('set-kind', 'Cambiar tipo de registro', 'Cambia la etiqueta hecho/evento/compromiso de uno o más registros ("set-record-kind.mjs"), sin tocar su recuerdo ni su contenido. Solo funciona sobre registros vigentes (retráctalos primero si ya no aplican). Para reasignar a otro recuerdo, usa "Recategorizar registro".',
+    `<label>Id(s) (separados por coma)</label><input type="text" id="sk-id" placeholder="94,95,96">
+     <button class="run secondary" id="sk-preview" style="margin-top:8px">Ver registro(s)</button>
+     <label style="margin-top:16px">Nuevo tipo</label>
+     <select id="sk-kind">
+       <option value="fact">fact</option><option value="event">event</option><option value="commitment">commitment</option>
+     </select>
+     <label style="margin-top:16px">Motivo</label><input type="text" id="sk-reason" placeholder="ej. describe una configuración ya aplicada, no una acción pendiente">
+     <button class="run" id="sk-run" disabled style="margin-top:16px">Cambiar tipo</button>
+     <div class="status" id="sk-status">Primero pulsa "Ver registro(s)" para confirmar qué vas a cambiar.</div>`);
+
+  const idInput = sec.querySelector('#sk-id');
+  const runBtn = sec.querySelector('#sk-run');
+  const statusEl = sec.querySelector('#sk-status');
+  let previewedFor = null;
+  let previewedFacts = [];
+
+  function invalidatePreview() {
+    previewedFor = null;
+    previewedFacts = [];
+    runBtn.disabled = true;
+    statusEl.textContent = 'El id cambió, vuelve a pulsar "Ver registro(s)" antes de cambiar el tipo.';
+  }
+  idInput.addEventListener('input', invalidatePreview);
+
+  sec.querySelector('#sk-preview').addEventListener('click', async () => {
+    const id = idInput.value.trim();
+    if (!id) { out(sec, { ok: false, stdout: '', stderr: 'Falta el id.' }); return; }
+    const r = await call('GET', '/api/records?id=' + encodeURIComponent(id));
+    out(sec, r);
+    if (r.ok && !/^Ningún id existe\.?$/.test((r.stdout || '').trim())) {
+      previewedFor = id;
+      previewedFacts = [...(r.stdout || '').matchAll(/#(\d+) \[[\d-]+\] \[([^\]]+)\] (.+)/g)]
+        .map((m) => ({ id: m[1], status: m[2], claim: m[3] }));
+      runBtn.disabled = false;
+      statusEl.textContent = `Contenido verificado para el id "${id}", ya puedes cambiar el tipo.`;
+    } else {
+      invalidatePreview();
+      statusEl.textContent = 'No se pudo previsualizar, revisa el id.';
+    }
+  });
+
+  runBtn.addEventListener('click', async () => {
+    const id = idInput.value.trim();
+    const kind = sec.querySelector('#sk-kind').value;
+    const reason = sec.querySelector('#sk-reason').value.trim();
+    if (!reason) { out(sec, { ok: false, stdout: '', stderr: 'Falta el motivo.' }); return; }
+    if (previewedFor !== id) { out(sec, { ok: false, stdout: '', stderr: 'Vuelve a pulsar "Ver registro(s)", el id no coincide con el último previsualizado.' }); return; }
+
+    const summary = previewedFacts.map((f) => `#${f.id} [${f.status}]: ${f.claim.slice(0, 100)}${f.claim.length > 100 ? '…' : ''}`).join('\n');
+    const confirmed = await confirmAction(`¿Confirmas cambiar ${previewedFacts.length} registro(s) a "${kind}"?\n\n${summary}\n\nMotivo: ${reason}`);
+    if (!confirmed) { statusEl.textContent = 'Cambio cancelado por el usuario.'; return; }
+
+    out(sec, await call('POST', '/api/set-record-kind', { id, kind, reason }));
+    invalidatePreview();
+  });
+}
+
 // --- Guardar registro ---
 {
   const sec = section('remember', 'Guardar registro', 'Inserta un registro nuevo ("remember.mjs"). Fecha y fuente son obligatorias. Antes de guardarlo, pasa por el filtro de contradicciones.',
@@ -1606,7 +1739,7 @@ function section(id, title, hint, bodyHtml) {
     if (previewedFor !== id) { out(sec, { ok: false, stdout: '', stderr: 'Vuelve a pulsar "Ver registro(s)", el id no coincide con el último previsualizado.' }); return; }
 
     const summary = previewedFacts.map((f) => `#${f.id} [${f.status}]: ${f.claim.slice(0, 100)}${f.claim.length > 100 ? '…' : ''}`).join('\n');
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       `¿Confirmas retractar ${previewedFacts.length} registro(s)?\n\n${summary}\n\nMotivo: ${reason}`,
     );
     if (!confirmed) { statusEl.textContent = 'Retracto cancelado por el usuario.'; return; }
@@ -1665,7 +1798,7 @@ function section(id, title, hint, bodyHtml) {
     if (previewedFor !== id) { out(sec, { ok: false, stdout: '', stderr: 'Vuelve a pulsar "Ver registro(s)", el id no coincide con el último previsualizado.' }); return; }
 
     const summary = previewedFacts.map((f) => `#${f.id} [${f.status}]: ${f.claim.slice(0, 100)}${f.claim.length > 100 ? '…' : ''}`).join('\n');
-    const confirmed = window.confirm(
+    const confirmed = await confirmAction(
       `IRREVERSIBLE: esto borra ${previewedFacts.length} registro(s) para siempre, no queda ni en el historial.\n\n${summary}\n\n¿Confirmas?`,
     );
     if (!confirmed) { statusEl.textContent = 'Borrado cancelado por el usuario.'; return; }
@@ -1700,7 +1833,7 @@ function section(id, title, hint, bodyHtml) {
   sec.querySelector('#pm-run').addEventListener('click', async () => {
     const name = sec.querySelector('#pm-name').value.trim();
     if (!name) { out(sec, { ok: false, stdout: '', stderr: 'Falta el nombre.' }); return; }
-    const confirmed = window.confirm(`IRREVERSIBLE: esto borra el recuerdo "${name}" para siempre, si tiene cualquier registro o relación ligada, forget.mjs se va a negar (revisa el mensaje).\n\n¿Confirmas?`);
+    const confirmed = await confirmAction(`IRREVERSIBLE: esto borra el recuerdo "${name}" para siempre, si tiene cualquier registro o relación ligada, forget.mjs se va a negar (revisa el mensaje).\n\n¿Confirmas?`);
     if (!confirmed) return;
     out(sec, await call('POST', '/api/purge-memory', { name }));
   });

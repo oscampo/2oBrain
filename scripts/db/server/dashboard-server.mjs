@@ -387,7 +387,7 @@ app.get('/api/category-candidates', (c) => {
 // create-memory.mjs: creación standalone de un recuerdo, opcionalmente ligado a un
 // padre en el mismo llamado (--parent, ver el script para el diseño
 // completo). Usado por la sección "Candidatos de categoría" para crear el
-// categoría propuesto; --parent no aplica acá (el categoría nuevo no tiene
+// categoría propuesto; --parent no aplica acá (la categoría nueva no tiene
 // padre todavía), el enlace a cada miembro va por /api/memory-link.
 app.post('/api/create-memory', async (c) => {
   const body = await c.req.json().catch(() => null);
@@ -464,6 +464,17 @@ app.post('/api/recategorize-record', async (c) => {
     return c.json({ ok: false, error: 'faltan record/from/to/reason' }, 400);
   }
   return respond(c, runScript('recategorize-record.mjs', ['--record', String(body.record), '--from', body.from, '--to', body.to, '--reason', body.reason]));
+});
+
+// set-record-kind.mjs, 2026-09-06: cambia solo la etiqueta hecho/evento/
+// compromiso de uno o más registros, sin tocar a qué recuerdo pertenecen
+// (distinto de recategorize-record) ni retractarlos.
+app.post('/api/set-record-kind', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body?.id || !body?.kind || !body?.reason) {
+    return c.json({ ok: false, error: 'faltan id/kind/reason' }, 400);
+  }
+  return respond(c, runScript('set-record-kind.mjs', ['--record', String(body.id), '--kind', body.kind, '--reason', body.reason]));
 });
 
 // No hay endpoint que ejecute extract-records.mjs: esa tarea corre en una

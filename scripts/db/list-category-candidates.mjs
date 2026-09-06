@@ -59,7 +59,7 @@
 //   node list-category-candidates.mjs [--threshold 0.75] [--min-cluster 2] [--json]
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
-import { suggestSupernodeName } from './lib/suggest-category-name.mjs';
+import { suggestCategoryName } from './lib/suggest-category-name.mjs';
 
 function parseArgs(argv) {
   const out = {};
@@ -106,15 +106,21 @@ const { rows: orphans } = await client.query(`
   order by n.name
 `);
 
-if (orphans.length < minCluster) {
+if (orphans.length === 0) {
   if (args.json) {
-    console.log(JSON.stringify({ orphanCount: orphans.length, clusters: [] }));
+    console.log(JSON.stringify({ orphanCount: 0, clusters: [], unclustered: [] }));
   } else {
-    console.log(`${orphans.length} recuerdo(s) de dominio sin lugar en la jerarquía -- menos que --min-cluster (${minCluster}), nada que agrupar todavía.`);
+    console.log('0 recuerdo(s) de dominio sin lugar en la jerarquía.');
   }
   await client.end();
   process.exit(0);
 }
+
+// Menos huérfanos que --min-cluster: ninguno puede formar cluster
+// matemáticamente, pero cada uno sigue siendo un candidato individual a
+// categoría propia -- se resuelven como "unclustered" más abajo, no se
+// descarta el caso aquí (2026-09-06, hallazgo de Oscar: antes esta rama
+// salía con solo un conteo, sin listar ni un nombre).
 
 const names = orphans.map((o) => o.name);
 const { rows: maxSims } = await client.query(
@@ -157,6 +163,16 @@ const clusters = [...groups.values()]
   .map((g) => g.sort((a, b) => a.localeCompare(b)))
   .sort((a, b) => b.length - a.length);
 
+// Huérfanos que no entraron en ningún cluster (2026-09-06, hallazgo de
+// Oscar): antes, si ninguno superaba el umbral con otro, el script no
+// listaba ni un solo nombre -- "3 huérfanos, 0 clusters" y nada más que
+// hacer con ellos desde el dashboard. Un huérfano suelto sigue siendo
+// accionable uno por uno (crear su propia categoría, o ligarlo a mano a una
+// ya existente vía "Relaciones"), no necesita esperar a tener un "hermano"
+// parecido.
+const clusteredNames = new Set(clusters.flat());
+const unclustered = orphans.filter((o) => !clusteredNames.has(o.name)).map((o) => o.name);
+
 async function exampleClaim(node) {
   const { rows } = await client.query(
     `select claim from records f join record_memories fn on fn.record_id = f.id
@@ -168,38 +184,38 @@ async function exampleClaim(node) {
 
 // Miembros + sugerencia de nombre se resuelven una sola vez, se usan en
 // ambos modos de salida (json y texto) -- evita duplicar las mismas
-// consultas/llamadas al clasificador.
-const resolvedClusters = [];
-for (const cluster of clusters) {
+// consultas/llamadas al clasificador. Un huérfano suelto se resuelve igual
+// (mismo suggestCategoryName con un solo miembro): sigue siendo un
+// candidato válido a categoría propia, solo que sin "hermanos" parecidos.
+async function resolveGroup(names) {
   const members = [];
-  for (const name of cluster) {
+  for (const name of names) {
     members.push({ name, factCount: factCountByName.get(name), example: await exampleClaim(name) });
   }
-  const suggestion = await suggestSupernodeName(members);
-  resolvedClusters.push({ members, suggestedName: suggestion?.name ?? null, suggestedReasoning: suggestion?.reasoning ?? null });
+  const suggestion = await suggestCategoryName(members);
+  return { members, suggestedName: suggestion?.name ?? null, suggestedReasoning: suggestion?.reasoning ?? null };
 }
+
+const resolvedClusters = [];
+for (const cluster of clusters) resolvedClusters.push(await resolveGroup(cluster));
+
+const resolvedUnclustered = [];
+for (const name of unclustered) resolvedUnclustered.push(await resolveGroup([name]));
 
 if (args.json) {
-  console.log(JSON.stringify({ orphanCount: orphans.length, clusters: resolvedClusters }));
+  console.log(JSON.stringify({ orphanCount: orphans.length, clusters: resolvedClusters, unclustered: resolvedUnclustered }));
   await client.end();
   process.exit(0);
 }
 
-if (resolvedClusters.length === 0) {
-  console.log(`${orphans.length} recuerdo(s) de dominio sin lugar en la jerarquía, pero ninguno se agrupa con otro por encima de ${threshold} -- cada uno parece genuinamente distinto todavía.`);
-  await client.end();
-  process.exit(0);
-}
-
-console.log(`${resolvedClusters.length} cluster(es) candidato(s) sin agrupar (de ${orphans.length} recuerdo(s) huérfano(s), umbral ${threshold}):\n`);
-for (const { members, suggestedName, suggestedReasoning } of resolvedClusters) {
+function printGroup({ members, suggestedName, suggestedReasoning }) {
   const names = members.map((m) => m.name);
-  console.log(`  [${names.length} recuerdos] ${names.join(', ')}`);
+  console.log(`  [${names.length} recuerdo(s)] ${names.join(', ')}`);
   for (const m of members) {
     console.log(`    - ${m.name} (${m.factCount} registro(s)): "${m.example.slice(0, 90)}"`);
   }
   if (suggestedName) console.log(`  Nombre sugerido: "${suggestedName}" (${suggestedReasoning})`);
-  const placeholder = suggestedName ?? '<nombre-del-categoría>';
+  const placeholder = suggestedName ?? '<nombre-de-la-categoría>';
   console.log(
     `  Si aplica, crea la categoría y liga cada miembro:\n` +
       `    node create-memory.mjs --name ${placeholder}\n` +
@@ -207,6 +223,22 @@ for (const { members, suggestedName, suggestedReasoning } of resolvedClusters) {
       '\n',
   );
 }
-console.log('Revisión humana obligatoria -- ningún categoría se crea ni se liga solo.');
+
+if (resolvedClusters.length === 0 && resolvedUnclustered.length === 0) {
+  console.log(`${orphans.length} recuerdo(s) de dominio sin lugar en la jerarquía, pero ninguno se agrupa con otro por encima de ${threshold} -- cada uno parece genuinamente distinto todavía.`);
+  await client.end();
+  process.exit(0);
+}
+
+if (resolvedClusters.length > 0) {
+  console.log(`${resolvedClusters.length} cluster(es) candidato(s) sin agrupar (de ${orphans.length} recuerdo(s) huérfano(s), umbral ${threshold}):\n`);
+  for (const group of resolvedClusters) printGroup(group);
+}
+
+if (resolvedUnclustered.length > 0) {
+  console.log(`${resolvedUnclustered.length} recuerdo(s) huérfano(s) sin ningún otro parecido por encima de ${threshold} -- candidatos igual a categoría propia:\n`);
+  for (const group of resolvedUnclustered) printGroup(group);
+}
+console.log('Revisión humana obligatoria -- ninguna categoría se crea ni se liga sola.');
 
 await client.end();
