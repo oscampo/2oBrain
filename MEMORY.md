@@ -13,8 +13,10 @@ one-line pointer.
 
 ## Al iniciar sesión
 
-See `HEARTBEAT.md` for the due-job list (deliberately kept out of this
-file: it's stable configuration, not memory that gets pruned/rewritten).
+Run `node scripts/db/memory-status.mjs usuario` (see `CLAUDE.md`, Fase 0
+"YA_INSTALADO"), then check `HEARTBEAT.md` for the due-job list
+(deliberately kept out of this file: it's stable configuration, not
+memory that gets pruned/rewritten).
 
 ## Standing rules learned from corrections
 

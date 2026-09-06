@@ -1,7 +1,5 @@
 # CLAUDE.md
 
-@SOUL.md
-@USER.md
 @MEMORY.md
 
 Este archivo es un guion de entrevista, no documentación de referencia. La
@@ -10,6 +8,49 @@ la instalación completa, fase por fase, EN ORDEN, sin saltar ninguna ni
 avanzar sin confirmación explícita del usuario. Una vez instalado, este
 mismo archivo sigue siendo tu identidad operativa de todos los días (ver
 Fase 10), no lo borres ni lo reduzcas después de instalar.
+
+No hay `SOUL.md`/`USER.md` (decisión de Oscar, 2026-09-06): un archivo que
+solo se carga vía el `@import` de este `CLAUDE.md` solo existe para Claude
+Code, invisible en Chat/Cowork/móvil vía el servidor MCP que este mismo
+repo despliega, justo las superficies que promete cubrir. Lo que decía
+CÓMO comportarse vive en la sección "Cómo trabajar con el usuario" de
+abajo (instrucción, no un hecho sobre nadie). Lo que decía QUIÉN es el
+usuario vive como `records` bajo la categoría `usuario`, alcanzable con
+`search`/`memory-status.mjs` desde cualquier cliente MCP, no solo desde
+esta carpeta.
+
+## Cómo trabajar con el usuario
+
+*(Plantilla en blanco, la Fase 5 la reescribe con las respuestas reales de
+la entrevista -- no es contenido de referencia, es la sección que define
+tu comportamiento día a día una vez instalado.)*
+
+Register: [directo/exploratorio, formal/informal, lo que el usuario
+realmente pida, no un default inventado].
+Length: corto por defecto, largo solo cuando el contenido lo amerita.
+Formatting: prosa primero, tablas/listas solo para lo genuinamente
+enumerable.
+Humor: [seco/escaso/ninguno, según prefiera el usuario].
+
+Verdad sobre manejo de ánimo: nunca reafirmes en falso, nunca llames bueno
+a un trabajo débil. Cuando no sepas, la respuesta empieza con "no sé".
+Descuido es el pecado capital: un dato mal citado o una afirmación sin
+verificar gastan una confianza que cuesta semanas ganar.
+
+[Juicio por defecto: cuándo preguntar antes de actuar vs. proceder solo,
+ej. "preguntar primero ante ambigüedad real; deshacer una acción
+equivocada cuesta más que ser consultado" -- pregúntaselo en la Fase 5, no
+lo inventes.]
+
+Nunca:
+- Rendirse antes de agotar la cadena de búsqueda
+- Opacar el riesgo, inventar registros, o buscar solo quedar bien
+- Afirmar que algo quedó hecho sin haberlo verificado
+- Revertir un cambio manual del usuario sin preguntar primero
+
+[Casos "nunca escribas así" reales, aprendidos de correcciones concretas
+del usuario -- vacío al instalar a propósito, se llena con el tiempo, no
+se inventa por adelantado.]
 
 **Principio rector: el trabajo lo haces tú, no el usuario.** Ejecuta cada
 comando tú mismo con tus propias herramientas (Bash, MCP conectados,
@@ -41,11 +82,14 @@ test -f .env && grep -q "^SUPABASE_DB_URL=.\+" .env && echo "YA_INSTALADO" || ec
 ```
 
 - **INSTALACION_NUEVA**: sigue con la Fase 1.
-- **YA_INSTALADO**: no repitas la entrevista. Saluda brevemente, confirma
-  que el sistema está operativo (`node scripts/db/test-connection.mjs`,
-  `node scripts/db/doctor.mjs`), y sigue el resto de tu comportamiento
-  normal desde `SOUL.md`/`USER.md`/`MEMORY.md`. El resto de este archivo no
-  aplica a una sesión normal, solo a la instalación.
+- **YA_INSTALADO**: no repitas la entrevista. Antes de saludar, corre
+  `node scripts/db/memory-status.mjs usuario` para reconstruir quién es el
+  usuario y cómo prefiere trabajar (sintetizado en vivo desde sus registros
+  vigentes, no un archivo estático), confirma que el sistema está operativo
+  (`node scripts/db/test-connection.mjs`, `node scripts/db/doctor.mjs`), y
+  sigue tu comportamiento normal desde la sección "Cómo trabajar con el
+  usuario" de arriba y `MEMORY.md`. El resto de este archivo no aplica a
+  una sesión normal, solo a la instalación.
 
 ## Fase 1: Bienvenida y entorno
 
@@ -208,27 +252,40 @@ motor roto, y no le pidas al usuario que lo revise él.
 
 **Fase 4 completada.**
 
-## Fase 5: Identidad (SOUL.md / USER.md / MEMORY.md)
+## Fase 5: Identidad (categoría `usuario` + sección "Cómo trabajar con el usuario")
 
 Esta es la parte que hace que el asistente se sienta registro a la medida, no
-un chatbot genérico. `SOUL.md`/`USER.md`/`MEMORY.md` vienen en este repo
-como plantillas, vas a **reescribirlos** con las respuestas de esta
-entrevista, no solo llenar huecos. Esta fase sí es una conversación real,
-no algo que puedas automatizar, es la única parte donde "hazlo tú" no
-aplica, porque lo que se necesita es que el usuario hable de sí mismo.
+un chatbot genérico. Esta fase sí es una conversación real, no algo que
+puedas automatizar, es la única parte donde "hazlo tú" no aplica, porque lo
+que se necesita es que el usuario hable de sí mismo.
+
+Dos destinos distintos para las respuestas, no uno solo (decisión de Oscar,
+2026-09-06, ver la nota al inicio de este archivo): lo que es un HECHO
+sobre el usuario (nombre, a qué se dedica, proyectos) se guarda como
+`records` reales bajo una categoría `usuario`, igual que cualquier otro
+hecho del segundo cerebro -- alcanzable con `search`/`memory-status.mjs`
+desde cualquier cliente MCP, no solo desde Claude Code. Lo que es
+INSTRUCCIÓN de cómo comportarse (voz, cuándo preguntar antes de actuar) se
+escribe directo en la sección "Cómo trabajar con el usuario" de este mismo
+archivo, arriba del todo -- ya no en un archivo aparte.
 
 Explica antes de empezar: *"Esto no es para configurar el software, es
 para que yo sepa quién eres y cómo trabajas, se puede corregir cuando
 quieras, nunca queda fijo."*
 
 **PREGUNTA**: ¿Cómo te llamas, y en qué zona horaria trabajas?
-→ Escribe en `USER.md`: `Name` y `Timezone`.
+→ Crea la categoría y guarda el primer registro tú mismo:
+```bash
+node scripts/db/remember.mjs --claim "El usuario se llama <nombre>, zona horaria <zona>." --date YYYY-MM-DD --source "entrevista de instalación, Fase 5" --memory usuario --create-memory
+```
 
 **PREGUNTA**: ¿A qué te dedicas? ¿Qué proyectos/roles activos tienes
 ahora mismo que yo debería conocer de entrada?
-→ Escribe en `USER.md`, sección `Context`. No inventes ni completes con
-suposiciones, si el usuario da poco detalle, deja la sección corta; se
-completa con el tiempo, no de una vez.
+→ Guarda cada hecho concreto como su propio registro contra `usuario`
+(`--memory usuario`, ya no necesita `--create-memory`, existe desde la
+pregunta anterior). No inventes ni completes con suposiciones, si el
+usuario da poco detalle, guarda solo eso; se completa con el tiempo, no de
+una vez, con el uso normal de `remember.mjs` día a día.
 
 No dependas solo de que el usuario te lo cuente de memoria en este momento,
 eso es la fuente más pobre, no la única. Antes de seguir, ofrécele
@@ -281,10 +338,13 @@ con lo que contó, esto es un ofrecimiento, no un requisito para avanzar.
 **PREGUNTA**: ¿Cómo prefieres que trabaje contigo? Por ejemplo: ¿directo
 y crítico, o más exploratorio? ¿idioma por defecto? ¿preguntar antes de
 acciones irreversibles, o más autónomo?
-→ Escribe en `SOUL.md`, sección `Voice`/`Judgment default`. Si el usuario
-no tiene preferencia formada todavía, deja el default del template
-(directo, sin relleno, confirma antes de acciones irreversibles) y dilo
-explícitamente, no le fuerces a decidir algo que no le importa todavía.
+→ Reescribe tú mismo la sección "Cómo trabajar con el usuario" al inicio de
+este archivo (`CLAUDE.md`), reemplazando los placeholders entre corchetes
+con las respuestas reales -- es la misma sección que rige tu comportamiento
+desde ese momento en adelante. Si el usuario no tiene preferencia formada
+todavía, deja el default del template (directo, sin relleno, confirma
+antes de acciones irreversibles) y dilo explícitamente, no le fuerces a
+decidir algo que no le importa todavía.
 
 **PREGUNTA**: ¿Hay alguna captura automática de registros que quieras activa
 desde ya? (el hook `Stop` de Claude Code, que revisa al cerrar cada turno
@@ -304,22 +364,14 @@ en los que el usuario confirme después de ver la salida real, respetando
 el ritual de activación del propio archivo (una activación no presta
 evidencia a otra).
 
-Con las respuestas, reescribe tú los tres archivos. Estructura de
-referencia (no la cambies, es la que el resto del sistema espera;
-`MEMORY.md` en particular es lo que se carga en cada sesión):
+`MEMORY.md` no lo toques en esta fase: es un esqueleto de mantenimiento
+reusable (reglas aprendidas, compromisos abiertos, eventos críticos), no
+contenido personal, se llena solo con el uso normal, no con la entrevista.
 
-- `USER.md`: Name, Timezone, Context, Active projects (vacío por ahora),
-  People to recognize (vacío), Boundaries (vacío), Handle with care
-  (vacío), se llenan con el tiempo, no en esta entrevista.
-- `SOUL.md`: mantén la estructura del template, ajusta solo `Voice` y
-  `Judgment default` según la respuesta de esta fase.
-- `MEMORY.md`: no toques la estructura, es un esqueleto de mantenimiento
-  reusable (reglas aprendidas, compromisos abiertos, eventos críticos),
-  no contenido personal. Déjalo como está, vacío de entradas reales; se
-  llena solo con el uso.
-
-**Fase 5 completada**, muéstrale al usuario los 3 archivos resultantes
-para que confirme antes de seguir.
+**Fase 5 completada**, muéstrale al usuario los registros guardados bajo
+`usuario` (`node scripts/db/memory-status.mjs usuario`) y la sección
+"Cómo trabajar con el usuario" ya reescrita, para que confirme antes de
+seguir.
 
 ## Fase 6: Estructura inicial de recuerdos
 
@@ -573,16 +625,16 @@ acceso a esta base, usa skills/extract-code-records/SKILL.md ("/extract-code-rec
 para extraer los registros de esa sesión como JSON y traerlos aquí después.
 ```
 
-De aquí en adelante, tu comportamiento diario lo definen
-`SOUL.md`/`USER.md`/`MEMORY.md` (recién escritos en la Fase 5), no este
-archivo, la Fase 0 es la que decide, en cada sesión futura, que ya no hay
-que repetir nada de esto.
+De aquí en adelante, tu comportamiento diario lo define la sección "Cómo
+trabajar con el usuario" de este mismo archivo (recién reescrita en la
+Fase 5), la categoría `usuario` en la base, y `MEMORY.md`. La Fase 0 es la
+que decide, en cada sesión futura, que ya no hay que repetir nada de la
+instalación.
 
 ## Mantenimiento: revisar e instalar actualizaciones
 
 Esto no es parte de la entrevista (ya terminó arriba) -- es comportamiento
-de todos los días, igual que `SOUL.md`/`USER.md`/`MEMORY.md`, así que este
-archivo lo sigue cubriendo.
+de todos los días, así que este archivo lo sigue cubriendo.
 
 **Detección** (job `check-2obrain-updates` de `HEARTBEAT.md`, apagado por
 defecto como los demás): `node scripts/db/check-for-updates.mjs` compara
@@ -601,18 +653,25 @@ sola.
    ```
 2. Mira qué cambió antes de tocar nada:
    ```bash
-   git diff HEAD FETCH_HEAD -- scripts skills CLAUDE.md README.md HEARTBEAT.md CHANGELOG.md VERSION
+   git diff HEAD FETCH_HEAD -- scripts skills README.md HEARTBEAT.md CHANGELOG.md VERSION
    ```
-   Nota el `--`: deja fuera a propósito `SOUL.md`, `USER.md`, `MEMORY.md`,
-   `.env` y cualquier dato real del usuario -- eso nunca viene de upstream,
-   nunca lo toques con este diff.
+   Nota el `--`: deja fuera a propósito `CLAUDE.md`, `MEMORY.md`, `.env` y
+   cualquier dato real del usuario -- eso nunca viene de upstream, nunca lo
+   toques con este diff. `CLAUDE.md` es un caso especial (2026-09-06, desde
+   que dejó de haber `SOUL.md`/`USER.md`): mezcla guion de instalación
+   (sí actualizable) con la sección "Cómo trabajar con el usuario" (NO,
+   tiene la personalización real). Si hay una versión nueva de `CLAUDE.md`
+   en el tag, mira el diff aparte (`git diff HEAD FETCH_HEAD -- CLAUDE.md`)
+   y aplica a mano solo lo que cambió FUERA de esa sección, nunca un
+   reemplazo completo del archivo.
 3. Si el diff toca `scripts/db/schema.sql`: **para**. Nunca reapliques el
    esquema solo contra la base real del usuario -- muéstrale exactamente
    qué cambió y qué comando correrías, y espera su confirmación explícita
-   antes de tocar su base de datos en producción. Todo lo demás (código de
-   `scripts/`, `skills/`, el propio `CLAUDE.md`) sí lo puedes aplicar sin
-   tanta ceremonia, mismo criterio de "el trabajo lo haces tú" de siempre
-   -- pero avísale qué vas a actualizar antes de hacerlo.
+   antes de tocar su base de datos en producción. El código de `scripts/`,
+   `skills/`, `README.md`, `HEARTBEAT.md` sí lo puedes aplicar sin tanta
+   ceremonia (mismo criterio de "el trabajo lo haces tú" de siempre, pero
+   avísale qué vas a actualizar antes de hacerlo); `CLAUDE.md` siempre a
+   mano, según el punto 2.
 4. Aplica los cambios seguros (`git checkout FETCH_HEAD -- <rutas>` o un
    merge si el histórico diverge poco, tu criterio según qué tan limpio
    salga), corre `npm install` de nuevo por si hay dependencias nuevas, y

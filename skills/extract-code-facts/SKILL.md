@@ -27,8 +27,8 @@ Palabras clave: "extrae registros", "genera records de esta sesión", "/extract-
 
 ### Paso 1: Fecha real, nunca inferida
 
-Ejecutar en terminal `date '+%Y-%m-%d'` (en la zona horaria del usuario, ver
-`USER.md`) y usar ese resultado como único valor posible para `date` en
+Ejecutar en terminal `date '+%Y-%m-%d'` (zona horaria local del sistema) y
+usar ese resultado como único valor posible para `date` en
 cada registro. Si el comando falla, preguntar la fecha al usuario antes de
 continuar, nunca adivinarla ni tomarla del contenido de la conversación
 (una sesión reanudada puede describir trabajo de días atrás; esa fecha del

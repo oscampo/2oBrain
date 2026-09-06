@@ -80,20 +80,24 @@ with nothing cloned yet. Before anything else, the agent should:
 From there, `CLAUDE.md` takes over end to end: creating the Supabase
 project and applying `scripts/db/schema.sql`, filling in `.env` (see
 `.env.example`), choosing which MCP server to deploy (or skipping that
-and using the dashboard/CLI only), and writing your own `SOUL.md`/
-`USER.md` so the assistant knows who it's working with.
+and using the dashboard/CLI only), and getting to know you, facts about
+you go into `records` under a `usuario` category in your own database, and
+how you want the assistant to behave gets written straight into
+`CLAUDE.md`'s own "Cómo trabajar con el usuario" section (no separate
+`SOUL.md`/`USER.md`: a file only Claude Code reads defeats the point of
+memory reachable from anywhere, see "Access it from anywhere" above).
 
 Once installed, reopen your agent **from inside this cloned folder** in
-future sessions, that's what makes your `SOUL.md`/`USER.md`/`MEMORY.md`
-identity persist turn to turn instead of starting over each time.
+future sessions, that's what makes your `CLAUDE.md`/`MEMORY.md` identity
+persist turn to turn instead of starting over each time, and what you're
+querying with `search`/`memory-status.mjs` from any other client.
 
 ## What doesn't ship here
 
 Your own records, memories, and any narrative `.md` pages (`daily/`, `guides/`,
 `people/`, `projects/`, `wiki/`) are yours, this repo ships empty
-(gitignored by default, see `.gitignore`). `SOUL.md`/`USER.md`/`MEMORY.md`
-ship as blank templates the interview script fills in with you, not a
-worked example.
+(gitignored by default, see `.gitignore`). `MEMORY.md` ships as a blank
+template the interview script fills in with you, not a worked example.
 
 ## License
 

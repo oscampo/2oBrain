@@ -5,6 +5,36 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.3.0 (2026-09-06)
+
+**Cambio de arquitectura, no un fix**. Sin cambios en `schema.sql` -- segura
+de aplicar al código, pero requiere migrar contenido si ya instalaste
+versiones previas (ver abajo).
+
+- **Se retiran `SOUL.md`/`USER.md`**: solo se cargaban vía el `@import` de
+  `CLAUDE.md`, invisibles en Chat/Cowork/móvil vía el servidor MCP que este
+  mismo repo despliega -- justo las superficies que "Access it from
+  anywhere" (README) promete cubrir. Un archivo de identidad que solo
+  funciona en una de las cuatro superficies no cumplía esa promesa.
+- **Lo que decía CÓMO comportarse** (voz, honestidad, juicio) ahora vive
+  directo en `CLAUDE.md`, sección "Cómo trabajar con el usuario" -- la
+  Fase 5 la reescribe en el lugar en vez de escribir un archivo aparte.
+- **Lo que decía QUIÉN es el usuario** (nombre, contexto, proyectos) ahora
+  se guarda como `records` reales bajo una categoría `usuario`, alcanzable
+  con `search`/`memory-status.mjs` desde cualquier cliente MCP. La Fase 0
+  ("YA_INSTALADO") corre `memory-status.mjs usuario` al arrancar sesión en
+  vez de depender de un archivo estático siempre cargado.
+- **Si ya instalaste una versión anterior**: `SOUL.md`/`USER.md` en tu
+  copia siguen funcionando (nadie los borra por ti), pero no se benefician
+  de este cambio hasta que migres a mano -- crea la categoría `usuario`,
+  guarda como registros el contenido de `USER.md`, y copia el contenido de
+  `SOUL.md` a la sección "Cómo trabajar con el usuario" de tu propio
+  `CLAUDE.md`. No hay migración automática todavía.
+- **Mecanismo de actualizaciones ajustado**: `CLAUDE.md` deja de ser
+  seguro de sobreescribir completo en una actualización (mezcla guion de
+  instalación con la personalización real del usuario) -- ver
+  "Mantenimiento: revisar e instalar actualizaciones" en `CLAUDE.md`.
+
 ## v0.2.1 (2026-09-06)
 
 Sin cambios en `scripts/db/schema.sql` -- segura de aplicar sin tocar la

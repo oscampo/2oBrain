@@ -8,9 +8,9 @@ desktop contract.)
 
 This file ships with the jobs the scaffold's own scripts already support,
 every one of them DISABLED by default (see the enable ritual below) so
-nothing runs until you've actually chosen it, same spirit as
-`SOUL.md`/`USER.md`/`MEMORY.md` shipping blank: this is a menu of
-switches, not a worked example of what your day should look like. The
+nothing runs until you've actually chosen it, same spirit as `MEMORY.md`
+and the `usuario` category shipping blank: this is a menu of switches, not
+a worked example of what your day should look like. The
 install interview (`CLAUDE.md`, Fase 5) walks through them with you. Add
 more rows here as you find other real recurring checks worth running,
 never invent one speculatively.
