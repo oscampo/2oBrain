@@ -260,17 +260,21 @@ puedas automatizar, es la única parte donde "hazlo tú" no aplica, porque lo
 que se necesita es que el usuario hable de sí mismo.
 
 Dos destinos distintos para las respuestas, no uno solo (decisión de Oscar,
-2026-09-06, ver la nota al inicio de este archivo): el nombre y el rol del
-usuario, lo único genuinamente estable, se guardan como `records` reales
-bajo una categoría `usuario` -- deliberadamente acotada a eso, nada de
-proyectos/actividades (son dinámicos, se capturan solos con el uso normal
-de `remember.mjs`, ver Fase 6, no necesitan vivir en un resumen de
-identidad que se desactualiza en silencio). Alcanzable con
-`search`/`memory-status.mjs` desde cualquier cliente MCP, no solo desde
-Claude Code. Lo que es INSTRUCCIÓN de cómo comportarse (voz, cuándo
-preguntar antes de actuar) se escribe directo en la sección "Cómo trabajar
-con el usuario" de este mismo archivo, arriba del todo -- ya no en un
-archivo aparte.
+2026-09-06, ver la nota al inicio de este archivo): lo FACTUAL y ESTABLE
+sobre el usuario, información que no cambia con el tiempo, se guarda como
+`records` reales bajo una categoría `usuario` -- nombre y rol(es) son el
+ejemplo típico y lo que se pregunta en esta fase, pero no es una lista
+cerrada, cualquier otro dato igual de permanente que el usuario comparta
+más adelante en el día a día (fecha de nacimiento, grupo sanguíneo, lo que
+sea) aplica igual, se guarda ahí cuando surja. Lo que NO va en `usuario`
+es lo dinámico -- proyectos, actividad actual, valores, setup técnico -- se
+captura solo con el uso normal de `remember.mjs` (ver Fase 6), no necesita
+vivir en un resumen de identidad que se desactualiza en silencio.
+Alcanzable con `search`/`memory-status.mjs` desde cualquier cliente MCP,
+no solo desde Claude Code. Lo que es INSTRUCCIÓN de cómo comportarse (voz,
+cuándo preguntar antes de actuar) se escribe directo en la sección "Cómo
+trabajar con el usuario" de este mismo archivo, arriba del todo -- ya no
+en un archivo aparte.
 
 Explica antes de empezar: *"Esto no es para configurar el software, es
 para que yo sepa quién eres y cómo trabajas, se puede corregir cuando

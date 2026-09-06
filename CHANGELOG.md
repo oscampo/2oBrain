@@ -5,6 +5,18 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.3.2 (2026-09-06)
+
+Precisión sobre v0.3.1, mismo día. Sin cambios en `schema.sql`.
+
+- **El criterio de `usuario` no es una lista cerrada de "nombre y rol"**,
+  es "factual y estable, no dinámico" -- nombre y rol son el ejemplo típico
+  y lo que pregunta la Fase 5, pero cualquier otro dato igual de permanente
+  que el usuario comparta más adelante (fecha de nacimiento, grupo
+  sanguíneo, lo que sea) aplica igual, y se guarda ahí cuando surja en el
+  día a día. Lo que sigue excluido es lo dinámico (proyectos, actividad,
+  valores, setup técnico), ese diagnóstico de v0.3.1 no cambió.
+
 ## v0.3.1 (2026-09-06)
 
 Corrección sobre v0.3.0, mismo día, antes de que nadie instalara todavía.
