@@ -210,6 +210,12 @@ buscarla:
    ningún manejo de error ni camino alterno de "solo texto completo" (no
    existe ese fallback en el código, aunque el nombre pueda sonar a
    búsqueda híbrida) -- sin esta llave el sistema no arranca, punto.
+   **Aviso real, no teórico** (hallazgo de una instalación de prueba,
+   2026-09-06): el uso sigue siendo gratis (200M tokens/mes), pero el
+   dashboard de Voyage puede exigir completar datos de la organización y
+   un método de pago antes de dejar generar/usar la llave de verdad --
+   avísale esto al usuario ANTES de que lo descubra a mitad de guardar
+   registros, no lo dejes como sorpresa tardía.
 2. **Ollama Cloud** (`OLLAMA_API_KEY`, ollama.com/settings/keys),
    clasificación barata (duplicados, alias, menciones) y extracción de
    registros. Opcional de verdad: cada clasificador chequea la llave primero
