@@ -5,6 +5,40 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.4.2 (2026-09-06)
+
+Correcciones urgentes surgidas en vivo durante la instalación real con
+una usuaria de prueba. Sin cambios en `schema.sql`.
+
+- **Skills nunca eran invocables**: `.claude/skills/` no existía en el
+  repo -- Claude Code solo descubre skills ahí, nunca bajo `skills/` en
+  la raíz, así que ni `/extract-code-records` ni la captura de
+  `segundo-cerebro-capture` funcionaron nunca como comando real en
+  ninguna instalación de 2oBrain hasta ahora. Corregido: carpeta
+  `skills/extract-code-facts` renombrada a `extract-code-records` (no
+  coincidía con su propio frontmatter), `.claude/skills/` creado con
+  copia de ambas skills, `CLAUDE.md` instruye replicarlo en cada
+  instalación futura -- y avisarle al usuario que además debe cargarlas
+  desde su propia pantalla de "Configuración", copiar el archivo no
+  basta.
+- **`remember-batch.mjs`/`extract-code-records` seguían usando
+  `node`/`createNode`** en el JSON de entrada, residuo del rename de
+  vocabulario que nunca tocó este contrato externo. Renombrado a
+  `memory`/`createMemory` en el script, ambas copias del `SKILL.md`, y
+  la sección "Extraer de página" del dashboard (mandaba el mismo
+  payload). No se tocaron nombres internos (`nodeVerdict`,
+  `classifyNode`, etc.), solo el contrato externo.
+- Fase 8 (MCP): agregada instrucción de decirle al usuario que debe
+  registrar el servidor manualmente en "Configuración" de cada cliente,
+  no bastaba con desplegarlo.
+- Quitado `preference` (kind ya retirado) que seguía en ambos
+  `SKILL.md`, y quitada la justificación interna de mailto-vs-GitHub del
+  texto de "Enviar comentarios".
+- Fase 5: la escalera de niveles de proactividad del hook `Stop` ya no
+  narra historia interna irrelevante ("ya se probó y resultó costoso"),
+  solo dice qué hace cada nivel; silencioso/no silencioso quedó como
+  pregunta aparte explícita.
+
 ## v0.4.1 (2026-09-06)
 
 Precisión sobre v0.4.0, mismo día. Sin cambios en `schema.sql`.
