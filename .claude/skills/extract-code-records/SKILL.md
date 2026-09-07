@@ -1,6 +1,6 @@
 ---
 name: extract-code-records
-description: Extrae los registros semánticos de la sesión ACTUAL de Claude Code y los entrega como JSON en el chat, listo para ingerir después con scripts/db/remember-batch.mjs. No requiere que ESTA sesión tenga acceso a scripts/db/ ni a .env, solo extrae y entrega texto, nunca escribe a la base. Se activa con "extrae registros", "genera records de esta sesión", "/extract-code-records". Funciona en cualquier sesión de Code, incluyendo contenedores remotos de otros repos sin ningún acceso a este segundo cerebro; el usuario copia el JSON después a la máquina donde sí corre remember-batch.mjs.
+description: Extrae los registros semánticos de la sesión ACTUAL de Claude y los entrega como JSON en el chat, listo para ingerir después con scripts/db/remember-batch.mjs. No requiere que ESTA sesión tenga acceso a scripts/db/ ni a .env, solo extrae y entrega texto, nunca escribe a la base. Se activa con "extrae registros", "genera records de esta sesión", "/extract-code-records". Funciona en cualquier sesión de Code, incluyendo contenedores remotos de otros repos sin ningún acceso a este segundo cerebro; el usuario copia el JSON después a la máquina donde sí corre remember-batch.mjs.
 ---
 
 <!-- Duplicada a propósito en .claude/skills/extract-code-records/SKILL.md
