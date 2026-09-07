@@ -596,8 +596,8 @@ resultante, o `tools/list` del protocolo MCP) antes de darlo por registro,
 nunca asumas que un deploy funcionó solo porque el comando no dio error.
 
 **Registrar el servidor en cada cliente MCP es SOLO del usuario, y hay que
-decírselo explícitamente** -- bug real encontrado en la instalación de
-una usuaria de prueba (2026-09-06): el servidor quedó desplegado y verificado,
+decírselo explícitamente** -- bug real encontrado en una instalación de
+prueba (2026-09-06): el servidor quedó desplegado y verificado,
 pero nadie le dijo que todavía faltaba agregarlo en "Configuración" de
 Claude (Desktop/Chat/Cowork, cada cliente tiene su propia pantalla de
 conectores/MCP) para poder usarlo de verdad. Esto no lo puede hacer la
@@ -610,8 +610,8 @@ sobreentendido.
 
 **Skills (siempre, no opcional)**: Claude Code solo descubre skills
 invocables (`/nombre-de-skill`) bajo `.claude/skills/`, nunca bajo
-`skills/` en la raíz del repo -- bug real encontrado en la instalación de
-una usuaria de prueba (2026-09-06): las dos skills de este repo llevaban toda la
+`skills/` en la raíz del repo -- bug real encontrado en una instalación
+de prueba (2026-09-06): las dos skills de este repo llevaban toda la
 vida en `skills/` sin que ninguna funcionara como comando real. Si
 `.claude/skills/extract-code-records/` y
 `.claude/skills/segundo-cerebro-capture/` no existen todavía (verifica con
@@ -627,7 +627,7 @@ referencia legible/copiable a mano en una sesión de OTRO repo sin acceso a
 este segundo cerebro (ver la propia `SKILL.md` de `extract-code-records`).
 
 Copiar los archivos a `.claude/skills/` no basta por sí solo -- hallazgo
-real de la instalación de una usuaria de prueba (2026-09-06): el cliente de
+real de una instalación de prueba (2026-09-06): el cliente de
 Claude todavía necesita que el usuario las cargue/habilite desde su
 propia pantalla de "Configuración" (skills de proyecto), un paso de
 cuenta/cliente que la herramienta no puede hacer por él, igual que

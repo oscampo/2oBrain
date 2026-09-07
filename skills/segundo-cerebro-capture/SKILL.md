@@ -4,7 +4,7 @@ description: Registrar un registro fechado con fuente en la memoria compartida (
 ---
 
 <!-- Duplicada a propósito en .claude/skills/segundo-cerebro-capture/SKILL.md
-     (2026-09-06, bug real encontrado en la instalación de una usuaria de prueba):
+     (2026-09-06, bug real encontrado en una instalación de prueba):
      Claude Code solo descubre skills invocables bajo .claude/skills/,
      nunca bajo skills/ en la raíz -- este archivo vive AQUÍ además como
      referencia legible/copiable a mano. Si editas el contenido, replica

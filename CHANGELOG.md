@@ -7,8 +7,8 @@ asumas que es solo un número.
 
 ## v0.4.2 (2026-09-06)
 
-Correcciones urgentes surgidas en vivo durante la instalación real con
-una usuaria de prueba. Sin cambios en `schema.sql`.
+Correcciones urgentes surgidas en vivo durante una instalación real de
+prueba. Sin cambios en `schema.sql`.
 
 - **Skills nunca eran invocables**: `.claude/skills/` no existía en el
   repo -- Claude Code solo descubre skills ahí, nunca bajo `skills/` en

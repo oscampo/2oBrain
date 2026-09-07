@@ -4,7 +4,7 @@ description: Extrae los registros semánticos de la sesión ACTUAL de Claude Cod
 ---
 
 <!-- Duplicada a propósito en .claude/skills/extract-code-records/SKILL.md
-     (2026-09-06, bug real encontrado en la instalación de una usuaria de prueba):
+     (2026-09-06, bug real encontrado en una instalación de prueba):
      Claude Code solo descubre skills invocables bajo .claude/skills/,
      nunca bajo skills/ en la raíz -- este archivo vive AQUÍ además para
      que se pueda leer/copiar manualmente a otro repo sin infraestructura
