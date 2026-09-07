@@ -5,6 +5,22 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.4.6 (2026-09-07)
+
+Corrección de bug, solo repo local. Sin cambios en `schema.sql` ni en
+`mcp-server` -- no requiere redespliegue.
+
+- **"Extraer de página" no tenía forma de avanzar cuando un candidato
+  traía una fecha real (extraída del texto) distinta de hoy**:
+  `remember-batch.mjs` rechaza (exit 1) cualquier fecha así sin
+  `--confirm-date`, pero esta sección nunca construía ese flag ni ofrecía
+  la casilla para marcarlo -- a diferencia de "Guardar registro" y
+  "Guardar lote", que sí la tienen. El botón "Insertar aprobados" quedaba
+  sin ninguna forma de reintentar, solo el `[EXIT:1]` crudo del script.
+  Corregido: misma casilla y mismo patrón que las otras dos secciones,
+  aparece solo cuando algún candidato incluido tiene fecha distinta de
+  hoy, y un aviso claro en cliente si se intenta insertar sin marcarla.
+
 ## v0.4.5 (2026-09-07)
 
 Corrección de bug, solo repo local. Sin cambios en `schema.sql` ni en

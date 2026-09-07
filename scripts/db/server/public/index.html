@@ -2746,6 +2746,10 @@ function section(id, title, hint, bodyHtml) {
      <div class="status" id="epf-info"></div>
      <datalist id="epf-memories-list"></datalist>
      <div id="epf-cards"></div>
+     <div class="checkline" id="epf-confirm-date-wrap" style="display:none">
+       <input type="checkbox" id="epf-confirm-date">
+       <label for="epf-confirm-date">Confirmo que las fechas distintas de hoy son intencionales (--confirm-date, ej. un timeline histórico)</label>
+     </div>
      <button class="run" id="epf-insert" style="display:none">Insertar aprobados</button>`);
 
   const providerSel = sec.querySelector('#epf-provider');
@@ -2755,6 +2759,22 @@ function section(id, title, hint, bodyHtml) {
   const cardsEl = sec.querySelector('#epf-cards');
   const insertBtn = sec.querySelector('#epf-insert');
   const nodesList = sec.querySelector('#epf-memories-list');
+  const confirmDateWrap = sec.querySelector('#epf-confirm-date-wrap');
+  const confirmDateCheck = sec.querySelector('#epf-confirm-date');
+
+  // Igual que en "Guardar registro"/"Guardar lote": remember-batch.mjs
+  // rechaza (exit 1) cualquier fecha distinta de hoy sin --confirm-date, y
+  // esta sección no tenía forma de marcarlo -- "Insertar aprobados" quedaba
+  // sin poder avanzar nunca que un candidato trajera una fecha real
+  // extraída del texto (ej. un timeline histórico), sin ningún mensaje que
+  // explicara por qué ni cómo reintentar. La casilla solo aparece cuando de
+  // verdad hace falta.
+  function syncConfirmDateVisibility() {
+    const mismatched = [...cardsEl.querySelectorAll('.fc-date')].some((el) => el.value && el.value !== todayBogota());
+    confirmDateWrap.style.display = mismatched ? 'flex' : 'none';
+    if (!mismatched) confirmDateCheck.checked = false;
+  }
+  cardsEl.addEventListener('change', (e) => { if (e.target.classList.contains('fc-date')) syncConfirmDateVisibility(); });
 
   call('GET', '/api/pages').then((r) => {
     const list = sec.querySelector('#epf-pages-list');
@@ -2841,6 +2861,7 @@ function section(id, title, hint, bodyHtml) {
       const fallbackDate = r.page.updatedAt ? r.page.updatedAt.slice(0, 10) : '';
       r.records.forEach((f, i) => cardsEl.appendChild(renderCard(f, i, fallbackDate)));
       insertBtn.style.display = '';
+      syncConfirmDateVisibility();
     } finally {
       extractBtn.disabled = false;
     }
@@ -2857,7 +2878,12 @@ function section(id, title, hint, bodyHtml) {
       source: lastSource,
       createNode: true,
     }));
-    await runRememberBatchStream(sec, { records }, insertBtn);
+    const confirmDate = confirmDateCheck.checked || undefined;
+    if (!confirmDate && records.some((r) => r.date && r.date !== todayBogota())) {
+      out(sec, { ok: false, stdout: '', stderr: `Uno o más candidatos incluidos tienen una fecha distinta de hoy (${todayBogota()}), marca "Confirmo que las fechas distintas de hoy son intencionales" antes de insertar.` });
+      return;
+    }
+    await runRememberBatchStream(sec, { records, confirmDate }, insertBtn);
   });
 }
 
