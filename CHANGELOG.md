@@ -5,6 +5,24 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.4.5 (2026-09-07)
+
+Corrección de bug, solo repo local. Sin cambios en `schema.sql` ni en
+`mcp-server` -- no requiere redespliegue.
+
+- **"Buscar candidatos" en "Candidatos de categoría" del dashboard fallaba
+  siempre con `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`**:
+  `list-category-candidates.mjs` llamaba `process.exit(0)` justo después
+  de que `suggestCategoryName()` usara `fetch()` para pedirle a Ollama
+  Cloud el nombre sugerido de la categoría. En Windows, un exit forzado
+  mientras libuv todavía está cerrando el handle async del fetch revienta
+  con ese assert: el proceso sale con status distinto de cero aunque ya
+  había escrito el JSON/texto correcto a stdout, y el dashboard (que solo
+  mira el exit code) lo reportaba como error aunque la búsqueda sí había
+  funcionado. Mismo patrón ya visto y corregido antes en `create-node.mjs`.
+  Corregido: ninguna rama del script llama `process.exit()` ya, deja que
+  termine solo tras `client.end()`.
+
 ## v0.4.4 (2026-09-06)
 
 Corrección de proceso sobre v0.4.3, mismo día. Sin cambios en `schema.sql`

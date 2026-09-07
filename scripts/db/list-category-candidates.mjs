@@ -322,12 +322,16 @@ for (const cluster of clusters) resolvedClusters.push(await resolveGroup(cluster
 const resolvedUnclustered = [];
 for (const name of unclustered) resolvedUnclustered.push(await resolveGroup([name]));
 
-if (args.json) {
-  console.log(JSON.stringify({ orphanCount: orphans.length, clusters: resolvedClusters, unclustered: resolvedUnclustered }));
-  await client.end();
-  process.exit(0);
-}
-
+// Nada de process.exit() de aquí en adelante: suggestCategoryName() (dentro
+// de resolveGroup(), arriba) usa fetch() para llamar a Ollama Cloud, y un
+// exit forzado poco después de un fetch en Windows revienta con
+// "Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)" (libuv no
+// terminó de cerrar el handle async del fetch todavía) -- el proceso sale
+// con status != 0 aunque ya haya escrito el JSON/texto correcto a stdout,
+// y el dashboard (que solo mira el exit code) lo reporta como error falso.
+// Mismo bug ya visto y corregido antes en create-node.mjs. Dejar que el
+// script termine solo (event loop vacío tras client.end()) evita el exit
+// forzado sin cambiar qué se imprime en cada rama.
 function printGroup({ mode, members, existingCategory, existingMatchedVia, existingSimilarity, suggestedName, suggestedReasoning }) {
   const names = members.map((m) => m.name);
   console.log(`  [${names.length} recuerdo(s)] ${names.join(', ')}`);
@@ -367,21 +371,22 @@ function printGroup({ mode, members, existingCategory, existingMatchedVia, exist
   );
 }
 
-if (resolvedClusters.length === 0 && resolvedUnclustered.length === 0) {
+if (args.json) {
+  console.log(JSON.stringify({ orphanCount: orphans.length, clusters: resolvedClusters, unclustered: resolvedUnclustered }));
+  await client.end();
+} else if (resolvedClusters.length === 0 && resolvedUnclustered.length === 0) {
   console.log(`${orphans.length} recuerdo(s) de dominio sin lugar en la jerarquía, pero ninguno se agrupa con otro por encima de ${threshold} -- cada uno parece genuinamente distinto todavía.`);
   await client.end();
-  process.exit(0);
-}
+} else {
+  if (resolvedClusters.length > 0) {
+    console.log(`${resolvedClusters.length} cluster(es) candidato(s) sin agrupar (de ${orphans.length} recuerdo(s) huérfano(s), umbral ${threshold}):\n`);
+    for (const group of resolvedClusters) printGroup(group);
+  }
 
-if (resolvedClusters.length > 0) {
-  console.log(`${resolvedClusters.length} cluster(es) candidato(s) sin agrupar (de ${orphans.length} recuerdo(s) huérfano(s), umbral ${threshold}):\n`);
-  for (const group of resolvedClusters) printGroup(group);
+  if (resolvedUnclustered.length > 0) {
+    console.log(`${resolvedUnclustered.length} recuerdo(s) huérfano(s) sin ningún otro parecido por encima de ${threshold} -- candidatos igual a categoría propia:\n`);
+    for (const group of resolvedUnclustered) printGroup(group);
+  }
+  console.log('Revisión humana obligatoria -- ninguna categoría se crea ni se liga sola.');
+  await client.end();
 }
-
-if (resolvedUnclustered.length > 0) {
-  console.log(`${resolvedUnclustered.length} recuerdo(s) huérfano(s) sin ningún otro parecido por encima de ${threshold} -- candidatos igual a categoría propia:\n`);
-  for (const group of resolvedUnclustered) printGroup(group);
-}
-console.log('Revisión humana obligatoria -- ninguna categoría se crea ni se liga sola.');
-
-await client.end();
