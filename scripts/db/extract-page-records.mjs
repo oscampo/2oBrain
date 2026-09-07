@@ -513,7 +513,7 @@ if (rawResponse == null) {
             if (newClaim) f.claim = newClaim;
             const newDate = (await rlp.question(`Nueva fecha YYYY-MM-DD (Enter = dejar "${f.date ?? 'sin fecha'}"): `)).trim();
             if (newDate) f.date = newDate;
-            const newKind = (await rlp.question(`Nuevo tipo fact|event|preference|commitment (Enter = dejar ${f.kind}): `)).trim();
+            const newKind = (await rlp.question(`Nuevo tipo fact|event|commitment (Enter = dejar ${f.kind}): `)).trim();
             if (newKind) f.kind = newKind;
             const newNode = (await rlp.question(`Nuevo recuerdo (parecidos: ${formatNodeSuggestions(similarNodes)}; Enter = dejar "${f.node}"): `)).trim();
             if (newNode) f.node = newNode;
@@ -541,11 +541,13 @@ if (rawResponse == null) {
       } else {
         console.log(`\nRevisión terminada: ${approved.length} aprobado(s), ${skipped} saltado(s) de ${records.length}. Insertando vía remember-batch.mjs...\n`);
 
-        // createNode: true por defecto -- el recuerdo viene de una página conocida,
+        // createMemory: true por defecto -- el recuerdo viene de una página conocida,
         // no de un typo. Si el recuerdo por defecto ya existe (liveNode), lo
         // normal es que remember-batch.mjs lo resuelva igual sin crear nada
-        // nuevo; createNode solo importa la primera vez que un recuerdo aparece.
-        const batch = { records: approved.map((f) => ({ ...f, source, createNode: true })) };
+        // nuevo; createMemory solo importa la primera vez que un recuerdo aparece.
+        const batch = {
+          records: approved.map(({ node, ...f }) => ({ ...f, source, memory: node, createMemory: true })),
+        };
         const result = spawnSync(process.execPath, [REMEMBER_BATCH_SCRIPT], {
           input: JSON.stringify(batch),
           stdio: ['pipe', 'inherit', 'inherit'],

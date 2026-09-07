@@ -26,7 +26,7 @@ ese estado en afirmaciones atómicas verificables, no resumir el documento.
     {
       "claim": "registro atómico autocontenido, en español, una sola línea.",
       "date": "YYYY-MM-DD o null si el contenido no da fecha explícita",
-      "kind": "fact"|"event"|"preference"|"commitment",
+      "kind": "fact"|"event"|"commitment",
       "node": "nombre de recuerdo propuesto (normalmente el sugerido por defecto, salvo que el contenido indique claramente que pertenece a otro)",
       "source_fragment": "fragmento textual corto (<200 caracteres) copiado literal de la página que respalda este registro, para que un humano lo verifique contra el original"
     }

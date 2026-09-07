@@ -263,7 +263,7 @@ Transcripción (fecha del día: ${args.date}):
 ${transcript}
 
 Responde SOLO con JSON, sin texto adicional, con esta forma exacta:
-{"records": [{"claim": "registro atómico en una o varias oraciones, en una sola línea de texto, español, autocontenido", "date": "YYYY-MM-DD", "kind": "fact"|"event"|"preference"|"commitment"}]}
+{"records": [{"claim": "registro atómico en una o varias oraciones, en una sola línea de texto, español, autocontenido", "date": "YYYY-MM-DD", "kind": "fact"|"event"|"commitment"}]}
 
 Si no hay nada capturable, responde {"records": []}. No inventes fechas: si el registro no tiene \
 fecha explícita, usa la fecha del día (${args.date}).`;
@@ -496,7 +496,7 @@ if (rawResponse == null) {
             if (newClaim) f.claim = newClaim;
             const newDate = (await rlp.question(`Nueva fecha YYYY-MM-DD (Enter = dejar ${f.date}): `)).trim();
             if (newDate) f.date = newDate;
-            const newKind = (await rlp.question(`Nuevo tipo fact|event|preference|commitment (Enter = dejar ${f.kind}): `)).trim();
+            const newKind = (await rlp.question(`Nuevo tipo fact|event|commitment (Enter = dejar ${f.kind}): `)).trim();
             if (newKind) f.kind = newKind;
             console.log(`\nActualizado: [${f.date}] (${f.kind}) ${f.claim}`);
           } else {

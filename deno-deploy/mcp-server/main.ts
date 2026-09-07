@@ -373,14 +373,14 @@ mcp.tool('search', {
 
 mcp.tool('remember', {
   description:
-    'Registra un registro atomico con fecha y fuente obligatorias en el segundo cerebro. Antes de insertar, busca registros vigentes parecidos por embedding; si encuentra candidatos, se niega a insertar salvo que se pase supersedes o distinct explicito. El recuerdo (o recuerdos) debe existir de antemano en la tabla memories salvo que se pase createNode.',
+    'Registra un registro atomico con fecha y fuente obligatorias en el segundo cerebro. Antes de insertar, busca registros vigentes parecidos por embedding; si encuentra candidatos, se niega a insertar salvo que se pase supersedes o distinct explicito. El recuerdo (o recuerdos) debe existir de antemano en la tabla memories salvo que se pase createMemory.',
   inputSchema: z.object({
     claim: z.string().describe('Texto claro y autocontenido del registro'),
     date: z.string().describe('Fecha YYYY-MM-DD, nunca inferida de texto libre'),
     source: z.string().describe('De donde salio el registro'),
-    kind: z.enum(['fact', 'event', 'preference', 'commitment']).default('fact'),
-    node: z.union([z.string(), z.array(z.string())]).optional().describe('recuerdo(s) existente(s) a los que se liga el registro (string separado por comas, o array)'),
-    createNode: z.boolean().optional().describe('Crea el/los recuerdo(s) si no existen todavia, en vez de fallar'),
+    kind: z.enum(['fact', 'event', 'commitment']).default('fact'),
+    memory: z.union([z.string(), z.array(z.string())]).optional().describe('recuerdo(s) existente(s) a los que se liga el registro (string separado por comas, o array)'),
+    createMemory: z.boolean().optional().describe('Crea el/los recuerdo(s) si no existen todavia, en vez de fallar'),
     supersedes: z.array(z.number()).optional().describe('IDs de registros vigentes que este reemplaza'),
     distinct: z.boolean().optional().describe('Confirma que es distinto pese al parecido con candidatos'),
     confirmDate: z.boolean().optional().describe('Obligatorio si date no es la fecha real de hoy (America/Bogota) -- confirma que un registro con fecha distinta es intencional (historico, backfill), no un error de no verificar la fecha antes de llamar'),
@@ -390,8 +390,8 @@ mcp.tool('remember', {
     date: string;
     source: string;
     kind?: string;
-    node?: string | string[];
-    createNode?: boolean;
+    memory?: string | string[];
+    createMemory?: boolean;
     supersedes?: number[];
     distinct?: boolean;
     confirmDate?: boolean;
@@ -486,7 +486,7 @@ mcp.tool('remember', {
 
     if (requestedNodes.length === 0) {
       if (!nodeVerdict || nodeVerdict.confidence < NODE_CLASSIFIER_CONFIDENCE_THRESHOLD) {
-        let text = 'No se pasó node y la desambiguación automática no alcanzó confianza suficiente.\n';
+        let text = 'No se pasó memory y la desambiguación automática no alcanzó confianza suficiente.\n';
         if (nodeCandidates.length > 0) {
           text += '\nrecuerdos existentes más parecidos:\n';
           for (const c of nodeCandidates) {
@@ -495,14 +495,14 @@ mcp.tool('remember', {
         } else {
           text += '\n(no hay registros con embedding en ningún recuerdo todavía para comparar)\n';
         }
-        text += '\nPasa node (nombre existente), o node + createNode: true si es genuinamente uno nuevo.';
+        text += '\nPasa memory (nombre existente), o memory + createMemory: true si es genuinamente uno nuevo.';
         return { content: [{ type: 'text', text }], isError: true };
       }
       if (nodeVerdict.verdict === 'new') {
         return {
           content: [{
             type: 'text',
-            text: `El clasificador (${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}) propone un recuerdo NUEVO: "${nodeVerdict.node}" (${nodeVerdict.reasoning})\nSi es correcto, vuelve a llamar con node: "${nodeVerdict.node}", createNode: true.`,
+            text: `El clasificador (${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}) propone un recuerdo NUEVO: "${nodeVerdict.node}" (${nodeVerdict.reasoning})\nSi es correcto, vuelve a llamar con memory: "${nodeVerdict.node}", createMemory: true.`,
           }],
           isError: true,
         };
@@ -542,12 +542,12 @@ mcp.tool('remember', {
       }
       if (row) {
         resolvedNodes.push(row.name);
-      } else if (args.createNode) {
+      } else if (args.createMemory) {
         await supabase.from('memories').upsert({ name }, { onConflict: 'name', ignoreDuplicates: true });
         resolvedNodes.push(name);
       } else {
         return {
-          content: [{ type: 'text', text: `recuerdo "${name}" no existe en la tabla memories. Pasa createNode: true si es genuinamente uno nuevo.` }],
+          content: [{ type: 'text', text: `recuerdo "${name}" no existe en la tabla memories. Pasa createMemory: true si es genuinamente uno nuevo.` }],
           isError: true,
         };
       }
