@@ -5,6 +5,22 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.4.4 (2026-09-06)
+
+Corrección de proceso sobre v0.4.3, mismo día. Sin cambios en `schema.sql`
+ni en `mcp-server`.
+
+- **La sección "Mantenimiento: revisar e instalar actualizaciones" no
+  decía qué hacer cuando una actualización toca
+  `supabase/functions/mcp-server/` o `deno-deploy/mcp-server/`**: ese
+  código corre desplegado, aparte del repo local, así que actualizar el
+  archivo no aplica el fix en vivo. Hallazgo real: v0.4.3 corregía
+  justo ese código (bug de `node`/`memory` en MyMCP) y, sin este aviso,
+  una actualización habría quedado "aplicada" en el repo pero seguía
+  rota en producción. Agregado un paso 5 explícito: redesplegar con la
+  misma ruta de la Fase 8, y confirmarlo en el resumen final en vez de
+  darlo por hecho solo con actualizar el archivo.
+
 ## v0.4.3 (2026-09-06)
 
 Corrección crítica sobre v0.4.2, mismo día, encontrada en vivo durante otra

@@ -754,6 +754,19 @@ sola.
    salga), corre `npm install` de nuevo por si hay dependencias nuevas, y
    verifica con `node scripts/db/doctor.mjs` antes de darlo por
    completado.
+5. **Si el diff toca `supabase/functions/mcp-server/` o
+   `deno-deploy/mcp-server/`, actualizar el archivo local NO basta**:
+   ese código ya corre desplegado, aparte del repo (hallazgo real,
+   2026-09-06: un fix de v0.4.3 a MyMCP quedó "aplicado" en el repo pero
+   seguía roto en vivo porque nadie lo redesplegó). Redespliega tú mismo
+   con la misma ruta de la Fase 8 (`deploy_edge_function` del MCP de
+   Supabase con `import_map_path: "deno.json"` explícito, o `supabase
+   functions deploy mcp-server`, o el paso de Deno Deploy que hayas
+   usado la primera vez), y dilo explícito en tu resumen final: no basta
+   con "actualicé el código", di "y ya redesplegué el servidor MCP,
+   probé <acción concreta> para confirmar que responde con el fix".
 
 `CHANGELOG.md` documenta qué trae cada versión etiquetada -- léelo antes
-de aplicar para saber qué esperar, no asumas que es solo un número.
+de aplicar para saber qué esperar, no asumas que es solo un número. Presta
+atención especial a si menciona `mcp-server` explícito, ese es el aviso de
+que el paso 5 aplica.
