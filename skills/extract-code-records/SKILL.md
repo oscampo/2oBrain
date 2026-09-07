@@ -45,7 +45,7 @@ contenido NUNCA es la fecha del registro).
 ### Paso 2: Identificar el repo/proyecto
 
 Nombre del repo de esta sesión. Se usa para `source` y como candidato de
-`node`.
+`memory`.
 
 ### Paso 3: Analizar la sesión actual
 
@@ -79,7 +79,7 @@ Formato exacto, uno por registro (esquema de `remember-batch.mjs`):
       "date": "YYYY-MM-DD",
       "kind": "fact",
       "source": "extract-code-records, sesión Code, repo <repo>",
-      "node": "<repo>"
+      "memory": "<repo>"
     }
   ]
 }
@@ -93,7 +93,7 @@ Reglas de cada campo:
 - `kind`: uno de los tres valores del Paso 4, nunca inventar otros.
 - `source`: siempre `"extract-code-records, sesión Code, repo <repo>"` con el
   repo real del Paso 2.
-- `node`: nombre del recuerdo (string), o un array de nombres si el registro toca
+- `memory`: nombre del recuerdo (string), o un array de nombres si el registro toca
   más de uno (`record_memories` es N:N). Usar `<repo>` salvo que el registro sea
   sobre una persona, proyecto o tema que ya tenga su propio recuerdo en el
   segundo cerebro (preguntar al usuario si no es obvio). **Es un campo
@@ -103,7 +103,7 @@ Reglas de cada campo:
   ingesta y deja el registro como "ambiguo" para que el usuario lo resuelva a
   mano si la confianza no alcanza.
 
-No incluir `confidence`, `supersedes`, `distinct` ni `createNode`, esos
+No incluir `confidence`, `supersedes`, `distinct` ni `createMemory`, esos
 los decide `remember-batch.mjs`/`classify-memory.mjs` en tiempo de ingesta
 (gate de duplicados/contradicciones y desambiguación de recuerdo ya
 existente), no esta skill.
@@ -133,7 +133,7 @@ son cosas distintas.
 
 - No inferir `date` del contenido de la conversación ni de commits
   mencionados. Siempre el comando `date` del Paso 1.
-- No inventar un `node` que no se sabe si existe; si hay duda, omitir el
+- No inventar un `memory` que no se sabe si existe; si hay duda, omitir el
   campo (el clasificador de `remember-batch.mjs` decide) en vez de
   adivinar.
 - No incluir hallazgos especulativos o ideas sin resolver como si fueran

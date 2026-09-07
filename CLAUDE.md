@@ -626,6 +626,15 @@ La copia en `skills/` se conserva a propósito (no se borra): sirve como
 referencia legible/copiable a mano en una sesión de OTRO repo sin acceso a
 este segundo cerebro (ver la propia `SKILL.md` de `extract-code-records`).
 
+Copiar los archivos a `.claude/skills/` no basta por sí solo -- hallazgo
+real de la instalación de una usuaria de prueba (2026-09-06): el cliente de
+Claude todavía necesita que el usuario las cargue/habilite desde su
+propia pantalla de "Configuración" (skills de proyecto), un paso de
+cuenta/cliente que la herramienta no puede hacer por él, igual que
+registrar un servidor MCP (ver Fase 8). Díselo explícitamente apenas
+termines de copiar los archivos, no asumas que basta con que existan en
+disco.
+
 **Hooks (opcional)**: según la respuesta de la Fase 5, actívalos tú mismo,
 no describas los pasos para que el usuario los siga:
 

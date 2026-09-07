@@ -14,17 +14,17 @@
 // de hoy (America/Bogota): una sola confirmación cubre todo el lote, no una
 // por registro (mismo criterio que remember.mjs, registro #528, a nivel de lote).
 //
-// Rediseño 2026-08-29: slug -> node (string o array de strings, record_memories
+// Rediseño 2026-08-29: slug -> memory (string o array de strings, record_memories
 // many-to-many). Mismo criterio fail-closed que remember.mjs: un recuerdo debe
-// existir de antemano salvo que el registro traiga createNode: true.
-// Etapa 2 (2026-08-30): node ya es opcional por registro: si se omite, se
+// existir de antemano salvo que el registro traiga createMemory: true.
+// Etapa 2 (2026-08-30): memory ya es opcional por registro: si se omite, se
 // desambigua por búsqueda vectorial (memories_similar()) + clasificador
 // (lib/classify-memory.mjs), igual que remember.mjs. Sin humano presente para
 // resolver un bloqueo, un registro ambiguo se salta (nodeAmbiguous) y el lote
-// sigue con el resto, nunca aborta. Con node explícito, la desambiguación
+// sigue con el resto, nunca aborta. Con memory explícito, la desambiguación
 // corre igual pero solo avisa, nunca sobreescribe.
-// Formato esperado del JSON: {"records": [{claim, date, source, kind?, node?, createNode?, confidence?}, ...]}
-// node acepta string ("cabd-2026-2") o array (["cabd-2026-2", "coil-2026-2"]).
+// Formato esperado del JSON: {"records": [{claim, date, source, kind?, memory?, createMemory?, confidence?}, ...]}
+// memory acepta string ("cabd-2026-2") o array (["cabd-2026-2", "coil-2026-2"]).
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { embed, toVectorLiteral } from './lib/embed.mjs';
@@ -132,7 +132,7 @@ const results = { inserted: [], autoResolved: [], blocked: [], invalid: [], node
 
 // Etapa 6 (PLAN-recuerdos.md, 2026-09-02, registro #487): mismo detector de
 // co-ocurrencia que remember.mjs -- una sola carga por lote, no cambia
-// mientras el lote corre (salvo createNode, caso raro que no vale la pena
+// mientras el lote corre (salvo createMemory, caso raro que no vale la pena
 // refrescar a mitad de lote). recuerdos is_meta se cargan aparte para saltar la
 // detección cuando el registro es de uno de ellos (autorreferencia, no
 // relación real -- mismo hallazgo que remember.mjs).
@@ -220,7 +220,7 @@ for (let i = 0; i < records.length; i++) {
   }));
   let nodeVerdict = nodeCandidates.length > 0 ? await classifyNode(f.claim, nodeCandidates) : null;
 
-  let requestedNodes = f.node == null ? [] : Array.isArray(f.node) ? f.node : [f.node];
+  let requestedNodes = f.memory == null ? [] : Array.isArray(f.memory) ? f.memory : [f.memory];
 
   if (requestedNodes.length === 0) {
     if (!nodeVerdict || nodeVerdict.confidence < NODE_CONFIDENCE_THRESHOLD) {
@@ -253,11 +253,11 @@ for (let i = 0; i < records.length; i++) {
     const resolved = await resolveNode(name);
     if (resolved) {
       resolvedNodes.push(resolved);
-    } else if (f.createNode) {
+    } else if (f.createMemory) {
       await client.query(`insert into memories (name) values ($1) on conflict (name) do nothing`, [name]);
       resolvedNodes.push(name);
     } else {
-      console.error(`  recuerdo "${name}" no existe (pasa createNode: true en el JSON si es genuinamente nuevo), bloqueado.`);
+      console.error(`  recuerdo "${name}" no existe (pasa createMemory: true en el JSON si es genuinamente nuevo), bloqueado.`);
       results.nodeMissing.push({ fact: f, missingNode: name });
       nodeFailed = true;
       break;
@@ -346,7 +346,7 @@ console.log('\n--- Resumen ---');
 console.log(`Insertados: ${results.inserted.length}`);
 console.log(`  de los cuales auto-resueltos (duplicado/contradicción): ${results.autoResolved.length}`);
 console.log(`Bloqueados (requieren remember.mjs manual con --supersedes o --distinct): ${results.blocked.length}`);
-console.log(`recuerdo inexistente (falta createNode: true o corregir el nombre): ${results.nodeMissing.length}`);
+console.log(`recuerdo inexistente (falta createMemory: true o corregir el nombre): ${results.nodeMissing.length}`);
 console.log(`recuerdo ambiguo (sin node en el JSON, desambiguación sin confianza o propuso recuerdo nuevo): ${results.nodeAmbiguous.length}`);
 console.log(`Inválidos (faltaba claim/date/source o fecha mal formada): ${results.invalid.length}`);
 console.log(`Mencionan otro recuerdo (posible relación, revisión manual): ${results.mentions.length}`);

@@ -2196,9 +2196,9 @@ function section(id, title, hint, bodyHtml) {
       claim: c.querySelector('.fc-claim').value.trim(),
       date: c.querySelector('.fc-date').value || undefined,
       kind: c.querySelector('.fc-kind').value,
-      node: c.querySelector('.fc-node').value.trim(),
+      memory: c.querySelector('.fc-node').value.trim(),
       source: lastSource,
-      createNode: true,
+      createMemory: true,
     }));
     await runRememberBatchStream(sec, { records }, insertBtn);
   });
