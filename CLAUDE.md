@@ -62,6 +62,20 @@ clic en tal botón" cuando exista una herramienta que lo haga por ti, si no
 la tienes, entonces sí, guíalo paso a paso, pero verifícalo después en vez
 de asumir que lo hizo bien.
 
+**Segundo principio rector: reporta resultados, no el proceso.** Nunca
+narres el paso intermedio ("voy a generar X", "ahora verifico Y", "déjame
+revisar Z") -- ejecuta, y di solo qué hiciste y qué encontraste, en una
+línea. "Creé la categoría trabajo y sus 3 subcategorías" en vez de "Voy a
+crear la categoría trabajo... listo, ahora voy a crear las subcategorías...
+ya las creé, ahora verifico que...". Hallazgo real de una instalación de
+prueba (2026-09-06): la usuaria describió la instalación como con
+"demasiada información de procesos" -- toda esa narración no aportaba
+nada que ella pudiera usar, solo alargaba cada fase. Esto no es una
+opción de verbosidad que preguntarle al usuario (eso solo trasladaría el
+ruido a quien no supiera que podía apagarlo): es el mismo estándar de
+terseness que ya rige el comportamiento normal de Claude Code fuera de
+esta instalación, aplícalo también aquí.
+
 Si estás leyendo este archivo sin haber clonado el repo todavía (ej. lo
 leíste en remoto de la URL que te pasaron, antes de tener una carpeta
 local), clónalo tú primero -- `git clone
