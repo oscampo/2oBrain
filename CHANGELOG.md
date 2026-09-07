@@ -7,9 +7,22 @@ asumas que es solo un número.
 
 ## v0.4.6 (2026-09-07)
 
-Corrección de bug, solo repo local. Sin cambios en `schema.sql` ni en
-`mcp-server` -- no requiere redespliegue.
+Sin cambios en `schema.sql` ni en `mcp-server` -- no requiere redespliegue.
+Incluye dos commits directos sobre `main` (`326ede0`, `10bbce8`) que
+quedaron sin su propia entrada aquí cuando se hicieron -- documentados
+retroactivamente en esta versión.
 
+- **Timeline con vista visual** (antes: lista plana de texto sin más).
+  Ahora tiene estadísticas (registros/vigentes/reemplazados), una franja
+  de densidad por mes, agrupación colapsable Año -> Mes (con paginación
+  por bloques, no pinta cientos de registros de un tirón), hilos de
+  versión (con "Incluir reemplazados", una cadena de reemplazos se ve
+  como una sola entrada vigente con "Ver evolución" desplegable en vez de
+  N entradas sueltas), un filtro/resaltado en cliente sobre lo ya
+  cargado (texto libre o `kind:evento`/`kind:commitment`/`kind:fact`), una
+  vista "Gráfico" con d3 (carriles por tipo, zoom con rueda/arrastre,
+  tooltip envuelto a 80 caracteres), y una vista "Heatmap" estilo GitHub
+  (clic en un día lleva a la lista filtrada a ese día).
 - **"Extraer de página" no tenía forma de avanzar cuando un candidato
   traía una fecha real (extraída del texto) distinta de hoy**:
   `remember-batch.mjs` rechaza (exit 1) cualquier fecha así sin
