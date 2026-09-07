@@ -5,6 +5,33 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.4.3 (2026-09-06)
+
+Corrección crítica sobre v0.4.2, mismo día, encontrada en vivo durante otra
+instalación real de prueba usando MyMCP desde una sesión de ChatGPT. Sin
+cambios en `schema.sql`. **Requiere redesplegar el servidor MCP** (ver
+"Mantenimiento" en `CLAUDE.md`), a diferencia de las anteriores, esta sí
+toca código que ya corre desplegado, no solo el repo local.
+
+- **El tool `remember` de MyMCP nunca aceptaba `node`/`createNode`, ni
+  `memory`/`createMemory`, para vincular un registro a un recuerdo**: el
+  schema expuesto al cliente (Supabase Edge Function y Deno Deploy)
+  declaraba el parámetro como `node`/`createNode`, pero el handler ya
+  leía `args.memory`/`args.createMemory` desde el rename de vocabulario
+  (nunca se completó ahí). Cualquier llamada real -- pasara lo que
+  pasara el cliente -- caía siempre en "No se pasó node", sin insertar
+  nada. Corregido: schema, tipos y textos de error ahora usan
+  `memory`/`createMemory` de forma consistente, igual que
+  `remember-batch.mjs`.
+- Mismo bug en `extract-page-records.mjs --review` (modo CLI, no el
+  dashboard): armaba el batch hacia `remember-batch.mjs` con
+  `node`/`createNode` en vez de `memory`/`createMemory`. El modo
+  `--json`/dashboard no tenía este problema, `index.html` ya traducía el
+  campo antes de enviarlo.
+- Quitado `preference` (kind ya retirado, el CHECK de la base ya no lo
+  admite) de los tres prompts de extracción con Gemini y de
+  `extract-records.mjs`, donde seguía ofrecido como valor válido.
+
 ## v0.4.2 (2026-09-06)
 
 Correcciones urgentes surgidas en vivo durante una instalación real de
