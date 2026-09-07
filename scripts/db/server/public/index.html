@@ -126,6 +126,77 @@
   .out-md th, .out-md td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
   .out-md th { background: var(--panel); color: var(--text); white-space: nowrap; }
   .status { font-size: 12px; margin-top: 10px; color: var(--muted); }
+  /* Timeline visual (reconstruido 2026-09-07 tras un intento con otro LLM que
+     dejó el archivo con encoding corrupto y JSX inválido dentro del script
+     principal, sin build step que lo transpile): línea vertical con un punto
+     por registro, coloreado por kind, agrupado por mes, más una franja de
+     densidad (registros por mes) arriba, en el mismo lenguaje visual que
+     .gph-stats/.fact-card ya usan en el resto del dashboard. */
+  .tl-density { display: flex; gap: 3px; align-items: flex-end; height: 36px; margin-top: 14px; }
+  .tl-density-bar { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; min-height: 2px; opacity: .55; }
+  .tl-density-bar:hover { opacity: .9; }
+  .tl-line { margin-top: 18px; }
+  /* Meses colapsables (<details> nativo, sin JS de toggle propio) + paginación
+     por bloques dentro de cada mes -- ver comentario junto a la sección
+     Timeline en el <script> para el porqué (2026-09-07). */
+  .tl-month-group, .tl-year-group { border: 1px solid var(--border); border-radius: 8px; margin-top: 10px; background: var(--panel); overflow: hidden; }
+  .tl-month-group summary, .tl-year-group summary { cursor: pointer; padding: 9px 12px; font-size: 12.5px; font-weight: 600; color: var(--text); list-style: none; display: flex; align-items: center; gap: 8px; text-transform: capitalize; }
+  .tl-year-group summary { font-size: 13.5px; }
+  .tl-month-group summary::-webkit-details-marker, .tl-year-group summary::-webkit-details-marker { display: none; }
+  .tl-month-group summary::before, .tl-year-group summary::before { content: '▶'; font-size: 9px; color: var(--muted); transition: transform .15s; flex-shrink: 0; }
+  .tl-month-group[open] summary::before, .tl-year-group[open] summary::before { transform: rotate(90deg); }
+  .tl-month-count { color: var(--muted); font-weight: 400; text-transform: none; }
+  .tl-year-content { padding: 2px 12px 10px; border-top: 1px solid var(--border); }
+  .tl-month-content { padding: 2px 12px 10px 26px; position: relative; border-top: 1px solid var(--border); }
+  .tl-month-content::before { content: ''; position: absolute; left: 11px; top: 0; bottom: 10px; width: 2px; background: var(--border); }
+  .tl-entry { position: relative; padding: 12px 0 0 14px; }
+  .tl-entry::before { content: ''; position: absolute; left: -20px; top: 15px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid var(--panel); }
+  .tl-entry.tl-kind-event::before { background: var(--warn); }
+  .tl-entry.tl-kind-commitment::before { background: var(--ok); }
+  .tl-entry.tl-reemplazado::before { background: var(--muted); }
+  .tl-entry-date { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .tl-entry-claim { font-size: 13.5px; margin-top: 2px; }
+  .tl-entry.tl-reemplazado .tl-entry-claim { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border); }
+  .tl-entry-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  /* Hilos de versión: la cabeza (vigente) de una cadena de reemplazos trae
+     este toggle, que despliega las versiones anteriores debajo en vez de
+     mostrarlas como entradas planas sueltas en otros meses. */
+  .tl-history-toggle { font-size: 11px; color: var(--accent); text-decoration: underline dotted; cursor: pointer; margin-top: 6px; display: inline-block; }
+  .tl-history { margin-top: 8px; padding-left: 14px; border-left: 2px dashed var(--border); display: none; }
+  .tl-history.open { display: block; }
+  .tl-history-item { padding: 6px 0; }
+  .tl-history-item + .tl-history-item { border-top: 1px dashed var(--border); }
+  .tl-history-item .tl-entry-claim { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border); font-size: 12.5px; }
+  .tl-load-more { display: block; margin: 10px 0 2px; padding: 6px 14px; font-size: 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; }
+  .tl-load-more:hover { background: var(--panel); border-color: var(--accent); }
+  .tl-load-more-months { width: 100%; text-align: center; margin-top: 12px; }
+  /* Selector Lista/Gráfico/Heatmap + resaltado de filtro + vista de día
+     plano (clic en el heatmap) + calendario tipo GitHub + puntos del
+     gráfico d3 -- ver comentario junto a la sección Timeline en el
+     <script> (segunda ronda, 2026-09-07). */
+  .tl-view-toggle { display: flex; gap: 6px; margin-top: 14px; }
+  .tl-view-btn { padding: 5px 14px; font-size: 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); cursor: pointer; }
+  .tl-view-btn.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .tl-hl { background: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--text); border-radius: 2px; padding: 0 1px; }
+  .tl-month-header-plain { font-size: 12.5px; font-weight: 600; color: var(--text); margin: 14px 0 10px; text-transform: capitalize; }
+  .tl-heatmap-scroll { overflow-x: auto; padding-bottom: 4px; margin-top: 18px; }
+  .tl-heatmap-months { display: flex; gap: 3px; margin-bottom: 4px; }
+  .tl-heatmap-month-label { width: 12px; font-size: 10px; color: var(--muted); flex-shrink: 0; text-transform: capitalize; overflow: visible; white-space: nowrap; }
+  .tl-heatmap-grid { display: flex; gap: 3px; }
+  .tl-heatmap-col { display: flex; flex-direction: column; gap: 3px; }
+  .tl-heatmap-cell { width: 12px; height: 12px; border-radius: 2px; background: var(--border); cursor: default; }
+  .tl-heatmap-empty { visibility: hidden; }
+  .tl-heatmap-b1 { background: color-mix(in srgb, var(--accent) 25%, var(--border)); }
+  .tl-heatmap-b2 { background: color-mix(in srgb, var(--accent) 50%, var(--border)); }
+  .tl-heatmap-b3 { background: color-mix(in srgb, var(--accent) 75%, var(--border)); }
+  .tl-heatmap-b4 { background: var(--accent); cursor: pointer; }
+  .tl-heatmap-b1, .tl-heatmap-b2, .tl-heatmap-b3 { cursor: pointer; }
+  .tl-heatmap-legend { display: flex; align-items: center; gap: 4px; margin-top: 10px; font-size: 11px; color: var(--muted); }
+  .tl-chart-dot { fill: var(--accent); stroke: var(--panel); stroke-width: 1; }
+  .tl-chart-dot.tl-kind-event { fill: var(--warn); }
+  .tl-chart-dot.tl-kind-commitment { fill: var(--ok); }
+  .tl-chart-tooltip { position: absolute; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 12px; color: var(--text); white-space: pre-wrap; max-width: 420px; line-height: 1.4; pointer-events: none; z-index: 10; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+  .tl-chart-tooltip b { font-size: 11px; color: var(--muted); font-weight: 600; }
   .fact-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-top: 14px; }
   .fact-card.excluded { opacity: 0.5; }
   .fact-card .fc-top { display: flex; align-items: flex-start; gap: 10px; }
@@ -138,10 +209,10 @@
   .gph-stat { display: flex; align-items: baseline; gap: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; }
   .gph-stat b { font-size: 16px; color: var(--accent); font-variant-numeric: tabular-nums; }
   .gph-stat span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-  .gph-circle { fill: color-mix(in srgb, var(--graph-normal, var(--accent)) 18%, transparent); stroke: var(--graph-normal, var(--accent)); stroke-width: 2; }
-  .gph-circle.gph-meta { fill: color-mix(in srgb, var(--graph-meta, var(--warn)) 18%, transparent); stroke: var(--graph-meta, var(--warn)); stroke-width: 2; stroke-dasharray: 4 3; }
+  .gph-circle { fill: color-mix(in srgb, var(--graph-normal, var(--accent)) 60%, transparent); stroke: var(--graph-normal, var(--accent)); stroke-width: 2; }
+  .gph-circle.gph-meta { fill: color-mix(in srgb, var(--graph-meta, var(--warn)) 60%, transparent); stroke: var(--graph-meta, var(--warn)); stroke-width: 2; stroke-dasharray: 4 3; }
   .gph-circle.gph-circle-highlight { fill: color-mix(in srgb, var(--graph-highlight, var(--err)) 30%, transparent); stroke: var(--graph-highlight, var(--err)); stroke-width: 2.5; }
-  .gph-count { font-size: 12px; font-weight: 600; fill: var(--graph-normal, var(--accent)); text-anchor: middle; }
+  .gph-count { font-size: 12px; font-weight: 600; fill: var(--graph-normal, black); text-anchor: middle; }
   .gph-node.gph-meta .gph-count { fill: var(--graph-meta, var(--warn)); }
   /* Alto contraste (hallazgo del usuario): el relleno semitransparente de abajo
      deja ver la línea/flecha de la conexión por debajo, dificultando leer el
@@ -168,8 +239,8 @@
   .gph-edge-label { font-size: 10px; fill: var(--muted); }
   .gph-legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 11px; color: var(--muted); }
   .gph-legend-item { display: flex; align-items: center; gap: 6px; }
-  .gph-dot { width: 12px; height: 12px; border-radius: 50%; background: color-mix(in srgb, var(--graph-normal, var(--accent)) 18%, transparent); border: 2px solid var(--graph-normal, var(--accent)); }
-  .gph-dot.gph-meta { background: color-mix(in srgb, var(--graph-meta, var(--warn)) 18%, transparent); border: 2px dashed var(--graph-meta, var(--warn)); }
+  .gph-dot { width: 12px; height: 12px; border-radius: 50%; background: color-mix(in srgb, var(--graph-normal, var(--accent)) 60%, transparent); border: 2px solid var(--graph-normal, var(--accent)); }
+  .gph-dot.gph-meta { background: color-mix(in srgb, var(--graph-meta, var(--warn)) 60%, transparent); border: 2px dashed var(--graph-meta, var(--warn)); }
 </style>
 </head>
 <body>
@@ -189,17 +260,17 @@
 // "advanced" (2026-09-05, acordado con el usuario): secciones de
 // mantenimiento/estructura que un usuario nuevo de 2oBrain no necesita a
 // diario (fusionar, alias, relaciones, categorías, modelos, recategorizar,
-// y los dos borrados reales), ocultas del nav por defecto. Un checkbox por
-// función, no un interruptor único "todo o nada" (primer diseño, corregido
-// tras feedback del usuario: quería control por función): cada una se
-// activa por separado desde la sección "Opciones avanzadas" (abajo), con su
-// propia entrada en localStorage -- así alguien puede querer solo "Borrar
-// registro" sin destapar Fusionar/Alias/Relaciones a la vez. Es solo un
-// filtro visual del nav -- las rutas /api/* siguen respondiendo igual estén
-// o no visibles aquí, esto reduce ruido, no restringe acceso (el dashboard
-// ya es solo-localhost). Grafo y Doctor se quedan siempre visibles a
-// propósito: son de solo lectura y le muestran a alguien nuevo que el
-// sistema tiene coherencia interna, no un riesgo de mantenimiento.
+// y los dos borrados reales), ocultas del nav por defecto. A diferencia de
+// un toggle único "todo o nada" (primer intento, corregido tras feedback
+// del usuario: quería control por función, no un interruptor general), cada
+// una se activa por separado desde la sección "Opciones avanzadas" (abajo),
+// con su propia entrada en localStorage -- así alguien puede querer solo
+// "Borrar registro" sin destapar Fusionar/Alias/Relaciones a la vez. Es
+// solo un filtro visual del nav -- las rutas /api/* siguen respondiendo
+// igual estén o no visibles aquí, esto reduce ruido, no restringe acceso
+// (el dashboard ya es solo-localhost). Grafo y Doctor se quedan siempre
+// visibles a propósito: son de solo lectura y le muestran a alguien nuevo
+// que el sistema tiene coherencia interna, no un riesgo de mantenimiento.
 const SECTIONS = [
   { id: 'search', label: 'Buscar', group: 'Consultar' },
   { id: 'timeline', label: 'Timeline', group: 'Consultar' },
@@ -214,11 +285,11 @@ const SECTIONS = [
   { id: 'set-kind', label: 'Cambiar tipo de registro', group: 'registros', advanced: true },
   { id: 'purge-record', label: 'Borrar registro', group: 'registros', advanced: true },
 
-  { id: 'merge-memories', label: 'Fusionar recuerdos', group: 'recuerdos', advanced: true },
-  { id: 'aliases', label: 'Alias', group: 'recuerdos', advanced: true },
-  { id: 'relations', label: 'Relaciones', group: 'recuerdos', advanced: true },
-  { id: 'category-candidates', label: 'Candidatos de categoría', group: 'recuerdos', advanced: true },
-  { id: 'purge-memory', label: 'Borrar recuerdo', group: 'recuerdos', advanced: true },
+  { id: 'merge-memories', label: 'Fusionar recuerdos', group: 'Recuerdos', advanced: true },
+  { id: 'aliases', label: 'Alias', group: 'Recuerdos', advanced: true },
+  { id: 'relations', label: 'Relaciones', group: 'Recuerdos', advanced: true },
+  { id: 'category-candidates', label: 'Candidatos de categoría', group: 'Recuerdos', advanced: true },
+  { id: 'purge-memory', label: 'Borrar recuerdo', group: 'Recuerdos', advanced: true },
 
   { id: 'extract-records', label: 'Extraer de sesión', group: 'Extraer' },
   { id: 'extract-page-records', label: 'Extraer de página', group: 'Extraer' },
@@ -227,7 +298,6 @@ const SECTIONS = [
   { id: 'models', label: 'Modelos', group: 'Sistema', advanced: true },
   { id: 'settings', label: 'Configuración', group: 'Sistema' },
   { id: 'advanced-options', label: 'Opciones avanzadas', group: 'Sistema' },
-  { id: 'about', label: 'Acerca de', group: 'Sistema' },
 ];
 
 const nav = document.getElementById('nav');
@@ -272,18 +342,20 @@ function show(id) {
   for (const sec of main.querySelectorAll('section')) sec.classList.toggle('active', sec.id === id);
 }
 
-// Pensado para el usuario novato que no sabe qué es un proceso ni un exit
-// code: un fallo del dashboard (ej. el servidor con un execPath obsoleto
-// tras horas corriendo) se leía como "esto no sirve" sin ninguna pista de
-// qué hacer. No basta con mostrarlo siempre que algo falla: la mayoría de
-// los ok:false de este archivo ya traen su propia explicación clara
-// (validación de formulario, un script que bloqueó algo a propósito con
-// su propio mensaje) -- ahí el aviso de reinicio es ruido, no ayuda. Solo
-// aplica cuando NO hay ninguna explicación real: (1) result.error viene de
-// call() cuando fetch() ni siquiera pudo conectar (servidor genuinamente
-// caído, la señal más fuerte de que hace falta reiniciar), o (2) un
-// ok:false sin ningún mensaje en stdout/stderr/texto resuelto (un script
-// que crasheó antes de poder explicarse).
+// Pensado para el usuario novato de 2oBrain que no sabe qué es un proceso
+// ni un exit code (hallazgo real, 2026-09-04: el dashboard mostraba
+// "search.mjs falló" sin ninguna pista, tras un proceso que quedó con un
+// execPath obsoleto -- ver registro #578). No basta con mostrarlo siempre que
+// algo falla -- Oscar lo marcó bien: eso es descuido, no diseño. La
+// mayoría de los ok:false de este archivo ya traen su propia explicación
+// clara (validación de formulario, un script que bloqueó algo a propósito
+// con su propio mensaje) -- ahí el aviso de reinicio es ruido, no ayuda.
+// Solo aplica cuando NO hay ninguna explicación real que mostrar: (1)
+// result.error viene de call() cuando fetch() ni siquiera pudo conectar
+// (servidor genuinamente caído -- la señal más fuerte posible de que hace
+// falta reiniciar), o (2) un ok:false sin ningún mensaje en stdout/stderr/
+// texto resuelto (un script que crasheó antes de poder explicarse, como
+// el bug real de hoy).
 const RESTART_HINT = 'Si esto no tiene sentido o nada en el dashboard responde, el servidor puede necesitar reiniciarse, cierra esta ventana y solicita a tu LLM "reinicia el servidor del dashboard" o corre node scripts/db/server/dashboard-server.mjs en una terminal dentro de tu carpeta 2oBrain';
 
 function needsRestartHint(result, resolvedText) {
@@ -671,7 +743,10 @@ function section(id, title, hint, bodyHtml) {
   });
 
   // "#123" o "#94, #95" trae esos registros por id exacto (get-records.mjs), sin
-  // buscar ni sintetizar.
+  // buscar ni sintetizar -- Oscar no podía ubicar un registro por número desde
+  // el dashboard (tenía que ir a Supabase directo), pese a que get-records.mjs
+  // y /api/records ya existían para exactamente esto, solo faltaba el atajo
+  // en la UI de Buscar.
   const FACT_ID_PATTERN = /^#?\d+(\s*,\s*#?\d+)*$/;
 
   sec.querySelector('#search-run').addEventListener('click', async () => {
@@ -711,13 +786,71 @@ function section(id, title, hint, bodyHtml) {
 }
 
 // --- Timeline ---
+// Vista visual (2026-09-07, primera versión: línea de puntos por registro
+// agrupada por mes + franja de densidad arriba). Ampliada dos veces el
+// mismo día tras comparar contra una lista de mejoras que otro LLM había
+// prometido y no implementó (ver conversación). Segunda ronda, lo que
+// faltaba de esa lista:
+// - Agrupación Año -> Mes (antes solo Mes): mismo patrón de <details>
+//   perezoso, un nivel más arriba.
+// - Filtro/resaltado en cliente (#tl-filter): sobre las filas ya
+//   descargadas, sin volver a pedirle nada al servidor. Sintaxis
+//   "kind:evento" para filtrar por tipo, cualquier otro texto busca en
+//   claim/fuente/recuerdos y resalta la primera coincidencia con <mark>.
+//   Si la coincidencia solo está en el historial de una cadena (no en la
+//   versión vigente), esa cadena se muestra con el historial ya
+//   desplegado, no forzaría a abrirlo el usuario para encontrar por qué
+//   apareció en el filtro.
+// - Vista "Gráfico" (d3, zoomable): eje de tiempo horizontal, un carril
+//   por kind, zoom con rueda/arrastre (d3.zoom + rescaleX, mismo patrón
+//   que la sección Grafo). El tamaño del punto crece con el largo del
+//   claim, los reemplazados salen más tenues.
+// - Vista "Heatmap": calendario estilo GitHub (semanas en columnas, días
+//   en filas), color por cantidad de registros ese día. Clic en un día
+//   con actividad cambia a la vista Lista mostrando solo esos registros
+//   (día completo, sin agrupar por cadena -- "qué pasó ese día" es una
+//   pregunta distinta a "cuál es el estado vigente de cada hecho").
 {
-  const sec = section('timeline', 'Timeline', 'Lista registros en orden cronológico ("timeline.mjs"). No es un buscador. Déjalo vacío para ver los más recientes de todo el sistema. Escribe un recuerdo para ver solo sus registros, empieza a teclear para ver los recuerdos existentes. No acepta términos de búsqueda libres; para eso usa "Buscar".',
-    `<label>recuerdo (opcional, empieza a escribir para ver sugerencias)</label>
+  const sec = section('timeline', 'Timeline', 'Recorre los registros de un recuerdo (o de todo el sistema) en orden cronológico ("timeline.mjs"). No es un buscador para preguntas nuevas -- para eso usa "Buscar" -- pero sí filtra sobre lo ya cargado con el campo de abajo. Déjalo vacío para ver los más recientes de todo el sistema. Con "Incluir reemplazados" activo, una cadena de versiones de un mismo hecho se muestra como una sola entrada con un enlace "Ver evolución".',
+    `<label>Recuerdo (opcional, empieza a escribir para ver sugerencias)</label>
      <input type="text" id="tl-memory" placeholder="ej. segundo-cerebro" list="tl-memories-list">
      <datalist id="tl-memories-list"></datalist>
      <div class="checkline"><input type="checkbox" id="tl-all"><label for="tl-all">Incluir reemplazados (--all)</label></div>
-     <button class="run" id="tl-run">Ver</button>`);
+     <button class="run" id="tl-run">Ver</button>
+
+     <div class="tl-view-toggle">
+       <button type="button" class="tl-view-btn active" data-view="list">Lista</button>
+       <button type="button" class="tl-view-btn" data-view="chart">Gráfico</button>
+       <button type="button" class="tl-view-btn" data-view="heatmap">Heatmap</button>
+     </div>
+     <label style="margin-top:12px">Filtrar lo ya cargado</label>
+     <input type="text" id="tl-filter" placeholder='texto libre, o "kind:evento" / "kind:commitment" / "kind:fact"'>
+
+     <div id="tl-stats" class="gph-stats" style="margin-top:14px"></div>
+     <div id="tl-density" class="tl-density"></div>
+
+     <div id="tl-view-list-box"><div id="tl-line" class="tl-line"></div></div>
+     <div id="tl-view-chart-box" style="display:none; position:relative"></div>
+     <div id="tl-view-heatmap-box" class="tl-heatmap-scroll" style="display:none"></div>`);
+
+  const statsEl = sec.querySelector('#tl-stats');
+  const densityEl = sec.querySelector('#tl-density');
+  const lineEl = sec.querySelector('#tl-line');
+  const chartEl = sec.querySelector('#tl-view-chart-box');
+  const heatmapEl = sec.querySelector('#tl-view-heatmap-box');
+  const filterInput = sec.querySelector('#tl-filter');
+  const viewBoxes = {
+    list: sec.querySelector('#tl-view-list-box'),
+    chart: chartEl,
+    heatmap: heatmapEl,
+  };
+  const viewButtons = sec.querySelectorAll('.tl-view-btn');
+  const MONTHS_PAGE_SIZE = 3;
+  const ENTRIES_PAGE_SIZE = 25;
+
+  let allRows = [];
+  let dayFilter = null; // 'YYYY-MM-DD' o null
+  let currentView = 'list';
 
   call('GET', '/api/memories').then((r) => {
     const list = sec.querySelector('#tl-memories-list');
@@ -728,21 +861,545 @@ function section(id, title, hint, bodyHtml) {
     }
   });
 
+  const MONTH_FMT = new Intl.DateTimeFormat('es-CO', { year: 'numeric', month: 'long', timeZone: 'UTC' });
+  const MONTH_SHORT_FMT = new Intl.DateTimeFormat('es-CO', { month: 'short', timeZone: 'UTC' });
+  const DAY_FMT = new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const KIND_LABELS = { fact: 'Hecho', event: 'Evento', commitment: 'Compromiso' };
+
+  function statTile(value, label) {
+    const div = document.createElement('div');
+    div.className = 'gph-stat';
+    div.innerHTML = `<b>${value}</b><span>${escapeHtml(label)}</span>`;
+    return div;
+  }
+
+  // Envuelve por palabra a `width` caracteres por línea (sin cortar
+  // palabras a la mitad); el resultado lleva "\n" reales, se renderiza con
+  // white-space: pre-wrap en el tooltip del Gráfico.
+  function wrapText(text, width) {
+    const words = (text || '').split(/\s+/).filter(Boolean);
+    const lines = [];
+    let line = '';
+    for (const w of words) {
+      const candidate = line ? `${line} ${w}` : w;
+      if (candidate.length > width && line) {
+        lines.push(line);
+        line = w;
+      } else {
+        line = candidate;
+      }
+    }
+    if (line) lines.push(line);
+    return lines.join('\n');
+  }
+
+  function highlightMatch(text, query) {
+    const safe = text || '';
+    if (!query) return escapeHtml(safe);
+    const idx = safe.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return escapeHtml(safe);
+    return escapeHtml(safe.slice(0, idx)) + '<mark class="tl-hl">' + escapeHtml(safe.slice(idx, idx + query.length)) + '</mark>' + escapeHtml(safe.slice(idx + query.length));
+  }
+
+  // Reconstruye cadenas de versión a partir de superseded_by: cada fila sin
+  // superseded_by es la cabeza (vigente) de una cadena, se camina hacia
+  // atrás buscando quién apunta a ella (predecessorOf) hasta agotar el
+  // historial disponible en este dataset. Sin --all todas las filas ya
+  // vienen con superseded_by null, cada cadena queda de largo 1.
+  function buildChains(rows) {
+    const predecessorOf = new Map();
+    for (const r of rows) {
+      if (r.superseded_by != null) predecessorOf.set(String(r.superseded_by), r);
+    }
+    const consumed = new Set();
+    const chains = [];
+    for (const r of rows) {
+      if (r.superseded_by == null) {
+        const chain = [r];
+        consumed.add(String(r.id));
+        let cur = r;
+        while (predecessorOf.has(String(cur.id))) {
+          const prev = predecessorOf.get(String(cur.id));
+          if (consumed.has(String(prev.id))) break; // guarda contra datos inconsistentes/ciclos
+          chain.unshift(prev);
+          consumed.add(String(prev.id));
+          cur = prev;
+        }
+        chains.push(chain);
+      }
+    }
+    // Filas reemplazadas cuyo sucesor no vino en este dataset (huérfanas,
+    // ej. al filtrar por un recuerdo que solo alguna versión de la cadena
+    // tiene asignado): se muestran como su propia cadena de largo 1.
+    for (const r of rows) {
+      if (!consumed.has(String(r.id))) chains.push([r]);
+    }
+    return chains;
+  }
+
+  // "kind:evento resto del texto" -> { kind: 'evento', text: 'resto del texto' };
+  // cualquier otra cosa -> { kind: null, text: <todo el query> }.
+  function parseQuery(raw) {
+    const q = (raw || '').trim();
+    if (!q) return null;
+    const m = q.match(/^kind:(\S+)\s*(.*)$/i);
+    if (m) return { kind: m[1].toLowerCase(), text: m[2].trim() };
+    return { kind: null, text: q };
+  }
+
+  function entryMatchesText(entry, textLower) {
+    if (!textLower) return true;
+    const hay = `${entry.claim || ''} ${entry.source || ''} ${entry.memories || ''}`.toLowerCase();
+    return hay.includes(textLower);
+  }
+
+  // Filtra cadenas ya construidas: conserva una cadena si su cabeza o
+  // cualquier versión de su historial coincide. Si la coincidencia de
+  // texto solo está en el historial, se marca para forzar su despliegue
+  // (forceOpenHistory) -- si no, el usuario vería una cadena en los
+  // resultados sin poder ver por qué calificó.
+  function filterChains(chains, parsed) {
+    if (!parsed) return { chains, forceOpenHistory: new Set() };
+    const textLower = parsed.text.toLowerCase();
+    const kept = [];
+    const forceOpenHistory = new Set();
+    for (const chain of chains) {
+      const head = chain[chain.length - 1];
+      if (parsed.kind && (head.kind || 'fact').toLowerCase() !== parsed.kind) continue;
+      const headMatches = entryMatchesText(head, textLower);
+      const historyMatchIdx = chain.slice(0, -1).findIndex((h) => entryMatchesText(h, textLower));
+      if (headMatches || historyMatchIdx !== -1) {
+        kept.push(chain);
+        if (!headMatches && historyMatchIdx !== -1) forceOpenHistory.add(head.id);
+      }
+    }
+    return { chains: kept, forceOpenHistory };
+  }
+
+  function chainEntryHtml(chain, opts = {}) {
+    const { highlightQuery = null, forceOpen = false } = opts;
+    const head = chain[chain.length - 1];
+    const history = chain.slice(0, -1);
+    const reemplazadoHead = Boolean(head.valid_until);
+    const kindClass = `tl-kind-${escapeHtml(head.kind || 'fact')}`;
+    const memoriesNote = head.memories ? ` · recuerdos: ${escapeHtml(head.memories)}` : '';
+    const replacedNote = reemplazadoHead ? ` · reemplazado por #${head.superseded_by}` : '';
+    const label = `Ver evolución (${history.length} ${history.length === 1 ? 'versión anterior' : 'versiones anteriores'})`;
+    const historyHtml = history.length
+      ? `<span class="tl-history-toggle" data-chain-toggle data-open-label="${escapeHtml(label)}">${forceOpen ? 'Ocultar evolución' : escapeHtml(label)}</span>
+         <div class="tl-history${forceOpen ? ' open' : ''}">${history.map((h) => `
+           <div class="tl-history-item">
+             <div class="tl-entry-date">#${h.id} · ${DAY_FMT.format(new Date(h.date))}</div>
+             <div class="tl-entry-claim">${highlightMatch(h.claim, highlightQuery)}</div>
+           </div>`).join('')}</div>`
+      : '';
+    return `
+      <div class="tl-entry ${kindClass}${reemplazadoHead ? ' tl-reemplazado' : ''}">
+        <div class="tl-entry-date">#${head.id} · ${DAY_FMT.format(new Date(head.date))}</div>
+        <div class="tl-entry-claim">${highlightMatch(head.claim, highlightQuery)}</div>
+        <div class="tl-entry-meta">fuente: ${escapeHtml(head.source || '')} · tipo: ${escapeHtml(head.kind || 'fact')}${memoriesNote}${replacedNote}</div>
+        ${historyHtml}
+      </div>`;
+  }
+
+  // Delegación única sobre lineEl (sobrevive a que su contenido se
+  // reconstruya en cada render, un listener por render duplicaría clics).
+  lineEl.addEventListener('click', (e) => {
+    const back = e.target.closest('#tl-day-back');
+    if (back) { dayFilter = null; renderAll(); return; }
+    const toggle = e.target.closest('[data-chain-toggle]');
+    if (!toggle) return;
+    const hist = toggle.nextElementSibling;
+    const opening = !hist.classList.contains('open');
+    hist.classList.toggle('open', opening);
+    toggle.textContent = opening ? 'Ocultar evolución' : toggle.dataset.openLabel;
+  });
+
+  function renderStatsAndDensity(rows) {
+    statsEl.innerHTML = '';
+    densityEl.innerHTML = '';
+    const vigentes = rows.filter((r) => !r.valid_until).length;
+    statsEl.appendChild(statTile(rows.length, 'registros'));
+    statsEl.appendChild(statTile(vigentes, 'vigentes'));
+    statsEl.appendChild(statTile(rows.length - vigentes, 'reemplazados'));
+
+    // Densidad por mes: cuenta registros crudos (no cadenas), es una medida
+    // de actividad de escritura, no de cuántas entradas se van a pintar.
+    const byMonthCount = new Map();
+    for (const r of rows) {
+      const key = r.date.slice(0, 7);
+      byMonthCount.set(key, (byMonthCount.get(key) ?? 0) + 1);
+    }
+    const maxCount = Math.max(...byMonthCount.values());
+    for (const key of [...byMonthCount.keys()].reverse()) {
+      const count = byMonthCount.get(key);
+      const bar = document.createElement('div');
+      bar.className = 'tl-density-bar';
+      bar.style.height = Math.max(8, Math.round((count / maxCount) * 36)) + 'px';
+      bar.title = `${MONTH_FMT.format(new Date(key + '-01T00:00:00Z'))}: ${count}`;
+      densityEl.appendChild(bar);
+    }
+  }
+
+  // Agrupa cadenas por Año -> Mes (según la fecha de su cabeza, la versión
+  // vigente: una cadena "vive" donde está su estado actual, su historial
+  // se ve al desplegarla, no donde ocurrió cada versión individual).
+  function groupChainsByYearMonth(chains) {
+    const byYear = new Map();
+    for (const chain of chains) {
+      const dateStr = chain[chain.length - 1].date;
+      const year = dateStr.slice(0, 4), month = dateStr.slice(0, 7);
+      if (!byYear.has(year)) byYear.set(year, new Map());
+      const byMonth = byYear.get(year);
+      if (!byMonth.has(month)) byMonth.set(month, []);
+      byMonth.get(month).push(chain);
+    }
+    for (const byMonth of byYear.values()) {
+      for (const list of byMonth.values()) list.sort((a, b) => b[b.length - 1].date.localeCompare(a[a.length - 1].date));
+    }
+    return byYear;
+  }
+
+  function renderListView(chains, { highlightQuery = null, forceOpenHistorySet = new Set(), openAll = false } = {}) {
+    lineEl.innerHTML = '';
+    if (!chains.length) {
+      lineEl.innerHTML = '<p class="hint">Sin coincidencias.</p>';
+      return;
+    }
+    const byYear = groupChainsByYearMonth(chains);
+    const years = [...byYear.keys()].sort().reverse();
+
+    years.forEach((year, yi) => {
+      const byMonth = byYear.get(year);
+      const months = [...byMonth.keys()].sort().reverse();
+      const totalInYear = months.reduce((sum, m) => sum + byMonth.get(m).length, 0);
+
+      const yearDetails = document.createElement('details');
+      yearDetails.className = 'tl-year-group';
+      yearDetails.open = openAll || yi === 0;
+      yearDetails.innerHTML = `<summary>${year} <span class="tl-month-count">(${totalInYear})</span></summary><div class="tl-year-content"></div>`;
+      const yearContent = yearDetails.querySelector('.tl-year-content');
+
+      let renderedMonths = 0;
+      function renderMonthBatch() {
+        const batchSize = openAll ? months.length : MONTHS_PAGE_SIZE;
+        const start = renderedMonths;
+        const end = Math.min(start + batchSize, months.length);
+        for (let i = start; i < end; i++) {
+          const monthKey = months[i];
+          const chainsInMonth = byMonth.get(monthKey);
+          const monthDetails = document.createElement('details');
+          monthDetails.className = 'tl-month-group';
+          monthDetails.open = openAll || (yi === 0 && i === 0);
+          monthDetails.innerHTML = `<summary>${MONTH_FMT.format(new Date(monthKey + '-01T00:00:00Z'))} <span class="tl-month-count">(${chainsInMonth.length})</span></summary><div class="tl-month-content"></div>`;
+          const content = monthDetails.querySelector('.tl-month-content');
+
+          let renderedEntries = 0;
+          function renderEntryBatch() {
+            const size = openAll ? chainsInMonth.length : ENTRIES_PAGE_SIZE;
+            const nextChains = chainsInMonth.slice(renderedEntries, renderedEntries + size);
+            for (const chain of nextChains) {
+              const forceOpen = forceOpenHistorySet.has(chain[chain.length - 1].id);
+              content.insertAdjacentHTML('beforeend', chainEntryHtml(chain, { highlightQuery, forceOpen }));
+            }
+            renderedEntries += nextChains.length;
+            content.querySelector('.tl-load-more')?.remove();
+            if (renderedEntries < chainsInMonth.length) {
+              const btn = document.createElement('button');
+              btn.className = 'tl-load-more';
+              btn.textContent = `Cargar ${Math.min(ENTRIES_PAGE_SIZE, chainsInMonth.length - renderedEntries)} más de este mes`;
+              btn.addEventListener('click', renderEntryBatch);
+              content.appendChild(btn);
+            }
+          }
+
+          let opened = false;
+          monthDetails.addEventListener('toggle', () => {
+            if (monthDetails.open && !opened) { opened = true; renderEntryBatch(); }
+          });
+          if (monthDetails.open) { opened = true; renderEntryBatch(); }
+          yearContent.appendChild(monthDetails);
+        }
+        renderedMonths = end;
+
+        yearContent.querySelector('.tl-load-more-months')?.remove();
+        if (renderedMonths < months.length) {
+          const btn = document.createElement('button');
+          btn.className = 'tl-load-more tl-load-more-months';
+          btn.textContent = `Cargar más meses (${months.length - renderedMonths} restantes)`;
+          btn.addEventListener('click', renderMonthBatch);
+          yearContent.appendChild(btn);
+        }
+      }
+
+      let yearOpened = false;
+      yearDetails.addEventListener('toggle', () => {
+        if (yearDetails.open && !yearOpened) { yearOpened = true; renderMonthBatch(); }
+      });
+      if (yearDetails.open) { yearOpened = true; renderMonthBatch(); }
+      lineEl.appendChild(yearDetails);
+    });
+  }
+
+  // Vista de un día exacto (desde un clic en el heatmap): plana, sin
+  // cadenas ni agrupar por mes -- "qué pasó este día" quiere ver todas las
+  // versiones que hubo ese día, no solo el estado vigente de cada hecho.
+  function renderDayView(day, rows) {
+    const dayRows = rows.filter((r) => r.date.slice(0, 10) === day).sort((a, b) => b.id - a.id);
+    lineEl.innerHTML = `<button type="button" class="tl-load-more" id="tl-day-back">← Volver a la vista completa</button>
+      <div class="tl-month-header-plain">${DAY_FMT.format(new Date(day + 'T00:00:00Z'))} (${dayRows.length})</div>`;
+    for (const r of dayRows) {
+      lineEl.insertAdjacentHTML('beforeend', chainEntryHtml([r]));
+    }
+  }
+
+  function setActiveViewButton(view) {
+    viewButtons.forEach((b) => b.classList.toggle('active', b.dataset.view === view));
+    for (const [key, el] of Object.entries(viewBoxes)) el.style.display = key === view ? '' : 'none';
+  }
+  viewButtons.forEach((btn) => btn.addEventListener('click', () => {
+    currentView = btn.dataset.view;
+    setActiveViewButton(currentView);
+    renderAll();
+  }));
+  filterInput.addEventListener('input', () => { if (currentView !== 'heatmap') renderAll(); });
+
+  // --- Vista Gráfico (d3, zoomable) ---
+  // Eje de tiempo horizontal, un carril por kind, zoom con rueda/arrastre
+  // (mismo patrón que la sección Grafo: d3.zoom + rescaleX sobre la escala
+  // de tiempo, no sobre un <g> completo, porque aquí solo el eje X debe
+  // reescalarse). El radio de cada punto crece un poco con el largo del
+  // claim (más contenido, punto más grande), los reemplazados salen a
+  // media opacidad para que la vigente "gane" visualmente.
+  function renderChart(rows, rawQuery) {
+    chartEl.innerHTML = '';
+    if (!rows.length) { chartEl.innerHTML = '<p class="hint">Sin registros para graficar.</p>'; return; }
+
+    const parsed = parseQuery(rawQuery);
+    const textLower = parsed ? parsed.text.toLowerCase() : '';
+
+    const W = 900, H = 260, M = { top: 16, right: 20, bottom: 28, left: 96 };
+    const dates = rows.map((r) => new Date(r.date));
+    const x = d3.scaleTime().domain(d3.extent(dates)).nice().range([M.left, W - M.right]);
+    const lanes = ['fact', 'event', 'commitment'];
+    const y = d3.scalePoint().domain(lanes).range([M.top, H - M.bottom]).padding(1);
+
+    const svg = d3.select(chartEl).append('svg')
+      .attr('viewBox', `0 0 ${W} ${H}`).attr('width', '100%').style('display', 'block');
+
+    const clipId = 'tl-chart-clip-' + Math.random().toString(36).slice(2, 8);
+    svg.append('defs').append('clipPath').attr('id', clipId).append('rect')
+      .attr('x', M.left).attr('y', 0).attr('width', W - M.left - M.right).attr('height', H);
+
+    const xAxisG = svg.append('g').attr('transform', `translate(0,${H - M.bottom})`);
+    const yAxisG = svg.append('g').attr('transform', `translate(${M.left},0)`)
+      .call(d3.axisLeft(y).tickFormat((k) => KIND_LABELS[k] || k));
+    yAxisG.selectAll('text').attr('fill', 'var(--muted)').attr('font-size', 11);
+    yAxisG.selectAll('path,line').attr('stroke', 'var(--border)');
+
+    function drawXAxis(scale) {
+      xAxisG.call(d3.axisBottom(scale).ticks(6)).selectAll('text').attr('fill', 'var(--muted)').attr('font-size', 10);
+      xAxisG.selectAll('path,line').attr('stroke', 'var(--border)');
+    }
+    drawXAxis(x);
+
+    const plotG = svg.append('g').attr('clip-path', `url(#${clipId})`);
+    const pointsSel = plotG.selectAll('circle').data(rows).join('circle')
+      .attr('cx', (d) => x(new Date(d.date)))
+      .attr('cy', (d) => y(d.kind && lanes.includes(d.kind) ? d.kind : 'fact'))
+      .attr('r', (d) => Math.min(9, 3 + Math.floor((d.claim || '').length / 120)))
+      .attr('class', (d) => 'tl-chart-dot tl-kind-' + (d.kind || 'fact'))
+      .style('opacity', (d) => {
+        if (parsed) {
+          if (parsed.kind && (d.kind || 'fact').toLowerCase() !== parsed.kind) return 0.12;
+          if (!entryMatchesText(d, textLower)) return 0.12;
+        }
+        return d.valid_until ? 0.4 : 0.9;
+      })
+      .style('cursor', 'pointer');
+
+    // Tooltip propio (no .gph-tooltip: ese es de una sola línea sin wrap,
+    // pensado para el nombre corto de un recuerdo en el Grafo -- aquí el
+    // claim puede ser largo, se envuelve a ~80 caracteres por línea y
+    // sigue al puntero mientras se mueve dentro del punto, no solo al
+    // entrar).
+    const tooltip = d3.select(chartEl).append('div').attr('class', 'tl-chart-tooltip').style('display', 'none');
+    function positionTooltip(event) {
+      const rect = chartEl.getBoundingClientRect();
+      const ttNode = tooltip.node();
+      const ttW = ttNode.offsetWidth;
+      const ttH = ttNode.offsetHeight;
+      let left = event.clientX - rect.left + 14;
+      let top = event.clientY - rect.top + 14;
+      // Mide el tooltip ya renderizado (con su texto real) para decidir si
+      // cabe a la derecha/abajo del puntero -- un margen fijo asumía un
+      // ancho fijo y el tooltip se salía del contenedor con claims largos.
+      if (left + ttW > rect.width - 4) left = event.clientX - rect.left - ttW - 14;
+      if (top + ttH > rect.height - 4) top = event.clientY - rect.top - ttH - 14;
+      tooltip.style('left', Math.max(4, left) + 'px').style('top', Math.max(4, top) + 'px');
+    }
+    pointsSel.on('mouseenter', function (event, d) {
+      d3.select(this).raise();
+      const header = `#${d.id} · ${DAY_FMT.format(new Date(d.date))}`;
+      tooltip.style('display', 'block').html(`<b>${header}</b><br>${escapeHtml(wrapText(d.claim || '', 80))}`);
+      positionTooltip(event);
+    }).on('mousemove', positionTooltip)
+      .on('mouseleave', () => tooltip.style('display', 'none'));
+
+    const zoomBehavior = d3.zoom().scaleExtent([1, 80])
+      .translateExtent([[M.left, 0], [W - M.right, H]])
+      .extent([[M.left, 0], [W - M.right, H]])
+      .on('zoom', (event) => {
+        const newX = event.transform.rescaleX(x);
+        drawXAxis(newX);
+        pointsSel.attr('cx', (d) => newX(new Date(d.date)));
+      });
+    svg.call(zoomBehavior);
+  }
+
+  // --- Vista Heatmap (calendario estilo GitHub) ---
+  function renderHeatmapView(rows) {
+    heatmapEl.innerHTML = '';
+    if (!rows.length) { heatmapEl.innerHTML = '<p class="hint">Sin registros para el heatmap.</p>'; return; }
+
+    const dayCounts = new Map();
+    for (const r of rows) {
+      const day = r.date.slice(0, 10);
+      dayCounts.set(day, (dayCounts.get(day) ?? 0) + 1);
+    }
+    const sortedDays = [...dayCounts.keys()].sort();
+    const minDate = new Date(sortedDays[0] + 'T00:00:00Z');
+    const maxDate = new Date(sortedDays[sortedDays.length - 1] + 'T00:00:00Z');
+    const start = new Date(minDate);
+    start.setUTCDate(start.getUTCDate() - start.getUTCDay()); // retrocede al domingo, estilo GitHub
+    const totalDays = Math.round((maxDate - start) / 86400000) + 1;
+    const totalWeeks = Math.ceil(totalDays / 7);
+    const maxCount = Math.max(...dayCounts.values());
+
+    function bucket(count) {
+      if (!count) return 0;
+      const ratio = count / maxCount;
+      if (ratio > 0.75) return 4;
+      if (ratio > 0.5) return 3;
+      if (ratio > 0.25) return 2;
+      return 1;
+    }
+
+    const monthLabels = document.createElement('div');
+    monthLabels.className = 'tl-heatmap-months';
+    const grid = document.createElement('div');
+    grid.className = 'tl-heatmap-grid';
+
+    let lastMonth = null;
+    for (let w = 0; w < totalWeeks; w++) {
+      const weekStart = new Date(start);
+      weekStart.setUTCDate(weekStart.getUTCDate() + w * 7);
+      const label = document.createElement('span');
+      label.className = 'tl-heatmap-month-label';
+      if (weekStart.getUTCMonth() !== lastMonth) {
+        label.textContent = MONTH_SHORT_FMT.format(weekStart).replace('.', '');
+        lastMonth = weekStart.getUTCMonth();
+      }
+      monthLabels.appendChild(label);
+
+      const col = document.createElement('div');
+      col.className = 'tl-heatmap-col';
+      for (let d = 0; d < 7; d++) {
+        const day = new Date(weekStart);
+        day.setUTCDate(day.getUTCDate() + d);
+        const dayKey = day.toISOString().slice(0, 10);
+        const cell = document.createElement('div');
+        if (day < minDate || day > maxDate) {
+          cell.className = 'tl-heatmap-cell tl-heatmap-empty';
+        } else {
+          const count = dayCounts.get(dayKey) || 0;
+          cell.className = `tl-heatmap-cell tl-heatmap-b${bucket(count)}`;
+          cell.title = `${DAY_FMT.format(day)}: ${count} registro${count === 1 ? '' : 's'}`;
+          if (count > 0) {
+            cell.addEventListener('click', () => {
+              dayFilter = dayKey;
+              currentView = 'list';
+              filterInput.value = '';
+              setActiveViewButton('list');
+              renderAll();
+            });
+          }
+        }
+        col.appendChild(cell);
+      }
+      grid.appendChild(col);
+    }
+
+    const legend = document.createElement('div');
+    legend.className = 'tl-heatmap-legend';
+    legend.innerHTML = `<span>Menos</span>${[0, 1, 2, 3, 4].map((b) => `<div class="tl-heatmap-cell tl-heatmap-b${b}"></div>`).join('')}<span>Más</span>`;
+
+    heatmapEl.appendChild(monthLabels);
+    heatmapEl.appendChild(grid);
+    heatmapEl.appendChild(legend);
+  }
+
+  function renderAll() {
+    if (!allRows.length) return;
+    renderStatsAndDensity(allRows);
+    setActiveViewButton(currentView);
+
+    if (currentView === 'list') {
+      if (dayFilter) {
+        renderDayView(dayFilter, allRows);
+      } else {
+        const chains = buildChains(allRows);
+        const parsed = parseQuery(filterInput.value);
+        if (!parsed) {
+          renderListView(chains, {});
+        } else {
+          const { chains: filtered, forceOpenHistory } = filterChains(chains, parsed);
+          renderListView(filtered, { highlightQuery: parsed.text || null, forceOpenHistorySet: forceOpenHistory, openAll: true });
+        }
+      }
+    } else if (currentView === 'chart') {
+      renderChart(allRows, filterInput.value);
+    } else if (currentView === 'heatmap') {
+      renderHeatmapView(allRows);
+    }
+  }
+
   sec.querySelector('#tl-run').addEventListener('click', async () => {
     const memory = sec.querySelector('#tl-memory').value.trim();
     const all = sec.querySelector('#tl-all').checked;
     const params = new URLSearchParams();
     if (memory) params.set('memory', memory);
     if (all) params.set('all', '1');
+    lineEl.innerHTML = '<p class="hint">Cargando...</p>';
     const r = await call('GET', '/api/timeline?' + params.toString());
-    out(sec, r);
+    if (!r.ok) {
+      statsEl.innerHTML = '';
+      densityEl.innerHTML = '';
+      lineEl.innerHTML = '';
+      chartEl.innerHTML = '';
+      heatmapEl.innerHTML = '';
+      out(sec, r);
+      return;
+    }
+    allRows = r.rows || [];
+    dayFilter = null;
+    filterInput.value = '';
+    if (allRows.length === 0) {
+      statsEl.innerHTML = '';
+      densityEl.innerHTML = '';
+      lineEl.innerHTML = '<p class="hint">Sin registros registrados.</p>';
+      chartEl.innerHTML = '';
+      heatmapEl.innerHTML = '';
+      return;
+    }
+    renderAll();
   });
 }
 
 // --- Estado de recuerdo ---
 {
   const sec = section('memory-status', 'Estado de recuerdo', 'Resume en prosa el estado actual de un recuerdo ("memory-status.mjs"). Genera el resumen al momento, a partir de sus registros vigentes. Así ya no necesitas mantener una página narrativa a mano.',
-    `<label>recuerdo (empieza a escribir para ver sugerencias)</label>
+    `<label>Recuerdo (empieza a escribir para ver sugerencias)</label>
      <input type="text" id="ns-memory" placeholder="ej. segundo-cerebro" list="ns-memories-list">
      <datalist id="ns-memories-list"></datalist>
      <div class="row">
@@ -824,7 +1481,7 @@ function section(id, title, hint, bodyHtml) {
 // también a dependencias del frontend). Reemplaza el layout jerárquico
 // estático anterior (2026-09-03): el usuario lo pidió parecido a LightRAG/
 // Obsidian tras ver que un layout fijo por niveles no aguanta un grafo con
-// ciclos reales (ver PLAN-recuerdos.md) -- acá la física corre en el navegador
+// ciclos reales (ver PLAN-nodos.md) -- acá la física corre en el navegador
 // y decide las posiciones sola, arrastrar/zoom/clic funcionan de verdad.
 // El servidor (graph.mjs) solo entrega memories/edges en JSON, sin caché --
 // cada refresco trae el estado vigente.
@@ -842,8 +1499,8 @@ function section(id, title, hint, bodyHtml) {
      <div class="gph-stats" id="graph-stats" style="margin-top:16px"></div>
      <div id="graph-canvas" style="position:relative; margin-top:12px; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--panel)"></div>
      <div class="gph-legend" style="margin-top:10px">
-       <div class="gph-legend-item"><span class="gph-dot"></span> recuerdo de dominio</div>
-       <div class="gph-legend-item"><span class="gph-dot gph-meta"></span> recuerdo meta (sobre el propio sistema)</div>
+       <div class="gph-legend-item"><span class="gph-dot"></span>recuerdo de dominio</div>
+       <div class="gph-legend-item"><span class="gph-dot gph-meta"></span>recuerdo meta (sobre el propio sistema)</div>
      </div>`);
 
   const statsEl = sec.querySelector('#graph-stats');
@@ -1021,7 +1678,7 @@ function section(id, title, hint, bodyHtml) {
     // alphaDecay SIEMPRE normal: es lo que hace que el layout converja bien
     // separado (probado: alphaDecay alto no solo quita la animación, apaga
     // la física antes de que el charge/collide tengan tiempo de separar los
-    // recuerdos, quedan amontonados; y el arrastre pierde la inercia porque
+    //recuerdos, quedan amontonados; y el arrastre pierde la inercia porque
     // decae casi instantáneo incluso durante el drag, hallazgo real de
     // el usuario). "Reducir movimiento" adelanta la simulación entera de un
     // jalón (tick() manual en loop, sin pintar) antes del primer render, en
@@ -1402,7 +2059,7 @@ function section(id, title, hint, bodyHtml) {
 // solo se muestra lo que devuelva.
 {
   const sec = section('aliases', 'Alias', 'Un alias es una forma natural de nombrar un recuerdo (nombre de pila, sigla), sin alias, el name interno (kebab-case) casi nunca aparece tal cual en prosa, y el sistema no puede reconocer menciones futuras. "Buscar candidatos" propone formas extraídas de los propios registros del recuerdo (verificadas contra el texto real, nunca inventadas). Nada se aplica solo: revisa y aplica/quita abajo.',
-    `<label>recuerdo (opcional, vacío = revisa todos los que tengan alias vacío)</label>
+    `<label>Recuerdo (opcional, vacío = revisa todos los que tengan alias vacío)</label>
      <input type="text" id="al-scan-memory" list="al-memories-list">
      <datalist id="al-memories-list"></datalist>
      <button class="run" id="al-scan">Buscar candidatos</button>
@@ -1561,15 +2218,15 @@ function section(id, title, hint, bodyHtml) {
 // --- Recategorizar registro ---
 // Distinto de Fusionar recuerdos (mueve TODOS los registros de un recuerdo): esto
 // corrige un registro puntual mal etiquetado sin tocar el resto del recuerdo (ver
-// registro #498, caso real del registro #412 en vault-overview en vez de
+// registro #498, caso real del registro #412 en uao-vault-overview en vez de
 // cabd-2026-2). No borra ni retracta el registro, solo corrige a qué recuerdo
 // pertenece.
 {
   const sec = section('recategorize', 'Recategorizar registro', 'Reasigna UN registro a otro recuerdo, sin tocar el resto del recuerdo original ("recategorize-record.mjs"), para cuando la desambiguación automática se equivocó, o se guardó con --memory a mano sin pensarlo. Usa "Retractar → Ver registro(s)" si primero quieres confirmar el texto del id.',
     `<label>Id del registro</label><input type="text" id="rc-record" placeholder="412">
      <div class="row">
-       <div><label>recuerdo actual</label><input type="text" id="rc-from" list="rc-memories-list"></div>
-       <div><label>recuerdo correcto</label><input type="text" id="rc-to" list="rc-memories-list"></div>
+       <div><label>Recuerdo actual</label><input type="text" id="rc-from" list="rc-memories-list"></div>
+       <div><label>Recuerdo correcto</label><input type="text" id="rc-to" list="rc-memories-list"></div>
      </div>
      <datalist id="rc-memories-list"></datalist>
      <label>Motivo</label><input type="text" id="rc-reason" placeholder="ej. el registro es sobre CABD, no sobre el vault en general">
@@ -1604,14 +2261,14 @@ function section(id, title, hint, bodyHtml) {
 
 // --- Cambiar tipo de registro ---
 // set-record-kind.mjs, 2026-09-06: nace de un caso real (compromisos
-// guardados con kind='commitment' cuando en realidad describían un estado
-// ya aplicado, no una acción pendiente) -- hasta ahora esto se corregía a
-// mano vía SQL directo, sin ninguna herramienta ni de dashboard ni de CLI.
-// Distinto de Recategorizar (que mueve el registro a otro recuerdo): esto
-// solo cambia la etiqueta hecho/evento/compromiso, sin tocar a qué recuerdo
-// pertenece. Mismo patrón previsualizar-antes-de-habilitar que Retractar/
-// Borrar registro -- no es destructivo, pero confirmar el texto real evita
-// cambiar el registro equivocado.
+// #94/#95/#96/#145 guardados con kind='commitment' cuando en realidad
+// describían un estado ya aplicado, no una acción pendiente) -- hasta ahora
+// esto se corregía a mano vía SQL directo, sin ninguna herramienta ni de
+// dashboard ni de CLI. Distinto de Recategorizar (que mueve el registro a
+// otro recuerdo): esto solo cambia la etiqueta hecho/evento/compromiso, sin
+// tocar a qué recuerdo pertenece. Mismo patrón previsualizar-antes-de-
+// habilitar que Retractar/Borrar registro -- no es destructivo, pero
+// confirmar el texto real evita cambiar el registro equivocado.
 {
   const sec = section('set-kind', 'Cambiar tipo de registro', 'Cambia la etiqueta hecho/evento/compromiso de uno o más registros ("set-record-kind.mjs"), sin tocar su recuerdo ni su contenido. Solo funciona sobre registros vigentes (retráctalos primero si ya no aplican). Para reasignar a otro recuerdo, usa "Recategorizar registro".',
     `<label>Id(s) (separados por coma)</label><input type="text" id="sk-id" placeholder="94,95,96">
@@ -1689,10 +2346,10 @@ function section(id, title, hint, bodyHtml) {
        <label for="rm-confirm-date">Confirmo que la fecha distinta de hoy es intencional (--confirm-date)</label>
      </div>
      <label>Fuente</label><input type="text" id="rm-source" placeholder="ej. conversación Claude Code, sesión de trabajo">
-     <label>recuerdo(s) (opcional, separados por coma, empieza a escribir para ver sugerencias)</label>
+     <label>Recuerdo(s) (opcional, separados por coma, empieza a escribir para ver sugerencias)</label>
      <input type="text" id="rm-memory" placeholder="ej. segundo-cerebro" list="rm-memories-list">
      <datalist id="rm-memories-list"></datalist>
-     <div class="checkline"><input type="checkbox" id="rm-create-memory"><label for="rm-create-memory">Crear recuerdo nuevo, requiere escribir el nombre arriba en "recuerdo(s)" (--create-memory)</label></div>
+     <div class="checkline"><input type="checkbox" id="rm-create-memory"><label for="rm-create-memory">Crear recuerdo nuevo, requiere escribir el nombre arriba en "Recuerdo(s)" (--create-memory)</label></div>
      <label style="margin-top:10px">Alias del recuerdo nuevo (opcional, separados por coma, solo aplica con "Crear recuerdo nuevo" y un único recuerdo)</label>
      <input type="text" id="rm-aliases" placeholder="ej. Pedro Pérez, jefe">
      <div class="row">
@@ -1742,7 +2399,7 @@ function section(id, title, hint, bodyHtml) {
       return;
     }
     if (body.createNode && !body.memory) {
-      out(sec, { ok: false, stdout: '', stderr: 'Marcaste "Crear recuerdo nuevo" pero el campo "recuerdo(s)" está vacío, escribe ahí el nombre del recuerdo nuevo antes de guardar.' });
+      out(sec, { ok: false, stdout: '', stderr: 'Marcaste "Crear recuerdo nuevo" pero el campo "Recuerdo(s)" está vacío, escribe ahí el nombre del recuerdo nuevo antes de guardar.' });
       return;
     }
     if (body.aliases && !body.createNode) {
@@ -2152,7 +2809,7 @@ function section(id, title, hint, bodyHtml) {
           </select>
         </div>
       </div>
-      <label>recuerdo</label>
+      <label>Recuerdo</label>
       <input type="text" class="fc-node" value="${fact.node}" list="epf-memories-list">
       <div class="fc-suggestions">recuerdos parecidos: ${suggestionsHtml}</div>
       <div class="fc-fragment">"${(fact.sourceFragment ?? '').replace(/</g, '&lt;')}"</div>`;
@@ -2196,9 +2853,9 @@ function section(id, title, hint, bodyHtml) {
       claim: c.querySelector('.fc-claim').value.trim(),
       date: c.querySelector('.fc-date').value || undefined,
       kind: c.querySelector('.fc-kind').value,
-      memory: c.querySelector('.fc-node').value.trim(),
+      node: c.querySelector('.fc-node').value.trim(),
       source: lastSource,
-      createMemory: true,
+      createNode: true,
     }));
     await runRememberBatchStream(sec, { records }, insertBtn);
   });
@@ -2255,8 +2912,8 @@ function section(id, title, hint, bodyHtml) {
 
      <label style="margin-top:18px">Colores del grafo</label>
      <div class="row">
-       <div><label style="margin-top:0">recuerdo normal</label><input type="color" id="cfg-graph-normal"></div>
-       <div><label style="margin-top:0">recuerdo meta</label><input type="color" id="cfg-graph-meta"></div>
+       <div><label style="margin-top:0">Recuerdo normal</label><input type="color" id="cfg-graph-normal"></div>
+       <div><label style="margin-top:0">Recuerdo meta</label><input type="color" id="cfg-graph-meta"></div>
        <div><label style="margin-top:0">Resaltado</label><input type="color" id="cfg-graph-highlight"></div>
      </div>
      <button class="run secondary" id="cfg-graph-reset">Restablecer colores del grafo</button>
@@ -2358,87 +3015,6 @@ function section(id, title, hint, bodyHtml) {
       show('advanced-options');
     });
   }
-}
-
-// --- Acerca de ---
-// Versión instalada + chequeo de actualizaciones (check-for-updates.mjs,
-// solo informa, ver CLAUDE.md "Mantenimiento: revisar e instalar
-// actualizaciones" para aplicarla de verdad) y feedback vía mailto: --
-// nunca vía GitHub Issues, a propósito (ninguna fase de la instalación
-// exige cuenta de GitHub, forzarla acá por la puerta de atrás la
-// reintroduciría). La dirección de contacto es configurable (no viene
-// hardcodeada en el repo, ver feedback.json/.gitignore) porque quien
-// administra una instalación de 2oBrain no siempre es Oscar.
-{
-  const sec = section('about', 'Acerca de',
-    '2oBrain es un segundo cerebro personal: búsqueda semántica + captura de hechos con memoria estructurada, pensado para instalarse en tu propia base de datos.',
-    `<p><strong>Versión instalada:</strong> <span id="about-version">cargando…</span></p>
-     <button class="run secondary" id="about-check-updates">Buscar actualizaciones</button>
-     <div id="about-update-result" style="margin-top:8px"></div>
-
-     <p style="margin-top:20px">Construido por Oscar Campo (Universidad Autónoma de Occidente).
-     Repositorio: <a href="https://github.com/oscampo/2oBrain" target="_blank" rel="noopener">github.com/oscampo/2oBrain</a>.</p>
-
-     <h3 style="margin-top:24px">Enviar comentarios</h3>
-     <label>Tu comentario</label>
-     <textarea id="about-feedback-text" rows="4" placeholder="Qué encontraste confuso, qué te gustaría que hiciera, qué se rompió..."></textarea>
-     <button class="run" id="about-feedback-send" style="margin-top:8px">Enviar comentarios</button>
-     <div id="about-feedback-result" style="margin-top:8px"></div>
-
-     <details style="margin-top:20px">
-       <summary>Configurar dirección de contacto (quien administra esta instalación)</summary>
-       <div style="margin-top:8px">
-         <label>Correo donde llegan los comentarios</label>
-         <input type="text" id="about-feedback-email" placeholder="tu-correo@ejemplo.com">
-         <button class="run secondary" id="about-feedback-email-save" style="margin-top:8px">Guardar</button>
-         <div id="about-feedback-email-result" style="margin-top:8px"></div>
-       </div>
-     </details>`);
-
-  call('GET', '/api/version').then((r) => {
-    sec.querySelector('#about-version').textContent = r.ok ? r.version : '(desconocida)';
-  });
-
-  let feedbackEmail = '';
-  call('GET', '/api/feedback-config').then((r) => {
-    feedbackEmail = r.ok ? (r.email || '') : '';
-    sec.querySelector('#about-feedback-email').value = feedbackEmail;
-  });
-
-  sec.querySelector('#about-check-updates').addEventListener('click', async () => {
-    const box = sec.querySelector('#about-update-result');
-    box.textContent = 'Revisando...';
-    const r = await call('GET', '/api/check-for-updates');
-    if (!r.ok) { box.textContent = 'No se pudo revisar: ' + (r.error || 'error desconocido'); return; }
-    box.innerHTML = r.hasUpdate
-      ? `Hay una versión nueva: <strong>${escapeHtml(r.latestVersion)}</strong> (tienes ${escapeHtml(r.currentVersion)}). Pídele a tu agente que revise "Mantenimiento: revisar e instalar actualizaciones" en CLAUDE.md.`
-      : `Estás al día (versión ${escapeHtml(r.currentVersion)}).`;
-  });
-
-  sec.querySelector('#about-feedback-send').addEventListener('click', () => {
-    const box = sec.querySelector('#about-feedback-result');
-    const text = sec.querySelector('#about-feedback-text').value.trim();
-    if (!text) { box.textContent = 'Escribe algo primero.'; return; }
-    if (!feedbackEmail) {
-      box.textContent = 'No hay una dirección de contacto configurada todavía -- pídele a quien te compartió esto que la configure abajo, en "Configurar dirección de contacto".';
-      return;
-    }
-    const version = sec.querySelector('#about-version').textContent;
-    const subject = encodeURIComponent(`2oBrain -- comentario (v${version})`);
-    const body = encodeURIComponent(text);
-    const a = document.createElement('a');
-    a.href = `mailto:${feedbackEmail}?subject=${subject}&body=${body}`;
-    a.click();
-    box.textContent = 'Se abrió tu cliente de correo con el comentario ya escrito -- solo falta que le des enviar ahí.';
-  });
-
-  sec.querySelector('#about-feedback-email-save').addEventListener('click', async () => {
-    const box = sec.querySelector('#about-feedback-email-result');
-    const email = sec.querySelector('#about-feedback-email').value.trim();
-    const r = await call('POST', '/api/feedback-config', { email });
-    if (r.ok) { feedbackEmail = r.email; box.textContent = 'Guardado.'; }
-    else box.textContent = 'Error: ' + (r.error || 'desconocido');
-  });
 }
 
 renderNav();

@@ -25,15 +25,11 @@ import { synthesize } from '../lib/synthesize.mjs';
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const DB_DIR = join(SERVER_DIR, '..');
-const REPO_DIR = join(DB_DIR, '..', '..');
 const INDEX_HTML_PATH = join(SERVER_DIR, 'public', 'index.html');
-const VERSION_PATH = join(REPO_DIR, 'VERSION');
 const MODEL_CONFIG_PATHS = {
   gemini: join(DB_DIR, 'config', 'gemini-models.json'),
   ollama: join(DB_DIR, 'config', 'ollama-models.json'),
 };
-const FEEDBACK_CONFIG_PATH = join(DB_DIR, 'config', 'feedback.json');
-const FEEDBACK_CONFIG_EXAMPLE_PATH = join(DB_DIR, 'config', 'feedback.json.example');
 
 function parseArgs(argv) {
   const out = {};
@@ -126,10 +122,18 @@ app.get('/api/memories', (c) => {
 app.get('/api/timeline', (c) => {
   const node = c.req.query('memory');
   const all = c.req.query('all');
-  const args = [];
+  const args = ['--json'];
   if (node) args.push(node);
   if (all) args.push('--all');
-  return respond(c, runScript('timeline.mjs', args));
+  const result = runScript('timeline.mjs', args);
+  if (result.ok) {
+    try {
+      return c.json({ ok: true, rows: JSON.parse(result.stdout) });
+    } catch {
+      return respond(c, result);
+    }
+  }
+  return respond(c, result);
 });
 
 app.get('/api/delta', (c) => {
@@ -172,7 +176,7 @@ app.get('/vendor/d3.v7.min.js', (c) => {
   return c.body(readFileSync(join(SERVER_DIR, 'public', 'vendor', 'd3.v7.min.js')));
 });
 
-// Etapa 5 (PLAN-recuerdos.md): "estado actual del recuerdo X" generado al momento de
+// Etapa 5 (PLAN-nodos.md): "estado actual del recuerdo X" generado al momento de
 // la consulta desde sus registros vigentes reales: memory-status.mjs ya hace
 // todo el trabajo (trae los registros, llama a synthesizeNodeStatus), esto solo
 // lo expone como subproceso igual que el resto.
@@ -304,55 +308,7 @@ app.post('/api/model-config', async (c) => {
   }
 });
 
-// Sección "Acerca de": versión instalada, chequeo de actualizaciones
-// (check-for-updates.mjs, ver CLAUDE.md "Mantenimiento: revisar e instalar
-// actualizaciones" para el procedimiento real de traer una versión nueva --
-// esto solo informa) y la dirección de contacto para el botón "Enviar
-// comentarios" del frontend.
-app.get('/api/version', (c) => {
-  let version = '0.0.0';
-  try {
-    version = readFileSync(VERSION_PATH, 'utf8').trim();
-  } catch { /* sin VERSION, queda el default */ }
-  return c.json({ ok: true, version });
-});
-
-app.get('/api/check-for-updates', (c) => {
-  const result = runScript('check-for-updates.mjs', ['--json']);
-  try {
-    return c.json(JSON.parse(result.stdout));
-  } catch {
-    return c.json({ ok: false, error: result.stderr || 'check-for-updates.mjs no devolvió JSON válido' }, 422);
-  }
-});
-
-// feedback.json nunca se commitea (contiene una dirección de contacto real,
-// ver .gitignore) -- si todavía no existe, se lee el .example como default
-// (email vacío) sin escribir nada todavía, igual que .env/.env.example.
-app.get('/api/feedback-config', (c) => {
-  try {
-    return c.json({ ok: true, ...JSON.parse(readFileSync(FEEDBACK_CONFIG_PATH, 'utf8')) });
-  } catch {
-    try {
-      return c.json({ ok: true, ...JSON.parse(readFileSync(FEEDBACK_CONFIG_EXAMPLE_PATH, 'utf8')) });
-    } catch {
-      return c.json({ ok: true, email: '' });
-    }
-  }
-});
-
-app.post('/api/feedback-config', async (c) => {
-  const body = await c.req.json().catch(() => null);
-  if (typeof body?.email !== 'string') return c.json({ ok: false, error: 'falta email (puede ser cadena vacía)' }, 400);
-  try {
-    writeFileSync(FEEDBACK_CONFIG_PATH, JSON.stringify({ email: body.email.trim() }, null, 2) + '\n', 'utf8');
-    return c.json({ ok: true, email: body.email.trim() });
-  } catch (err) {
-    return c.json({ ok: false, error: err.message }, 500);
-  }
-});
-
-// Etapa 2 (PLAN-recuerdos.md): higiene de recuerdos: candidatos a fusión (revisión
+// Etapa 2 (PLAN-nodos.md): higiene de recuerdos: candidatos a fusión (revisión
 // humana obligatoria, ninguno se fusiona solo) y la fusión misma.
 app.get('/api/merge-candidates', (c) => respond(c, runScript('list-merge-candidates.mjs', [])));
 
@@ -366,14 +322,16 @@ app.post('/api/merge-memories', async (c) => {
 
 // Categorías candidatos (2026-09-04): recuerdos de dominio sin lugar en la
 // jerarquía (ni hijo ni padre de ningún pertenece_a), agrupados por
-// similitud de sus registros, ver list-category-candidates.mjs para el porqué
-// de "sin padre Y sin hijo" y por qué quedó bajo demanda, no proactiva. Solo
-// lectura, nunca crea/liga nada.
+// similitud de sus registros -- ver list-category-candidates.mjs para el
+// porqué de "sin padre Y sin hijo" y por qué quedó bajo demanda, no
+// proactiva. Solo lectura, nunca crea/liga nada.
 //
 // A diferencia de merge-candidates/mention-candidates (texto plano, el
-// usuario copia comandos a una terminal), este corre en modo --json: el
-// frontend arma tarjetas editables (nombre sugerido, miembros) y crea/liga
-// con /api/create-memory de abajo, sin salir del navegador.
+// usuario copia comandos a una terminal), este corre en modo --json: Oscar
+// notó que la sección no dejaba hacer nada desde el dashboard mismo, a
+// diferencia de "Extraer de página" -- el frontend arma tarjetas editables
+// (nombre sugerido, miembros) y crea/liga con /api/create-memory de abajo, sin
+// salir del navegador.
 app.get('/api/category-candidates', (c) => {
   const result = runScript('list-category-candidates.mjs', ['--json']);
   if (!result.ok) return c.json({ ok: false, error: result.stderr || 'list-category-candidates.mjs falló' }, 422);
@@ -384,11 +342,11 @@ app.get('/api/category-candidates', (c) => {
   }
 });
 
-// create-memory.mjs: creación standalone de un recuerdo, opcionalmente ligado a un
-// padre en el mismo llamado (--parent, ver el script para el diseño
-// completo). Usado por la sección "Candidatos de categoría" para crear el
-// categoría propuesto; --parent no aplica acá (la categoría nueva no tiene
-// padre todavía), el enlace a cada miembro va por /api/memory-link.
+// create-memory.mjs (2026-09-04): creación standalone de un recuerdo, opcionalmente
+// ligado a un padre en el mismo llamado (--parent, ver el script para el
+// diseño completo). Usado por la sección "Candidatos de categoría" para
+// crear el categoría propuesto; --parent no aplica acá (el categoría nuevo
+// no tiene padre todavía), el enlace a cada miembro va por /api/memory-link.
 app.post('/api/create-memory', async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body?.name) return c.json({ ok: false, error: 'falta name' }, 400);
@@ -404,7 +362,7 @@ app.post('/api/create-memory', async (c) => {
   return respond(c, runScript('create-memory.mjs', args));
 });
 
-// Etapa 6 (PLAN-recuerdos.md, 2026-09-02): grafo de relaciones recuerdo-a-recuerdo.
+// Etapa 6 (PLAN-nodos.md, 2026-09-02): grafo de relaciones recuerdo-a-recuerdo.
 // list-memory-mentions.mjs es de solo lectura (revisión humana obligatoria,
 // ningún enlace se crea desde acá sin pasar por memory-link.mjs); la
 // auto-creación a confianza alta ya corre dentro de remember.mjs/
@@ -468,7 +426,9 @@ app.post('/api/recategorize-record', async (c) => {
 
 // set-record-kind.mjs, 2026-09-06: cambia solo la etiqueta hecho/evento/
 // compromiso de uno o más registros, sin tocar a qué recuerdo pertenecen
-// (distinto de recategorize-record) ni retractarlos.
+// (distinto de recategorize-record) ni retractarlos. Nace de un caso real
+// (compromisos #94/#95/#96/#145 mal etiquetados, corregidos antes a mano
+// vía SQL directo por no existir esta herramienta).
 app.post('/api/set-record-kind', async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body?.id || !body?.kind || !body?.reason) {
