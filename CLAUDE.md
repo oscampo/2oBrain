@@ -305,18 +305,21 @@ decidir algo que no le importa todavía.
 hay algo sin guardar? (el hook `Stop`, ver Fase 9) Muéstrale la escalera,
 no le pidas que la memorice:
 ```
-4 - Cada turno (el más insistente, ya se probó y resultó costoso)
+4 - Cada turno (revisa más seguido)
 3 - Cada ~5 turnos
 2 - Cada ~10 turnos (default razonable si no tiene preferencia)
-1 - Cada ~20 turnos (el más discreto, sin apagarlo del todo)
+1 - Cada ~20 turnos (revisa menos seguido)
 0 - Nunca -- solo cuando yo diga "guarda esto"
 ```
-Y aparte, independiente del nivel: cuando SÍ encuentre algo, ¿prefiere que
-se lo explique completo cada vez, o que solo aparezca un testigo tipo
-"(2🧠)" al inicio de la siguiente respuesta, con el número real de
-registros guardados, sin interrumpir con una explicación aparte?
-→ Anota ambas respuestas, se aplican en la Fase 9 (tú editas las
-constantes del hook, no el usuario).
+Y una segunda pregunta, independiente de la anterior: cuando la revisión
+SÍ encuentre algo que guardar, ¿cómo prefiere que se lo digas?
+- **Silencioso**: sin interrumpir con una explicación, solo un testigo
+  tipo "(2🧠)" al inicio de la siguiente respuesta normal (2 = cuántos
+  registros se guardaron esa vez). Si no guarda nada, no aparece nada.
+- **No silencioso**: te explica completo cada vez que revisa, encuentre
+  algo o no.
+→ Anota ambas respuestas (nivel + silencioso o no), se aplican en la
+Fase 9 (tú editas las constantes del hook, no el usuario).
 
 **PREGUNTA**: `HEARTBEAT.md` trae 5 chequeos ya construidos (ambient-delta,
 brain-hygiene, commitments-check, memory-prune, morning-briefing), todos
@@ -546,12 +549,11 @@ el dashboard con sus secciones (Buscar/Timeline/Grafo/Doctor/etc.), no le
 pidas al usuario que lo revise él salvo que no tengas esa herramienta.
 
 **PREGUNTA**: la sección "Acerca de" del dashboard trae un botón de
-"Enviar comentarios" (mailto:, nunca un issue de GitHub -- ninguna fase de
-esta instalación exige cuenta de GitHub, y forzarla acá reintroduciría esa
-barrera). Necesita una dirección de contacto configurada, que no viene
-hardcodeada en el repo (es personal, no un default genérico): *"¿A qué
-correo te gustaría que lleguen los comentarios de quien use esto? Puedes
-dejarlo en blanco y configurarlo después desde la misma sección."*
+"Enviar comentarios" (por correo). Necesita una dirección de contacto
+configurada, que no viene hardcodeada en el repo (es personal, no un
+default genérico): *"¿A qué correo te gustaría que lleguen los
+comentarios de quien use esto? Puedes dejarlo en blanco y configurarlo
+después desde la misma sección."*
 Guárdalo tú mismo:
 
 ```bash
@@ -593,10 +595,39 @@ Verifica el deploy elegido con una llamada real (`curl` al endpoint
 resultante, o `tools/list` del protocolo MCP) antes de darlo por registro,
 nunca asumas que un deploy funcionó solo porque el comando no dio error.
 
-## Fase 9: Hooks (opcional)
+**Registrar el servidor en cada cliente MCP es SOLO del usuario, y hay que
+decírselo explícitamente** -- bug real encontrado en la instalación de
+una usuaria de prueba (2026-09-06): el servidor quedó desplegado y verificado,
+pero nadie le dijo que todavía faltaba agregarlo en "Configuración" de
+Claude (Desktop/Chat/Cowork, cada cliente tiene su propia pantalla de
+conectores/MCP) para poder usarlo de verdad. Esto no lo puede hacer la
+herramienta (es configuración de la cuenta del usuario, no del
+sistema de archivos), así que díselo tú mismo apenas termine el deploy,
+con la URL exacta del endpoint que acabas de verificar, no lo des por
+sobreentendido.
 
-Según la respuesta de la Fase 5, actívalos tú mismo, no describas los pasos
-para que el usuario los siga:
+## Fase 9: Skills y hooks
+
+**Skills (siempre, no opcional)**: Claude Code solo descubre skills
+invocables (`/nombre-de-skill`) bajo `.claude/skills/`, nunca bajo
+`skills/` en la raíz del repo -- bug real encontrado en la instalación de
+una usuaria de prueba (2026-09-06): las dos skills de este repo llevaban toda la
+vida en `skills/` sin que ninguna funcionara como comando real. Si
+`.claude/skills/extract-code-records/` y
+`.claude/skills/segundo-cerebro-capture/` no existen todavía (verifica con
+`ls .claude/skills/` antes de asumir), cópialas tú mismo desde `skills/`
+(mismo contenido, ambas copias deben coincidir):
+```bash
+mkdir -p .claude/skills/extract-code-records .claude/skills/segundo-cerebro-capture
+cp skills/extract-code-records/SKILL.md .claude/skills/extract-code-records/SKILL.md
+cp skills/segundo-cerebro-capture/SKILL.md .claude/skills/segundo-cerebro-capture/SKILL.md
+```
+La copia en `skills/` se conserva a propósito (no se borra): sirve como
+referencia legible/copiable a mano en una sesión de OTRO repo sin acceso a
+este segundo cerebro (ver la propia `SKILL.md` de `extract-code-records`).
+
+**Hooks (opcional)**: según la respuesta de la Fase 5, actívalos tú mismo,
+no describas los pasos para que el usuario los siga:
 
 - **Hook `Stop`** (recordatorio de captura al cerrar turno): antes de
   activarlo, edita tú mismo las constantes `LEVEL` y `SILENT` al inicio de

@@ -3,6 +3,14 @@ name: extract-code-records
 description: Extrae los registros semánticos de la sesión ACTUAL de Claude Code y los entrega como JSON en el chat, listo para ingerir después con scripts/db/remember-batch.mjs. No requiere que ESTA sesión tenga acceso a scripts/db/ ni a .env, solo extrae y entrega texto, nunca escribe a la base. Se activa con "extrae registros", "genera records de esta sesión", "/extract-code-records". Funciona en cualquier sesión de Code, incluyendo contenedores remotos de otros repos sin ningún acceso a este segundo cerebro; el usuario copia el JSON después a la máquina donde sí corre remember-batch.mjs.
 ---
 
+<!-- Duplicada a propósito en .claude/skills/extract-code-records/SKILL.md
+     (2026-09-06, bug real encontrado en la instalación de una usuaria de prueba):
+     Claude Code solo descubre skills invocables bajo .claude/skills/,
+     nunca bajo skills/ en la raíz -- este archivo vive AQUÍ además para
+     que se pueda leer/copiar manualmente a otro repo sin infraestructura
+     propia (ver "Funciona en cualquier sesión de Code..." arriba). Si
+     editas el contenido, replica el cambio en ambas copias. -->
+
 # Extracción de registros de sesión Code (para remember-batch)
 
 ## Por qué este diseño
@@ -53,9 +61,10 @@ refutar después, no un resumen de actividad.
 
 ### Paso 4: Clasificar por `kind`
 
-- `fact`: algo que quedó establecido o confirmado
+- `fact`: algo que quedó establecido o confirmado (incluye preferencias
+  declaradas por el usuario que deban persistir, `kind` ya no tiene un
+  valor `preference` aparte)
 - `event`: algo que ocurrió en una fecha concreta
-- `preference`: una preferencia declarada por el usuario que debe persistir
 - `commitment`: algo que alguien (el usuario o Claude) se comprometió a hacer
 
 ### Paso 5: Construir el JSON
@@ -81,7 +90,7 @@ Reglas de cada campo:
   no se puede refutar, no es un claim útil, descartarlo.
 - `date`: siempre el resultado del Paso 1, nunca una fecha mencionada en el
   contenido analizado.
-- `kind`: uno de los cuatro valores del Paso 4, nunca inventar otros.
+- `kind`: uno de los tres valores del Paso 4, nunca inventar otros.
 - `source`: siempre `"extract-code-records, sesión Code, repo <repo>"` con el
   repo real del Paso 2.
 - `node`: nombre del recuerdo (string), o un array de nombres si el registro toca
