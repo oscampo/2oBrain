@@ -5,6 +5,24 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.4.7 (2026-09-07)
+
+Corrección de bug, solo repo local. Sin cambios en `schema.sql` ni en
+`mcp-server` -- no requiere redespliegue.
+
+- **`gemini-page-extractor-system-prompt.md` pedía a Gemini una clave JSON
+  llamada `node`**, desfasada con el rediseño de vocabulario nodes->memories
+  (este repo ya había renombrado `remember-batch.mjs` y la skill
+  `extract-code-records` a `memory`/`createMemory`, pero el prompt de este
+  extractor específico se quedó atrás). Renombrada a `memory` en el schema
+  de salida y en la prosa del prompt. `extract-page-records.mjs` (único
+  consumidor directo, en sus 2 rutas de lectura del JSON crudo de Gemini,
+  `--json` y `--review`) actualizado a leer `f.memory` en vez de `f.node`.
+  Sin este fix, el campo llegaba siempre vacío y cada candidato caía en el
+  recuerdo por defecto aunque el contenido de la página indicara claramente
+  otro. `preference` como valor de `kind` ya no aparecía en ningún prompt
+  ni script de este repo -- ese descarte ya estaba hecho aquí.
+
 ## v0.4.6 (2026-09-07)
 
 Sin cambios en `schema.sql` ni en `mcp-server` -- no requiere redespliegue.
