@@ -5,6 +5,15 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.4.13 (2026-09-08)
+
+Cambio visual, solo repo local. Sin cambios en `schema.sql` ni en
+`mcp-server` -- no requiere redespliegue.
+
+- **Favicon del dashboard**: reemplaza el globo genérico del navegador
+  por el ícono de 2oBrain en la pestaña, inline como SVG data URI (mismo
+  `assets/2obrain-icon.svg`), sin pedir un archivo aparte al servidor.
+
 ## v0.4.12 (2026-09-08)
 
 Cambio visual, solo repo local. Sin cambios en `schema.sql` ni en
