@@ -283,12 +283,14 @@ const SECTIONS = [
   { id: 'forget', label: 'Retractar', group: 'registros' },
   { id: 'recategorize', label: 'Recategorizar registro', group: 'registros', advanced: true },
   { id: 'set-kind', label: 'Cambiar tipo de registro', group: 'registros', advanced: true },
+  { id: 'edit-record', label: 'Editar registro', group: 'registros', advanced: true },
   { id: 'purge-record', label: 'Borrar registro', group: 'registros', advanced: true },
 
   { id: 'merge-memories', label: 'Fusionar recuerdos', group: 'Recuerdos', advanced: true },
   { id: 'aliases', label: 'Alias', group: 'Recuerdos', advanced: true },
   { id: 'relations', label: 'Relaciones', group: 'Recuerdos', advanced: true },
   { id: 'category-candidates', label: 'Candidatos de categoría', group: 'Recuerdos', advanced: true },
+  { id: 'create-memory', label: 'Crear categoría/subcategoría', group: 'Recuerdos', advanced: true },
   { id: 'purge-memory', label: 'Borrar recuerdo', group: 'Recuerdos', advanced: true },
 
   { id: 'extract-records', label: 'Extraer de sesión', group: 'Extraer' },
@@ -2050,6 +2052,73 @@ function section(id, title, hint, bodyHtml) {
   });
 }
 
+// --- Crear categoría/subcategoría ---
+// create-memory.mjs (ya existía, usado hasta ahora solo desde "Candidatos de
+// categoría"): esto expone el mismo comando directo, para cuando Oscar ya
+// sabe el nombre que quiere y no necesita que el sistema se lo sugiera.
+// Categoría/subcategoría no son un constructo de esquema aparte, son
+// recuerdos ordinarios (tabla memories) conectados por convención vía
+// memory_links con relation='pertenece_a' -- por eso "Categoría padre" es
+// opcional: vacío crea una categoría de nivel superior (recuerdo sin
+// padre), lleno crea una subcategoría (recuerdo + enlace pertenece_a en el
+// mismo paso, mismo mecanismo que --parent de create-memory.mjs).
+{
+  const sec = section('create-memory', 'Crear categoría/subcategoría', 'Crea un recuerdo nuevo pensado como categoría o subcategoría ("create-memory.mjs"). Deja "Categoría padre" vacío para una categoría de nivel superior, o elígela para crear una subcategoría ligada a ella (pertenece_a). Antes de insertar, revisa que no exista ya algo parecido (mismo filtro de nombre/alias y de semántica que usa la creación automática).',
+    `<label>Nombre</label><input type="text" id="cm-name" placeholder="ej. rutina-espiritual">
+     <label style="margin-top:16px">Alias (opcional, separados por coma)</label><input type="text" id="cm-aliases" placeholder="ej. vida-espiritual">
+     <label style="margin-top:16px">Categoría padre (opcional -- vacío = categoría de nivel superior)</label>
+     <input type="text" id="cm-parent" placeholder="ej. rutina-diaria" list="cm-memories-list">
+     <datalist id="cm-memories-list"></datalist>
+     <div id="cm-parent-fields" style="display:none">
+       <label style="margin-top:16px">Fecha</label><input type="date" id="cm-date">
+       <label style="margin-top:16px">Motivo (opcional)</label><input type="text" id="cm-reason" placeholder="deja vacío para el motivo por defecto">
+     </div>
+     <div class="checkline" style="margin-top:16px">
+       <input type="checkbox" id="cm-force">
+       <label for="cm-force">Forzar (--force, salta el bloqueo por parecido semántico)</label>
+     </div>
+     <button class="run" id="cm-run" style="margin-top:16px">Crear</button>
+     <div class="status" id="cm-status"></div>`);
+
+  call('GET', '/api/memories').then((r) => {
+    const list = sec.querySelector('#cm-memories-list');
+    (r.memories ?? []).forEach((m) => { const opt = document.createElement('option'); opt.value = m.name; list.appendChild(opt); });
+  });
+
+  const parentInput = sec.querySelector('#cm-parent');
+  const parentFields = sec.querySelector('#cm-parent-fields');
+  const dateInput = sec.querySelector('#cm-date');
+  const runBtn = sec.querySelector('#cm-run');
+  const statusEl = sec.querySelector('#cm-status');
+  dateInput.value = new Date().toISOString().slice(0, 10);
+
+  function syncParentFields() {
+    parentFields.style.display = parentInput.value.trim() ? '' : 'none';
+    runBtn.textContent = parentInput.value.trim() ? 'Crear subcategoría' : 'Crear categoría';
+  }
+  parentInput.addEventListener('input', syncParentFields);
+  syncParentFields();
+
+  runBtn.addEventListener('click', async () => {
+    const name = sec.querySelector('#cm-name').value.trim();
+    if (!name) { statusEl.textContent = 'Falta el nombre.'; return; }
+    const parent = parentInput.value.trim();
+    const body = {
+      name,
+      aliases: sec.querySelector('#cm-aliases').value.trim() || undefined,
+      force: sec.querySelector('#cm-force').checked || undefined,
+    };
+    if (parent) {
+      body.parent = parent;
+      body.date = dateInput.value;
+      body.reason = sec.querySelector('#cm-reason').value.trim() || undefined;
+      if (!body.date) { statusEl.textContent = 'Falta la fecha (obligatoria al elegir categoría padre).'; return; }
+    }
+    statusEl.textContent = '';
+    out(sec, await call('POST', '/api/create-memory', body));
+  });
+}
+
 // --- Alias ---
 // Backfill guiado de alias (Etapa 6, registro #497): list-alias-candidates.mjs
 // solo propone (determinístico + extracción verificada contra el texto real
@@ -2324,6 +2393,114 @@ function section(id, title, hint, bodyHtml) {
     if (!confirmed) { statusEl.textContent = 'Cambio cancelado por el usuario.'; return; }
 
     out(sec, await call('POST', '/api/set-record-kind', { id, kind, reason }));
+    invalidatePreview();
+  });
+}
+
+// --- Editar registro ---
+// edit-record.mjs, 2026-09-08: "super edición" pedida por Oscar, cualquier
+// campo de un registro (claim/date/kind/source/memory) en un solo llamado.
+// Mismo patrón previsualizar-antes-de-confirmar que Cambiar tipo/Retractar,
+// pero acá la previsualización además PRECARGA los campos con el valor
+// actual -- sin eso, el usuario tendría que retipear todo el registro solo
+// para cambiar un carácter. Solo se manda al backend lo que de verdad
+// cambió (comparado contra lo precargado), para no recalcular el embedding
+// ni tocar record_memories sin necesidad cuando ese campo no se tocó.
+{
+  const sec = section('edit-record', 'Editar registro', 'Edita directamente cualquier campo de un registro ya existente ("edit-record.mjs"): claim, fecha, tipo, fuente, recuerdo(s). A diferencia de Retractar (que invalida sin reemplazar) o Cambiar tipo/Recategorizar (un solo campo cada uno), esto corrige el registro tal cual, sin dejar rastro de la versión anterior salvo lo que digas en "Motivo". Úsalo para errores reales de captura (typo, fecha mal tomada, fuente equivocada), no para reinterpretar algo que en su momento se guardó bien.',
+    `<label>Id</label><input type="text" id="er-id" placeholder="412">
+     <button class="run secondary" id="er-preview" style="margin-top:8px">Ver registro</button>
+     <div id="er-fields" style="display:none">
+       <label style="margin-top:16px">Claim</label><textarea id="er-claim"></textarea>
+       <div class="row">
+         <div><label>Fecha</label><input type="date" id="er-date"></div>
+         <div><label>Tipo</label>
+           <select id="er-kind"><option value="fact">fact</option><option value="event">event</option><option value="commitment">commitment</option></select>
+         </div>
+       </div>
+       <label style="margin-top:16px">Fuente</label><input type="text" id="er-source">
+       <label style="margin-top:16px">Recuerdo(s) (separados por coma)</label>
+       <input type="text" id="er-memory" list="er-memories-list">
+       <datalist id="er-memories-list"></datalist>
+       <div class="checkline" style="margin-top:8px">
+         <input type="checkbox" id="er-create-memory">
+         <label for="er-create-memory">Crear el/los recuerdo(s) si no existen (--create-memory)</label>
+       </div>
+       <label style="margin-top:16px">Motivo</label><input type="text" id="er-reason" placeholder="ej. la fecha capturada era la de la sesión, no la del evento">
+       <button class="run" id="er-run" style="margin-top:16px">Guardar cambios</button>
+     </div>
+     <div class="status" id="er-status">Primero pulsa "Ver registro" para cargar sus valores actuales.</div>`);
+
+  call('GET', '/api/memories').then((r) => {
+    const list = sec.querySelector('#er-memories-list');
+    (r.memories ?? []).forEach((m) => { const opt = document.createElement('option'); opt.value = m.name; list.appendChild(opt); });
+  });
+
+  const idInput = sec.querySelector('#er-id');
+  const fieldsWrap = sec.querySelector('#er-fields');
+  const statusEl = sec.querySelector('#er-status');
+  const runBtn = sec.querySelector('#er-run');
+  let previewedFor = null;
+  let previewed = null; // { claim, date, kind, source, memory }
+
+  function invalidatePreview() {
+    previewedFor = null;
+    previewed = null;
+    fieldsWrap.style.display = 'none';
+    statusEl.textContent = 'El id cambió, vuelve a pulsar "Ver registro" antes de guardar.';
+  }
+  idInput.addEventListener('input', invalidatePreview);
+
+  sec.querySelector('#er-preview').addEventListener('click', async () => {
+    const id = idInput.value.trim();
+    if (!id) { statusEl.textContent = 'Falta el id.'; return; }
+    const r = await call('GET', '/api/records?json=1&id=' + encodeURIComponent(id));
+    if (!r.ok || !(r.records ?? [])[0]) {
+      invalidatePreview();
+      statusEl.textContent = r.ok ? `No existe ningún registro #${id}.` : ('Error: ' + r.error);
+      return;
+    }
+    const rec = r.records[0];
+    previewedFor = id;
+    previewed = { claim: rec.claim, date: rec.date, kind: rec.kind, source: rec.source, memory: [...rec.memories].sort().join(',') };
+    sec.querySelector('#er-claim').value = rec.claim;
+    sec.querySelector('#er-date').value = rec.date;
+    sec.querySelector('#er-kind').value = rec.kind;
+    sec.querySelector('#er-source').value = rec.source;
+    sec.querySelector('#er-memory').value = rec.memories.join(',');
+    fieldsWrap.style.display = '';
+    statusEl.textContent = rec.valid_until
+      ? `#${id} ya está retractado${rec.superseded_by ? ` (reemplazado por #${rec.superseded_by})` : ''} -- se puede seguir editando para corregir el dato histórico.`
+      : `Cargado #${id}, edita lo que necesites y confirma.`;
+  });
+
+  runBtn.addEventListener('click', async () => {
+    const id = idInput.value.trim();
+    if (previewedFor !== id) { statusEl.textContent = 'Vuelve a pulsar "Ver registro", el id no coincide con el último previsualizado.'; return; }
+    const reason = sec.querySelector('#er-reason').value.trim();
+    if (!reason) { statusEl.textContent = 'Falta el motivo.'; return; }
+
+    const claim = sec.querySelector('#er-claim').value.trim();
+    const date = sec.querySelector('#er-date').value;
+    const kind = sec.querySelector('#er-kind').value;
+    const source = sec.querySelector('#er-source').value.trim();
+    const memory = sec.querySelector('#er-memory').value.split(',').map((s) => s.trim()).filter(Boolean).sort().join(',');
+
+    const body = { id, reason };
+    const changes = [];
+    if (claim !== previewed.claim) { body.claim = claim; changes.push('claim'); }
+    if (date !== previewed.date) { body.date = date; changes.push('fecha'); }
+    if (kind !== previewed.kind) { body.kind = kind; changes.push('tipo'); }
+    if (source !== previewed.source) { body.source = source; changes.push('fuente'); }
+    if (memory !== previewed.memory) { body.memory = memory; changes.push('recuerdo(s)'); }
+    if (sec.querySelector('#er-create-memory').checked) body.createMemory = true;
+
+    if (changes.length === 0) { statusEl.textContent = 'Nada cambió respecto a lo cargado, no hay nada que guardar.'; return; }
+
+    const confirmed = await confirmAction(`¿Confirmas editar #${id}? Campos que cambian: ${changes.join(', ')}.\n\nMotivo: ${reason}`);
+    if (!confirmed) { statusEl.textContent = 'Edición cancelada por el usuario.'; return; }
+
+    out(sec, await call('POST', '/api/edit-record', body));
     invalidatePreview();
   });
 }

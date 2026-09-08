@@ -5,6 +5,32 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.4.8 (2026-09-08)
+
+Nueva funcionalidad, solo repo local. Sin cambios en `schema.sql` ni en
+`mcp-server` -- no requiere redespliegue.
+
+- **Nueva sección de dashboard "Crear categoría/subcategoría"** (Opciones
+  avanzadas): expone directamente `create-memory.mjs` (ya existía, usado
+  antes solo desde "Candidatos de categoría"). "Categoría padre" opcional
+  -- vacío crea una categoría de nivel superior, con valor crea una
+  subcategoría ligada vía `pertenece_a` en el mismo paso.
+- **Nueva herramienta "Editar registro"** (Opciones avanzadas): corrige
+  claim/date/kind/source/memory de un registro existente en un solo paso,
+  sin retractar y reinsertar. `edit-record.mjs` (nuevo) recalcula el
+  embedding si cambia el claim, y reemplaza la lista completa de recuerdos
+  ligados si cambia memory. `get-records.mjs` gana `--json` (necesario
+  para que el dashboard precargue los valores actuales antes de editar).
+  La sección solo envía al backend lo que realmente cambió respecto a lo
+  cargado.
+- **`HEARTBEAT.md`**: la instrucción de ejecutar la lista de chequeos al
+  arrancar sesión estaba enterrada bajo un párrafo sobre el ritual de
+  habilitación (algo que ya pasó, no una instrucción activa) -- separada
+  en su propia sección "Enabling a new check", con la instrucción de
+  ejecución ahora en negrita y sola. De paso, "job" (vocabulario sin
+  sentido en esta arquitectura de registros/recuerdos) renombrado a
+  "check" en `HEARTBEAT.md`, `CLAUDE.md` y `MEMORY.md`.
+
 ## v0.4.7 (2026-09-07)
 
 Corrección de bug, solo repo local. Sin cambios en `schema.sql` ni en

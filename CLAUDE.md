@@ -713,7 +713,7 @@ instalación.
 Esto no es parte de la entrevista (ya terminó arriba) -- es comportamiento
 de todos los días, así que este archivo lo sigue cubriendo.
 
-**Detección** (job `check-2obrain-updates` de `HEARTBEAT.md`, apagado por
+**Detección** (check `check-2obrain-updates` de `HEARTBEAT.md`, apagado por
 defecto como los demás): `node scripts/db/check-for-updates.mjs` compara
 el archivo `VERSION` local contra el último tag publicado en
 `oscampo/2oBrain` vía `git ls-remote --tags` -- no necesita ningún remote

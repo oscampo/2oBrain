@@ -14,7 +14,7 @@ one-line pointer.
 ## Al iniciar sesión
 
 Run `node scripts/db/memory-status.mjs usuario` (see `CLAUDE.md`, Fase 0
-"YA_INSTALADO"), then check `HEARTBEAT.md` for the due-job list
+"YA_INSTALADO"), then check `HEARTBEAT.md` for the due-check list
 (deliberately kept out of this file: it's stable configuration, not
 memory that gets pruned/rewritten).
 

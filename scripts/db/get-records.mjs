@@ -64,7 +64,21 @@ const { rows } = await client.query(
 const found = new Set(rows.map((r) => Number(r.id)));
 const missing = ids.filter((id) => !found.has(id));
 
-if (rows.length === 0) {
+if (args.json) {
+  console.log(JSON.stringify({
+    records: rows.map((r) => ({
+      id: r.id,
+      date: r.date.toISOString().slice(0, 10),
+      claim: r.claim,
+      source: r.source,
+      kind: r.kind,
+      valid_until: r.valid_until,
+      superseded_by: r.superseded_by,
+      memories: r.memories ? r.memories.split(', ') : [],
+    })),
+    missing,
+  }));
+} else if (rows.length === 0) {
   console.log('Ningún id existe.');
 } else {
   for (const r of rows) {
@@ -73,9 +87,9 @@ if (rows.length === 0) {
     console.log(`\n#${r.id} [${date}]${status} ${r.claim}`);
     console.log(`  fuente: ${r.source} · tipo: ${r.kind}${r.memories ? ` · recuerdos: ${r.memories}` : ''}`);
   }
-}
-if (missing.length > 0) {
-  console.log(`\nNo existe(n): ${missing.join(', ')}`);
+  if (missing.length > 0) {
+    console.log(`\nNo existe(n): ${missing.join(', ')}`);
+  }
 }
 
 await client.end();

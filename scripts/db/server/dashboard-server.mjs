@@ -272,7 +272,18 @@ app.post('/api/purge-memory', async (c) => {
 app.get('/api/records', (c) => {
   const id = c.req.query('id');
   if (!id) return c.json({ ok: false, error: 'falta ?id=' }, 400);
-  return respond(c, runScript('get-records.mjs', ['--id', id]));
+  const args = ['--id', id];
+  if (c.req.query('json')) {
+    args.push('--json');
+    const result = runScript('get-records.mjs', args);
+    if (!result.ok) return c.json({ ok: false, error: result.stderr || 'get-records.mjs falló' }, 422);
+    try {
+      return c.json({ ok: true, ...JSON.parse(result.stdout) });
+    } catch {
+      return c.json({ ok: false, error: 'get-records.mjs no devolvió JSON válido' }, 422);
+    }
+  }
+  return respond(c, runScript('get-records.mjs', args));
 });
 
 // Lee/edita la lista de modelos de respaldo (config/gemini-models.json o
@@ -435,6 +446,24 @@ app.post('/api/set-record-kind', async (c) => {
     return c.json({ ok: false, error: 'faltan id/kind/reason' }, 400);
   }
   return respond(c, runScript('set-record-kind.mjs', ['--record', String(body.id), '--kind', body.kind, '--reason', body.reason]));
+});
+
+// edit-record.mjs, 2026-09-08: "super edición", cualquier campo de un
+// registro ya existente (claim/date/kind/source/memory) en un solo llamado
+// -- a diferencia de set-record-kind/recategorize-record (cada uno un solo
+// campo), pedido explícito de Oscar para correcciones directas sin
+// retractar y reinsertar.
+app.post('/api/edit-record', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body?.id || !body?.reason) return c.json({ ok: false, error: 'faltan id/reason' }, 400);
+  const args = ['--id', String(body.id), '--reason', body.reason];
+  if (body.claim !== undefined) args.push('--claim', body.claim);
+  if (body.date !== undefined) args.push('--date', body.date);
+  if (body.kind !== undefined) args.push('--kind', body.kind);
+  if (body.source !== undefined) args.push('--source', body.source);
+  if (body.memory !== undefined) args.push('--memory', body.memory);
+  if (body.createMemory) args.push('--create-memory');
+  return respond(c, runScript('edit-record.mjs', args));
 });
 
 // No hay endpoint que ejecute extract-records.mjs: esa tarea corre en una
