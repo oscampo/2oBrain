@@ -1,4 +1,6 @@
-<img src="assets/2obrain-logo.svg" width="140" alt="2oBrain logo">
+<div style="text-align: center;">
+  <img src="assets/2obrain-logo.svg" width="280" alt="2oBrain logo">
+</div>
 
 # 2oBrain (English/[Español](https://github.com/oscampo/2oBrain/blob/41e339882223daf39d17abb1c5238bd678893afe/README_SP.md))
 
