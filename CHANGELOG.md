@@ -5,6 +5,26 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.4.9 (2026-09-08)
+
+Nueva funcionalidad, solo repo local. Sin cambios en `schema.sql` ni en
+`mcp-server` -- no requiere redespliegue.
+
+- **`list-commitments.mjs` gana `--memory <nombre>`**: acota los
+  compromisos abiertos a un solo recuerdo. Nace de un caso real: un
+  compromiso con dos partes quedó vigente sin cerrarse aunque una de las
+  partes ya se había resuelto días antes, porque nadie cruzó el registro
+  nuevo contra el compromiso viejo del mismo recuerdo.
+- **`segundo-cerebro-capture` (ambas copias)**: nueva sección "Cerrar
+  compromisos que este registro resuelve" -- al guardar un registro ligado
+  a un recuerdo, correr `list-commitments.mjs --memory` y actuar si
+  resuelve algo abierto (completo: `edit-record.mjs --kind fact`; parcial:
+  mismo cambio a `fact` sin tocar el `claim` original + un `remember.mjs
+  --kind commitment` nuevo acotado a lo que falta).
+- **`HEARTBEAT.md`**: `commitments-check` gana un pase de respaldo,
+  cruzar cada compromiso abierto contra registros más recientes del mismo
+  recuerdo, para lo que se le escape al chequeo de captura.
+
 ## v0.4.8 (2026-09-08)
 
 Nueva funcionalidad, solo repo local. Sin cambios en `schema.sql` ni en

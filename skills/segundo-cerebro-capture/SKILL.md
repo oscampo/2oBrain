@@ -71,6 +71,35 @@ No hay una tercera opción de "ignorar y seguir", el gate existe
 precisamente para que una contradicción no quede coexistiendo sin que
 alguien la haya visto y decidido.
 
+## Cerrar compromisos que este registro resuelve
+
+Si el registro que acabas de guardar (o estás por guardar) va ligado a un
+recuerdo, revisa antes si ese recuerdo tiene compromisos abiertos que
+quedan resueltos:
+
+```bash
+node scripts/db/list-commitments.mjs --memory <ese-recuerdo>
+```
+
+- **Se resuelve por completo**: `node scripts/db/edit-record.mjs --id <id>
+  --kind fact --reason "..."` (cambia la etiqueta, conserva el texto e
+  historial tal cual).
+- **Se resuelve solo en parte** (el compromiso tenía más de una cosa
+  pendiente y esto resolvió solo una): mismo cambio a `fact` en el
+  original, **sin tocar su `claim`**, más un `remember.mjs --kind
+  commitment` nuevo, acotado solo a lo que sigue pendiente. No se edita el
+  `claim` original para "recortarlo" a lo que falta, la vía normal de
+  guardar un registro nuevo ya cubre eso.
+- **No se relaciona**: no se toca nada.
+
+Hallazgo real que motiva esto: un compromiso con dos partes (gestionar un
+trámite + presentar algo en una fecha posterior) quedó vigente sin
+cerrarse pese a que la primera parte ya se había resuelto días antes --
+nadie cruzó el registro nuevo contra el compromiso viejo del mismo
+recuerdo hasta que se preguntó directamente por el estado del proyecto.
+`commitments-check` de `HEARTBEAT.md` es el respaldo para lo que se le
+escape a este chequeo.
+
 ## Cómo consultar lo capturado
 
 ```bash
