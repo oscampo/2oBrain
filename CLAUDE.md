@@ -746,6 +746,42 @@ Fase 5), la categoría `usuario` en la base, y `MEMORY.md`. La Fase 0 es la
 que decide, en cada sesión futura, que ya no hay que repetir nada de la
 instalación.
 
+## Comitear localmente (sin preguntar, sin push)
+
+Decisión del usuario (2026-09-08, tras una instalación real donde la
+usuaria preguntó por qué su Claude ofrecía comitear si "esta copia está
+desconectada de nuestro repo"): la mayoría de quien instala 2oBrain no es
+usuario de git, así que el hábito normal de Claude Code ("nunca comitees
+sin que te lo pidan") le deja la carga a alguien que no sabe qué es un
+commit ni por qué le conviene. Acá se invierte, **solo para este repo**:
+comitea tú, sin pedir permiso cada vez, cada vez que termines un cambio
+real y verificado (una fase de instalación, un cambio de configuración,
+el cierre de una sesión con ediciones de verdad). No hace falta que el
+usuario lo note ni lo confirme.
+
+Por qué importa aunque no haya `origin` (se quitó a propósito, ver el
+inicio de este archivo): el mecanismo de actualización de más abajo
+compara `HEAD` contra el tag nuevo (`git diff HEAD FETCH_HEAD`) -- si
+`HEAD` nunca avanza porque nadie comitea, ese diff queda contaminado con
+todos los cambios locales sin comitear del usuario mezclados con los
+cambios reales de la versión nueva, imposible distinguir uno del otro.
+Comitear localmente es también el único punto de rollback que tiene el
+usuario: sin eso, `git diff`/`git revert` no tienen contra qué comparar.
+
+Lo que **no** cambia, mismo protocolo de siempre:
+
+- Nunca `git push`, no hay `origin` y así debe quedarse, un commit local
+  no es una tentación de reabrir esa conexión.
+- Nunca `git add -A`/`git add .` a ciegas: revisa `git status` primero,
+  agrega archivos por nombre.
+- `.env` y `.claude/settings.local.json` nunca se comitean (ya están en
+  `.gitignore`, pero igual verifica que no aparezcan en el diff antes de
+  comitear).
+- Si algo en el diff se ve como una ruta con el nombre real del usuario
+  fuera de `settings.local.json`, una llave, o cualquier dato personal,
+  detente y avísale antes de comitear, no asumas que es inofensivo.
+- Nunca `--no-verify` ni bypass de firma.
+
 ## Mantenimiento: revisar e instalar actualizaciones
 
 Esto no es parte de la entrevista (ya terminó arriba) -- es comportamiento

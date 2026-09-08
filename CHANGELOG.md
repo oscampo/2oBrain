@@ -5,6 +5,23 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.5.1 (2026-09-08)
+
+Cambio de comportamiento (`CLAUDE.md`), sin cambios en código. Sin
+cambios en `schema.sql` ni en `mcp-server` -- no requiere redespliegue.
+
+- **Commits locales automáticos, sin pedir permiso**: nueva sección
+  "Comitear localmente (sin preguntar, sin push)". Hallazgo real de una
+  instalación de prueba: la usuaria, que no es usuaria de git, no
+  entendía para qué serviría comitear si su copia está desconectada del
+  repo público (`origin` se quita a propósito al clonar). Sin commits
+  locales, el mecanismo de actualización (`git diff HEAD FETCH_HEAD`, ver
+  sección de Mantenimiento) queda contaminado con cambios locales sin
+  comitear, y el usuario no tiene ningún punto de rollback. Mismo
+  protocolo de seguridad de siempre: nunca push (no hay `origin`), nunca
+  `git add -A` a ciegas, nunca comitear `.env`/`settings.local.json` ni
+  datos personales sin revisar el diff primero.
+
 ## v0.5.0 (2026-09-08)
 
 Sin cambios en `schema.sql` ni en `mcp-server` -- no requiere redespliegue.
