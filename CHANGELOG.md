@@ -5,6 +5,71 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.4.7 (2026-09-07)
+
+Corrección de bug, solo repo local. Sin cambios en `schema.sql` ni en
+`mcp-server` -- no requiere redespliegue.
+
+- **`gemini-page-extractor-system-prompt.md` pedía a Gemini una clave JSON
+  llamada `node`**, desfasada con el rediseño de vocabulario nodes->memories
+  (este repo ya había renombrado `remember-batch.mjs` y la skill
+  `extract-code-records` a `memory`/`createMemory`, pero el prompt de este
+  extractor específico se quedó atrás). Renombrada a `memory` en el schema
+  de salida y en la prosa del prompt. `extract-page-records.mjs` (único
+  consumidor directo, en sus 2 rutas de lectura del JSON crudo de Gemini,
+  `--json` y `--review`) actualizado a leer `f.memory` en vez de `f.node`.
+  Sin este fix, el campo llegaba siempre vacío y cada candidato caía en el
+  recuerdo por defecto aunque el contenido de la página indicara claramente
+  otro. `preference` como valor de `kind` ya no aparecía en ningún prompt
+  ni script de este repo -- ese descarte ya estaba hecho aquí.
+
+## v0.4.6 (2026-09-07)
+
+Sin cambios en `schema.sql` ni en `mcp-server` -- no requiere redespliegue.
+Incluye dos commits directos sobre `main` (`326ede0`, `10bbce8`) que
+quedaron sin su propia entrada aquí cuando se hicieron -- documentados
+retroactivamente en esta versión.
+
+- **Timeline con vista visual** (antes: lista plana de texto sin más).
+  Ahora tiene estadísticas (registros/vigentes/reemplazados), una franja
+  de densidad por mes, agrupación colapsable Año -> Mes (con paginación
+  por bloques, no pinta cientos de registros de un tirón), hilos de
+  versión (con "Incluir reemplazados", una cadena de reemplazos se ve
+  como una sola entrada vigente con "Ver evolución" desplegable en vez de
+  N entradas sueltas), un filtro/resaltado en cliente sobre lo ya
+  cargado (texto libre o `kind:evento`/`kind:commitment`/`kind:fact`), una
+  vista "Gráfico" con d3 (carriles por tipo, zoom con rueda/arrastre,
+  tooltip envuelto a 80 caracteres), y una vista "Heatmap" estilo GitHub
+  (clic en un día lleva a la lista filtrada a ese día).
+- **"Extraer de página" no tenía forma de avanzar cuando un candidato
+  traía una fecha real (extraída del texto) distinta de hoy**:
+  `remember-batch.mjs` rechaza (exit 1) cualquier fecha así sin
+  `--confirm-date`, pero esta sección nunca construía ese flag ni ofrecía
+  la casilla para marcarlo -- a diferencia de "Guardar registro" y
+  "Guardar lote", que sí la tienen. El botón "Insertar aprobados" quedaba
+  sin ninguna forma de reintentar, solo el `[EXIT:1]` crudo del script.
+  Corregido: misma casilla y mismo patrón que las otras dos secciones,
+  aparece solo cuando algún candidato incluido tiene fecha distinta de
+  hoy, y un aviso claro en cliente si se intenta insertar sin marcarla.
+
+## v0.4.5 (2026-09-07)
+
+Corrección de bug, solo repo local. Sin cambios en `schema.sql` ni en
+`mcp-server` -- no requiere redespliegue.
+
+- **"Buscar candidatos" en "Candidatos de categoría" del dashboard fallaba
+  siempre con `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`**:
+  `list-category-candidates.mjs` llamaba `process.exit(0)` justo después
+  de que `suggestCategoryName()` usara `fetch()` para pedirle a Ollama
+  Cloud el nombre sugerido de la categoría. En Windows, un exit forzado
+  mientras libuv todavía está cerrando el handle async del fetch revienta
+  con ese assert: el proceso sale con status distinto de cero aunque ya
+  había escrito el JSON/texto correcto a stdout, y el dashboard (que solo
+  mira el exit code) lo reportaba como error aunque la búsqueda sí había
+  funcionado. Mismo patrón ya visto y corregido antes en `create-node.mjs`.
+  Corregido: ninguna rama del script llama `process.exit()` ya, deja que
+  termine solo tras `client.end()`.
+
 ## v0.4.4 (2026-09-06)
 
 Corrección de proceso sobre v0.4.3, mismo día. Sin cambios en `schema.sql`

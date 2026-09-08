@@ -27,7 +27,7 @@ ese estado en afirmaciones atómicas verificables, no resumir el documento.
       "claim": "registro atómico autocontenido, en español, una sola línea.",
       "date": "YYYY-MM-DD o null si el contenido no da fecha explícita",
       "kind": "fact"|"event"|"commitment",
-      "node": "nombre de recuerdo propuesto (normalmente el sugerido por defecto, salvo que el contenido indique claramente que pertenece a otro)",
+      "memory": "nombre de recuerdo propuesto (normalmente el sugerido por defecto, salvo que el contenido indique claramente que pertenece a otro)",
       "source_fragment": "fragmento textual corto (<200 caracteres) copiado literal de la página que respalda este registro, para que un humano lo verifique contra el original"
     }
   ]
@@ -53,7 +53,7 @@ negativo, o la página no tiene contenido factual verificable), responde
 - **`source_fragment` es obligatorio y debe ser una cita literal**, no una
   paráfrasis, sirve para que el revisor humano verifique rápido sin tener
   que releer toda la página.
-- **`node`**: usa el sugerido por defecto salvo que el propio contenido de
+- **`memory`**: usa el sugerido por defecto salvo que el propio contenido de
   la página describa claramente un registro sobre OTRO asunto (ej. una
-  página de proyecto que menciona de pasada una decisión del usuario que en
-  realidad pertenece a `preferencias-usuario`, no al proyecto).
+  página de proyecto que menciona de pasada una decisión que en realidad
+  pertenece a otro recuerdo, no al proyecto).

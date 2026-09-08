@@ -8,6 +8,7 @@ import pg from 'pg';
 
 const rawArgs = process.argv.slice(2);
 const showAll = rawArgs.includes('--all');
+const showJson = rawArgs.includes('--json');
 const node = rawArgs.find((a) => !a.startsWith('--')) ?? null;
 
 const envPath = new URL('../../.env', import.meta.url);
@@ -27,9 +28,11 @@ const client = new pg.Client({
 });
 await client.connect();
 
-const { rows } = await client.query('select * from records_timeline($1, $2, $3)', [node, 20, showAll]);
+const { rows } = await client.query('select * from records_timeline($1, $2, $3)', [node, showJson ? 10000 : 20, showAll]);
 
-if (rows.length === 0) {
+if (showJson) {
+  console.log(JSON.stringify(rows));
+} else if (rows.length === 0) {
   console.log('Sin registros registrados' + (node ? ` para el recuerdo ${node}` : '') + '.');
 } else {
   for (const r of rows) {

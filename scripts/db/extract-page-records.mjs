@@ -5,11 +5,15 @@
 //   - Contexto negativo: los registros ya vigentes del recuerdo asociado a la
 //     página se le pasan al LLM para que no proponga de nuevo lo que ya
 //     existe.
-//   - Cada candidato trae un `node` propuesto (default: el slug sin el
+//   - Cada candidato trae un `memory` propuesto (default: el slug sin el
 //     prefijo de tipo, ej. "people/x" -> "x") y un `source_fragment`
 //     citado literal, para que la auditoría manual (obligatoria, sin
 //     excepción) pueda verificar contra el original sin releer toda la
-//     página.
+//     página. `memory` es el nombre de campo que usa el prompt (ver
+//     prompts/gemini-page-extractor-system-prompt.md) -- se traduce a la
+//     propiedad interna `node` de este script (y de ahí a `memory` de
+//     nuevo al construir el batch para remember-batch.mjs, que en este
+//     repo ya solo acepta memory/createMemory).
 //
 // Dos modos, igual que extract-records.mjs:
 //   - Sin --review: solo IMPRIME los candidatos, no toca la base.
@@ -462,7 +466,7 @@ if (rawResponse == null) {
           claim: f.claim,
           date: f.date ?? null,
           kind: f.kind ?? 'fact',
-          node: f.node ?? defaultNode,
+          node: f.memory ?? defaultNode,
           sourceFragment: f.source_fragment ?? null,
           similarNodes: await suggestSimilarNodes(f.claim),
         });
@@ -480,7 +484,7 @@ if (rawResponse == null) {
     } else if (!args.review) {
       console.log(`\n${records.length} registro(s) candidato(s) para "${page.slug}":\n`);
       for (const f of records) {
-        console.log(`- [${f.date ?? 'sin fecha'}] (${f.kind}) recuerdo:${f.node ?? defaultNode} ${f.claim}`);
+        console.log(`- [${f.date ?? 'sin fecha'}] (${f.kind}) recuerdo:${f.memory ?? defaultNode} ${f.claim}`);
         console.log(`    fragmento: "${f.source_fragment}"`);
         console.log(`    recuerdos existentes parecidos: ${formatNodeSuggestions(await suggestSimilarNodes(f.claim))}`);
       }
@@ -496,7 +500,7 @@ if (rawResponse == null) {
       let quit = false;
 
       for (let i = 0; i < records.length && !quit; i++) {
-        const f = { claim: records[i].claim, date: records[i].date, kind: records[i].kind ?? 'fact', node: records[i].node ?? defaultNode };
+        const f = { claim: records[i].claim, date: records[i].date, kind: records[i].kind ?? 'fact', node: records[i].memory ?? defaultNode };
         console.log(`\n[${i + 1}/${records.length}] (${f.kind}) [${f.date ?? 'sin fecha'}] recuerdo:${f.node}`);
         console.log(f.claim);
         console.log(`  fragmento de origen: "${records[i].source_fragment ?? '(sin fragmento)'}"`);
