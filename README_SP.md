@@ -1,3 +1,5 @@
+<img src="assets/2obrain-logo.svg" width="140" alt="Logo de 2oBrain">
+
 # 2oBrain ([English](https://github.com/oscampo/2oBrain/blob/2adffe7045e5791d03098e55bd871301ba024913/README.md)/Español)
 Un "segundo cerebro" de registros+recuerdos: registros atómicos, fechados y con fuente en Postgres (Supabase), agrupados en recuerdos (proyectos, personas, temas), consultables por cualquier cliente MCP (Claude o cualquier otro que hable MCP), con un panel local para búsqueda/captura/mantenimiento y un gráfico interactivo dirigido por fuerzas sobre cómo se conectan tus recuerdos.
 
