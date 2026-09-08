@@ -55,15 +55,15 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import pg from 'pg';
 import { embed, toVectorLiteral } from './lib/embed.mjs';
+import { getTaskModel } from './lib/task-models.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(SCRIPT_DIR, '..', '..');
 const REMEMBER_BATCH_SCRIPT = join(SCRIPT_DIR, 'remember-batch.mjs');
 const DEFAULT_SYSTEM_PROMPT_FILE = join(SCRIPT_DIR, 'prompts', 'gemini-page-extractor-system-prompt.md');
 const GEMINI_MODELS_CONFIG_FILE = join(SCRIPT_DIR, 'config', 'gemini-models.json');
-const OLLAMA_MODELS_CONFIG_FILE = join(SCRIPT_DIR, 'config', 'ollama-models.json');
 
-const MODELS = { ollama: 'gpt-oss:120b-cloud', gemini: 'gemini-flash-latest' };
+const MODELS = { gemini: 'gemini-flash-latest' };
 const MAX_CONTENT_CHARS = { ollama: 20_000, gemini: 400_000 };
 
 function parseArgs(argv) {
@@ -128,10 +128,9 @@ function loadFallbackOrder(configFile, fallbackDefault) {
   return [fallbackDefault];
 }
 const loadGeminiFallbackOrder = () => loadFallbackOrder(GEMINI_MODELS_CONFIG_FILE, MODELS.gemini);
-const loadOllamaFallbackOrder = () => loadFallbackOrder(OLLAMA_MODELS_CONFIG_FILE, MODELS.ollama);
 
 const geminiCandidates = args.model ? [args.model] : provider === 'gemini' ? loadGeminiFallbackOrder() : [];
-const ollamaCandidates = args.model ? [args.model] : provider === 'ollama' ? loadOllamaFallbackOrder() : [];
+const ollamaCandidates = args.model ? [args.model] : provider === 'ollama' ? [getTaskModel('extraction')] : [];
 let model = provider === 'gemini' ? geminiCandidates[0] : ollamaCandidates[0];
 
 const client = new pg.Client({ connectionString: env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });

@@ -55,24 +55,25 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { listSessions, sessionFilePath } from './lib/session-files.mjs';
+import { getTaskModel } from './lib/task-models.mjs';
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REMEMBER_SCRIPT = join(SCRIPT_DIR, 'remember.mjs');
 const DEFAULT_SYSTEM_PROMPT_FILE = join(SCRIPT_DIR, 'prompts', 'gemini-extractor-system-prompt.md');
 const GEMINI_MODELS_CONFIG_FILE = join(SCRIPT_DIR, 'config', 'gemini-models.json');
-const OLLAMA_MODELS_CONFIG_FILE = join(SCRIPT_DIR, 'config', 'ollama-models.json');
 
-const MODELS = { ollama: 'gpt-oss:120b-cloud', gemini: 'gemini-flash-latest' };
+const MODELS = { gemini: 'gemini-flash-latest' };
 
-// Listas de modelos a probar en orden cuando el primero falla de forma
-// recuperable (Gemini: 503 UNAVAILABLE, "modelo sobrecargado": confirmado
-// por el usuario 2026-08-28; Ollama Cloud: mismo criterio, 503). Viven en un
-// archivo editable cada una, no en este código: los proveedores
-// renombran/retiran modelos con frecuencia (la razón de fondo por la que el
-// default de Gemini ya usa el alias "-latest" en vez de fijar versión), y la
-// lista de respaldo tiene el mismo problema: el usuario debe poder
-// agregar/quitar modelos sin tocar JS (también editable desde el dashboard,
-// ver /api/model-config).
+// Lista de modelos de Gemini a probar en orden cuando el primero falla de
+// forma recuperable (503 UNAVAILABLE, "modelo sobrecargado": confirmado por
+// el usuario 2026-08-28). Vive en un archivo editable, no en este código:
+// el proveedor renombra/retira modelos con frecuencia (la razón de fondo
+// por la que el default ya usa el alias "-latest" en vez de fijar
+// versión), también editable desde el dashboard (ver /api/model-config).
+// Ollama ya no usa este mecanismo de lista/respaldo: usa la selección
+// explícita de config/task-models.json (grupo "extraction", ver
+// lib/task-models.mjs), sin fallback -- decisión del usuario 2026-09-08 para
+// poder comparar modelos entre sí en vez de solo tolerar caídas.
 function loadFallbackOrder(configFile, fallbackDefault) {
   try {
     const config = JSON.parse(readFileSync(configFile, 'utf8'));
@@ -85,7 +86,6 @@ function loadFallbackOrder(configFile, fallbackDefault) {
   return [fallbackDefault];
 }
 const loadGeminiFallbackOrder = () => loadFallbackOrder(GEMINI_MODELS_CONFIG_FILE, MODELS.gemini);
-const loadOllamaFallbackOrder = () => loadFallbackOrder(OLLAMA_MODELS_CONFIG_FILE, MODELS.ollama);
 // Ventana de contexto: Ollama free tier es angosto (probado y confirmado
 // insuficiente en calidad); Gemini declara ~1M tokens, se deja margen
 // generoso sin acercarse al límite real.
@@ -158,7 +158,7 @@ if (args.review && !process.stdin.isTTY) {
 // Sin --model, se prueba en orden la lista de config/gemini-models.json o
 // config/ollama-models.json según el proveedor.
 const geminiCandidates = args.model ? [args.model] : provider === 'gemini' ? loadGeminiFallbackOrder() : [];
-const ollamaCandidates = args.model ? [args.model] : provider === 'ollama' ? loadOllamaFallbackOrder() : [];
+const ollamaCandidates = args.model ? [args.model] : provider === 'ollama' ? [getTaskModel('extraction')] : [];
 let model = provider === 'gemini' ? geminiCandidates[0] : ollamaCandidates[0];
 
 const tzOffset = args['tz-offset'] ? Number(args['tz-offset']) : -5;

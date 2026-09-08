@@ -9,8 +9,9 @@
 // manda a juicio del clasificador sin filtrar antes por similitud (rara vez
 // hay más de 1-2 compromisos abiertos por recuerdo, es barato).
 import { readFileSync } from 'node:fs';
+import { getTaskModel } from './task-models.mjs';
 
-const MODEL = 'gpt-oss:20b-cloud';
+const MODEL = getTaskModel('classifiers');
 const CONFIDENCE_THRESHOLD = 0.85;
 
 function loadEnv() {

@@ -7,8 +7,9 @@
 // null (no bloquea, el llamador simplemente no muestra sugerencia, el campo
 // queda vacío para que el usuario escriba a mano).
 import { readFileSync } from 'node:fs';
+import { getTaskModel } from './task-models.mjs';
 
-const MODEL = 'gpt-oss:20b-cloud';
+const MODEL = getTaskModel('classifiers');
 
 function loadEnv() {
   const envPath = new URL('../../../.env', import.meta.url);

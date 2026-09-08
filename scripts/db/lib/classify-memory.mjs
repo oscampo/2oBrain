@@ -8,8 +8,9 @@
 // candidatos) devuelve null: el llamador (remember.mjs) nunca inserta con
 // recuerdo nulo o placeholder, bloquea y deja que un humano decida.
 import { readFileSync } from 'node:fs';
+import { getTaskModel } from './task-models.mjs';
 
-const MODEL = 'gpt-oss:20b-cloud';
+const MODEL = getTaskModel('classifiers');
 const CONFIDENCE_THRESHOLD = 0.85;
 
 function loadEnv() {

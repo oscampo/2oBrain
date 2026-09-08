@@ -15,8 +15,9 @@
 // registros antes de mostrarlo como candidato -- el llamador nunca confía en
 // la respuesta cruda del modelo.
 import { readFileSync } from 'node:fs';
+import { getTaskModel } from './task-models.mjs';
 
-const MODEL = 'gpt-oss:20b-cloud';
+const MODEL = getTaskModel('classifiers');
 
 function loadEnv() {
   const envPath = new URL('../../../.env', import.meta.url);

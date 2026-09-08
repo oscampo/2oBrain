@@ -5,6 +5,20 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.5.0 (2026-09-08)
+
+Sin cambios en `schema.sql` ni en `mcp-server` -- no requiere redespliegue.
+
+- **Selección explícita de modelo Ollama por grupo de tarea**: nuevo
+  `config/task-models.json` + `lib/task-models.mjs`, y nueva sección
+  "Modelos por tarea" en el dashboard (Opciones avanzadas), con un
+  selector por grupo (classifiers/extraction/synthesis/deepSweep). A
+  diferencia de "Modelos" (lista de respaldo con fallback automático en
+  503), esto fija UN modelo por grupo, sin reintento: pensado para
+  comparar calidad entre modelos de Ollama Cloud (gpt-oss:20b/120b,
+  gemma4:31b, familia nemotron-3) en la práctica, no para resiliencia.
+  El mecanismo de respaldo de Gemini queda intacto.
+
 ## v0.4.14 (2026-09-08)
 
 Cambio visual, solo repo local. Sin cambios en `schema.sql` ni en

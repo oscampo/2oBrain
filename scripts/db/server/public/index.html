@@ -313,6 +313,7 @@ const SECTIONS = [
 
   { id: 'doctor', label: 'Doctor', group: 'Sistema' },
   { id: 'models', label: 'Modelos', group: 'Sistema', advanced: true },
+  { id: 'task-models', label: 'Modelos por tarea', group: 'Sistema', advanced: true },
   { id: 'settings', label: 'Configuración', group: 'Sistema' },
   { id: 'advanced-options', label: 'Opciones avanzadas', group: 'Sistema' },
 ];
@@ -2814,6 +2815,46 @@ function section(id, title, hint, bodyHtml) {
   }
   wireSave('gemini', '#mc-gemini', '#mc-gemini-save');
   wireSave('ollama', '#mc-ollama', '#mc-ollama-save');
+}
+
+// --- Modelos por tarea ---
+// A diferencia de "Modelos" (lista de respaldo por proveedor, con fallback
+// automático en 503), esto elige UN modelo de Ollama Cloud por grupo de
+// tarea (config/task-models.json vía lib/task-models.mjs). Decisión del
+// usuario (2026-09-08) tras comparar 6 modelos de Ollama Cloud: quería poder
+// fijar un modelo distinto por grupo y comparar calidad en vivo, no un
+// fallback automático.
+{
+  const sec = section('task-models', 'Modelos por tarea', 'Elige qué modelo de Ollama Cloud usa cada grupo de tareas del sistema. classifiers: duplicados, memoria, alias, resolución de compromisos, relaciones de mención. extraction: extraer de sesión/página. synthesis: síntesis de búsqueda y estado de recuerdo. deepSweep: candidatos de relación profundos.',
+    `<div id="tm-groups"></div>`);
+
+  async function loadTaskModels() {
+    const r = await call('GET', '/api/task-models');
+    const container = sec.querySelector('#tm-groups');
+    container.innerHTML = '';
+    for (const group of r.groups ?? []) {
+      const row = document.createElement('div');
+      row.style.marginBottom = '16px';
+      const label = document.createElement('label');
+      label.textContent = group;
+      const select = document.createElement('select');
+      for (const m of r.availableModels ?? []) {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = m;
+        if (m === r.models?.[group]) opt.selected = true;
+        select.appendChild(opt);
+      }
+      select.addEventListener('change', async () => {
+        out(sec, await call('POST', '/api/task-models', { group, model: select.value }));
+      });
+      row.appendChild(label);
+      row.appendChild(document.createElement('br'));
+      row.appendChild(select);
+      container.appendChild(row);
+    }
+  }
+  loadTaskModels();
 }
 
 // --- Extraer de sesión ---

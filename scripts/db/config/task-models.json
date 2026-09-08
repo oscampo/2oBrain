@@ -1,0 +1,6 @@
+{
+  "classifiers": "gpt-oss:20b-cloud",
+  "extraction": "gpt-oss:120b-cloud",
+  "synthesis": "gpt-oss:20b-cloud",
+  "deepSweep": "gemma4:31b-cloud"
+}

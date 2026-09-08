@@ -11,8 +11,9 @@
 // configurada. Si se agrega después, va aquí mismo como un tercer 'case'.
 import { readFileSync } from 'node:fs';
 import { generateWithGeminiFallback } from './gemini-fallback.mjs';
+import { getTaskModel } from './task-models.mjs';
 
-const MODELS = { ollama: 'gpt-oss:20b-cloud' };
+const MODELS = { ollama: getTaskModel('synthesis') };
 const SYNTHESIS_PROVIDER_LIST = ['ollama', 'gemini'];
 
 function loadEnv() {

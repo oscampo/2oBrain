@@ -23,8 +23,9 @@
 // demostró una diferencia real de calidad, no solo teórica.
 import { readFileSync } from 'node:fs';
 import { generateWithGeminiFallback } from './gemini-fallback.mjs';
+import { getTaskModel } from './task-models.mjs';
 
-const MODELS = { ollama: 'gpt-oss:20b-cloud', gemini: 'gemini-flash-latest' };
+const MODELS = { ollama: getTaskModel('deepSweep'), gemini: 'gemini-flash-latest' };
 const DEFAULT_PROVIDER = 'gemini';
 
 function loadEnv() {

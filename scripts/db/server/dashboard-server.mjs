@@ -22,6 +22,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stream } from 'hono/streaming';
 import { synthesize } from '../lib/synthesize.mjs';
+import { getAllTaskModels, AVAILABLE_OLLAMA_MODELS, TASK_GROUPS } from '../lib/task-models.mjs';
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const DB_DIR = join(SERVER_DIR, '..');
@@ -314,6 +315,36 @@ app.post('/api/model-config', async (c) => {
   try {
     writeFileSync(path, JSON.stringify({ fallbackOrder }, null, 2) + '\n', 'utf8');
     return c.json({ ok: true, fallbackOrder });
+  } catch (err) {
+    return c.json({ ok: false, error: err.message }, 500);
+  }
+});
+
+// config/task-models.json (2026-09-08, decisión del usuario tras comparar
+// modelos de Ollama Cloud): selección explícita de UN modelo por grupo de
+// tarea (classifiers/extraction/synthesis/deepSweep, ver lib/task-models.mjs
+// para qué scripts cubre cada grupo) -- a diferencia de /api/model-config
+// (lista de respaldo por proveedor), acá no hay fallback, es la elección
+// directa para poder comparar calidad entre modelos.
+const TASK_MODELS_CONFIG_PATH = join(DB_DIR, 'config', 'task-models.json');
+
+app.get('/api/task-models', (c) => {
+  return c.json({ ok: true, groups: TASK_GROUPS, availableModels: AVAILABLE_OLLAMA_MODELS, models: getAllTaskModels() });
+});
+
+app.post('/api/task-models', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body.group !== 'string' || typeof body.model !== 'string' || !body.model.trim()) {
+    return c.json({ ok: false, error: 'faltan group/model' }, 400);
+  }
+  if (!TASK_GROUPS.includes(body.group)) {
+    return c.json({ ok: false, error: `group inválido: "${body.group}". Válidos: ${TASK_GROUPS.join(', ')}` }, 400);
+  }
+  try {
+    const current = getAllTaskModels();
+    current[body.group] = body.model.trim();
+    writeFileSync(TASK_MODELS_CONFIG_PATH, JSON.stringify(current, null, 2) + '\n', 'utf8');
+    return c.json({ ok: true, models: current });
   } catch (err) {
     return c.json({ ok: false, error: err.message }, 500);
   }

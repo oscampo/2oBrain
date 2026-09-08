@@ -26,8 +26,9 @@
 // completo, no en este.
 import { readFileSync } from 'node:fs';
 import { generateWithGeminiFallback } from './gemini-fallback.mjs';
+import { getTaskModel } from './task-models.mjs';
 
-const MODELS = { ollama: 'gpt-oss:20b-cloud', gemini: 'gemini-flash-latest' };
+const MODELS = { ollama: getTaskModel('classifiers'), gemini: 'gemini-flash-latest' };
 const DEFAULT_PROVIDER = 'ollama';
 const CONFIDENCE_THRESHOLD = 0.85;
 
