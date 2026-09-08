@@ -45,9 +45,40 @@ const { rows: edgeRows } = await client.query(`
   select from_memory, to_memory, relation from memory_links order by from_memory, to_memory
 `);
 
+// merge-memories.mjs no reescribe memory_links (hallazgo real, 2026-09-08,
+// instalación de una usuaria): una arista que apuntaba a un recuerdo luego
+// fusionado queda con el nombre viejo para siempre en la tabla, invisible
+// entre los nodos vivos de arriba. Sin resolver esto acá, d3-force truena
+// con "node not found" al armar el grafo (deja `simulation` en null, y
+// después cualquier arrastre truena también) -- server-side, autosana
+// cualquier dato viejo ya roto sin necesitar una migración de reparación,
+// además de lo que ya evita hacia adelante el propio merge-memories.mjs.
+const { rows: allMemories } = await client.query(`select name, merged_into from memories`);
+const mergedIntoOf = new Map(allMemories.map((r) => [r.name, r.merged_into]));
+function resolveLive(name) {
+  const seen = new Set();
+  let current = name;
+  while (mergedIntoOf.get(current) && !seen.has(current)) {
+    seen.add(current);
+    current = mergedIntoOf.get(current);
+  }
+  return current;
+}
+
+const liveNames = new Set(nodeRows.map((r) => r.name));
+const edgeMap = new Map();
+for (const r of edgeRows) {
+  const from = resolveLive(r.from_memory);
+  const to = resolveLive(r.to_memory);
+  if (from === to) continue; // auto-loop resultante de la fusión, se descarta
+  if (!liveNames.has(from) || !liveNames.has(to)) continue; // nodo fantasma, defensivo
+  const key = `${from} ${to} ${r.relation}`;
+  if (!edgeMap.has(key)) edgeMap.set(key, { from, to, relation: r.relation });
+}
+
 await client.end();
 
 console.log(JSON.stringify({
   memories: nodeRows.map((r) => ({ name: r.name, factCount: r.fact_count, isMeta: r.is_meta })),
-  edges: edgeRows.map((r) => ({ from: r.from_memory, to: r.to_memory, relation: r.relation })),
+  edges: [...edgeMap.values()],
 }));

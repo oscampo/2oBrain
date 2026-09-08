@@ -115,6 +115,35 @@ await client.query(
   [toLive, foldedAliases],
 );
 
+// Redirige memory_links: mismo patrón que record_memories arriba (insertar
+// en el destino primero, evitando choques de PK/auto-loops, luego borrar el
+// origen). Sin esto, una arista que apuntaba al recuerdo fusionado queda
+// huérfana (el nodo desaparece de /api/graph por tener merged_into, pero la
+// arista sigue apuntándole), lo que hace tronar el grafo interactivo con
+// "node not found" en d3-force (hallazgo real, 2026-09-08, instalación de
+// una usuaria). graph.mjs también resuelve esto en lectura por si queda
+// algo viejo sin migrar, pero la fuente debe quedar limpia desde el merge
+// mismo.
+const { rows: outgoing } = await client.query(`select to_memory, relation, source, date from memory_links where from_memory = $1`, [fromMemory]);
+for (const row of outgoing) {
+  if (row.to_memory === toLive) continue; // se volvería auto-loop, se descarta
+  await client.query(
+    `insert into memory_links (from_memory, to_memory, relation, source, date)
+     values ($1, $2, $3, $4, $5) on conflict (from_memory, to_memory, relation) do nothing`,
+    [toLive, row.to_memory, row.relation, row.source, row.date],
+  );
+}
+const { rows: incoming } = await client.query(`select from_memory, relation, source, date from memory_links where to_memory = $1`, [fromMemory]);
+for (const row of incoming) {
+  if (row.from_memory === toLive) continue;
+  await client.query(
+    `insert into memory_links (from_memory, to_memory, relation, source, date)
+     values ($1, $2, $3, $4, $5) on conflict (from_memory, to_memory, relation) do nothing`,
+    [row.from_memory, toLive, row.relation, row.source, row.date],
+  );
+}
+await client.query(`delete from memory_links where from_memory = $1 or to_memory = $1`, [fromMemory]);
+
 // Dead-record: el recuerdo origen nunca se borra, solo queda marcado.
 await client.query(`update memories set merged_into = $2 where name = $1`, [fromMemory, toLive]);
 

@@ -5,6 +5,23 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.5.2 (2026-09-08)
+
+Corrige un bug real, sin cambios en `schema.sql` ni en `mcp-server` -- no
+requiere redespliegue.
+
+- **Grafo roto tras fusionar un recuerdo con aristas propias**:
+  `merge-memories.mjs` nunca redirigía `memory_links` al fusionar (solo
+  `record_memories` y alias), así que una arista que apuntaba al recuerdo
+  fusionado quedaba huérfana: el nodo desaparece de `/api/graph` por tener
+  `merged_into`, pero `memory_links` la seguía referenciando, y d3-force
+  tronaba con "node not found" al armar el grafo interactivo (arrastrar
+  cualquier recuerdo después también fallaba). Ahora `merge-memories.mjs`
+  redirige `memory_links` igual que ya hacía con `record_memories`, y
+  `graph.mjs` resuelve en lectura cualquier arista que aún apunte a un
+  recuerdo fusionado, así que un grafo ya roto por un merge anterior se
+  autosana solo con actualizar, sin migración de reparación.
+
 ## v0.5.1 (2026-09-08)
 
 Cambio de comportamiento (`CLAUDE.md`), sin cambios en código. Sin
