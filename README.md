@@ -26,13 +26,13 @@ or a degraded one; the MCP server is the same thin layer for all of them.
 
 - **`scripts/db/`**, the engine. CLI scripts, one job each: `remember.mjs`
   writes a fact, `search.mjs` finds records+pages (hybrid vector+full-text),
-  `timeline.mjs` lists a node's history, `merge-memories.mjs`/`memory-link.mjs`
-  manage the node graph, `doctor.mjs` checks integrity, and a dozen more.
+  `timeline.mjs` lists a memory's history, `merge-memories.mjs`/`memory-link.mjs`
+  manage the memory graph, `doctor.mjs` checks integrity, and a dozen more.
   Every script is a normal Node CLI, run it directly, no framework.
 - **`scripts/db/server/`**, a local Hono server that exposes those same
   scripts over HTTP for a browser dashboard (`scripts/db/server/public/`):
   search with LLM-synthesized answers, a live d3-force graph of your memories,
-  fact capture, node maintenance.
+  fact capture, memories maintenance.
 - **`deno-deploy/mcp-server/`** and **`supabase/functions/mcp-server/`**,
   two interchangeable hosted MCP servers (pick one, or run both) that expose
   `search`/`remember` to any MCP client over the network, Claude Desktop,
@@ -40,8 +40,7 @@ or a degraded one; the MCP server is the same thin layer for all of them.
 - **`scripts/hooks/`**, a Claude Code `Stop` hook (nudges you to capture a
   fact before closing a turn), a `UserPromptSubmit` hook (detects a
   day-start greeting and forces a review of `MEMORY.md`'s startup checklist,
-  deterministically, not by hoping Claude remembers), and a git
-  `post-commit` hook (reloads page embeddings when you commit a `.md` file).
+  deterministically, not by hoping Claude remembers).
 - **`skills/`**, `segundo-cerebro-capture` (when/how to save a fact from
   a session that has DB access) and `extract-code-records` (extract records
   from a session that has *no* access to this repo, another project,
@@ -83,9 +82,7 @@ project and applying `scripts/db/schema.sql`, filling in `.env` (see
 and using the dashboard/CLI only), and getting to know you, facts about
 you go into `records` under a `usuario` category in your own database, and
 how you want the assistant to behave gets written straight into
-`CLAUDE.md`'s own "Cómo trabajar con el usuario" section (no separate
-`SOUL.md`/`USER.md`: a file only Claude Code reads defeats the point of
-memory reachable from anywhere, see "Access it from anywhere" above).
+`CLAUDE.md`'s own "How to work with the user" section.
 
 Once installed, reopen your agent **from inside this cloned folder** in
 future sessions, that's what makes your `CLAUDE.md`/`MEMORY.md` identity
@@ -94,8 +91,7 @@ querying with `search`/`memory-status.mjs` from any other client.
 
 ## What doesn't ship here
 
-Your own records, memories, and any narrative `.md` pages (`daily/`, `guides/`,
-`people/`, `projects/`, `wiki/`) are yours, this repo ships empty
+Your own records, memories, and any narrative pages inside your local `2oBrain` folder are yours, this repo ships empty
 (gitignored by default, see `.gitignore`). `MEMORY.md` ships as a blank
 template the interview script fills in with you, not a worked example.
 
