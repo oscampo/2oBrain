@@ -5,6 +5,16 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.4.14 (2026-09-08)
+
+Cambio visual, solo repo local. Sin cambios en `schema.sql` ni en
+`mcp-server` -- no requiere redespliegue.
+
+- **Favicon con fondo negro fijo**: el ícono es solo trazo, sin relleno,
+  y sobre transparente se veía débil en la pestaña según el tema del
+  navegador. Se agrega un `rect` negro de fondo, siempre, sin depender de
+  `prefers-color-scheme`.
+
 ## v0.4.13 (2026-09-08)
 
 Cambio visual, solo repo local. Sin cambios en `schema.sql` ni en
