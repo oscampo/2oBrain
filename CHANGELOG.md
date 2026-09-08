@@ -5,6 +5,32 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.4.10 (2026-09-08)
+
+Cierra los 3 huecos reales de la Fase 2 (Base de datos) que quedaron
+pendientes tras la prueba de instalación de una usuaria: solo repo local
+(guión de instalación), sin cambios en `schema.sql` ni en `mcp-server`.
+
+- **Nuevo tercer camino en Fase 2**: "sin MCP de Supabase pero con
+  navegador controlable" -- antes solo existían "con MCP" (automático) y
+  "sin MCP" (guía manual completa al usuario). Ahora, si hay navegador
+  controlable, Claude inicia sesión con la cuenta que el usuario acaba de
+  crear, navega la creación del proyecto, genera él mismo la contraseña de
+  la base de datos, y extrae URL/llaves/connection string directo del
+  dashboard -- el usuario solo inicia sesión, no copia ni pega nada.
+- **Modo "Session pooler" del connection string, ahora explícito en los
+  tres caminos**: confirmado necesario (falló el modo por defecto en dos
+  instalaciones distintas), antes `CLAUDE.md` no lo mencionaba en absoluto
+  y `test-connection.mjs` fallaba sin pista de la causa real.
+- **Verificación explícita de `get_publishable_keys`** en el camino "con
+  MCP": nunca se confirmó en vivo si esa herramienta entrega
+  `SUPABASE_SERVICE_ROLE_KEY` completa o vacía (el nombre "publishable"
+  sugiere que podría distinguir la llave pública de la secreta a
+  propósito). Sin confirmación posible por ahora, se agregó un chequeo
+  fail-safe: si la llave queda vacía o con pinta de placeholder, cae a la
+  vía del navegador (si hay) o se le pide al usuario directo, en vez de
+  seguir asumiendo que quedó bien.
+
 ## v0.4.9 (2026-09-08)
 
 Nueva funcionalidad, solo repo local. Sin cambios en `schema.sql` ni en

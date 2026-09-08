@@ -162,17 +162,47 @@ Hazlo todo tú, sin que el usuario abra un navegador:
    `2obrain`, o el que el usuario prefiera).
 4. `get_project` en loop corto hasta que el status sea `ACTIVE_HEALTHY`.
 5. `get_project_url` y `get_publishable_keys` te dan `SUPABASE_URL` y las
-   llaves, escríbelas tú mismo en `.env`.
-6. **Única cosa que el usuario debe hacer**: la API de gestión de Supabase
+   llaves, escríbelas tú mismo en `.env`. **Verifica antes de seguir**: el
+   nombre "publishable" sugiere que podría distinguir deliberadamente la
+   llave pública de la secreta (nunca confirmado en vivo si `service_role`
+   viene completa o vacía) -- si `SUPABASE_SERVICE_ROLE_KEY` te queda
+   vacía o con pinta de placeholder, no sigas asumiendo que está bien: si
+   tienes navegador controlable, resuélvelo con la vía de abajo; si no,
+   pídesela al usuario por Project Settings → API → `service_role key`.
+6. **Única cosa que el usuario debe hacer** (asumiendo que el paso 5 sí
+   entregó las llaves completas): la API de gestión de Supabase
    no expone la contraseña de la base de datos ni el connection string
    completo (Supabase la genera y solo la muestra una vez en el
    dashboard). Dile exactamente dónde ir: *"En supabase.com/dashboard,
    entra al proyecto que acabo de crear → Project Settings → Database →
-   Connection string → modo URI. Cópialo y pégamelo, o dímelo y yo lo
-   escribo en `.env`."* Escribe tú el valor en `SUPABASE_DB_URL`, no le
-   pidas que edite el archivo.
+   Connection string → modo **Session pooler** (no 'URI'/directo, ver la
+   nota de abajo). Cópialo y pégamelo, o dímelo y yo lo escribo en
+   `.env`."* Escribe tú el valor en `SUPABASE_DB_URL`, no le pidas que
+   edite el archivo.
 
-### Si NO tienes MCP de Supabase conectado
+### Si NO tienes MCP pero sí un navegador controlable en esta sesión
+
+Cero fricción real para el usuario, hazlo todo tú navegando:
+
+1. Pídele que inicie sesión en supabase.com con la cuenta que acaba de
+   crear (eso sí es solo suyo, es su cuenta). Espera su confirmación.
+2. Navega tú a "New Project", complétalo tú: nombre (`2obrain` u otro que
+   el usuario prefiera), organización (si hay más de una, pregúntale
+   cuál), y **genera tú mismo una contraseña fuerte y aleatoria** para la
+   base de datos -- guárdala en memoria de esta sesión, la necesitas en el
+   paso 5, es la única vez que existe fuera del dashboard de Supabase.
+3. Espera a que el proyecto quede activo (puede tardar uno o dos minutos,
+   refresca la página del dashboard hasta ver el estado activo).
+4. Navega a Project Settings → API: copia `Project URL`, `anon public
+   key`, `service_role key`.
+5. Navega a Project Settings → Database → Connection string, modo
+   **Session pooler** (obligatorio, ver nota abajo) → copia la plantilla y
+   sustituye `[YOUR-PASSWORD]` por la contraseña que generaste en el paso
+   2.
+6. Escribe los 4 valores en `.env` tú mismo. El usuario no tuvo que copiar
+   ni pegar nada, solo iniciar sesión.
+
+### Si NO tienes ni MCP ni navegador controlable
 
 Guía al usuario paso a paso (esta vez sí, porque no tienes otra
 herramienta), pero sé específico y verifica cada resultado, no asumas:
@@ -181,16 +211,24 @@ herramienta), pero sé específico y verifica cada resultado, no asumas:
    contraseña de la base de datos que elija ahí, Supabase no la vuelve a
    mostrar.
 2. Pide el **connection string** (Project Settings → Database →
-   Connection string → modo URI) y las llaves de API (Project Settings →
-   API: `Project URL`, `anon public key`, `service_role key`).
+   Connection string → modo **Session pooler**, ver nota abajo) y las
+   llaves de API (Project Settings → API: `Project URL`, `anon public
+   key`, `service_role key`).
 3. Crea `.env` desde `.env.example` (`cp .env.example .env` si no existe)
    y escribe tú los 4 valores ahí (`SUPABASE_DB_URL`, `SUPABASE_URL`,
    `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`), el usuario solo te
    pega los valores en el chat, tú editas el archivo.
 
-En ambos casos, explica antes de pedir/guardar `service_role`: tiene acceso
-total sin restricciones de RLS y nunca debe salir de `.env` (no se comitea,
-y evita mostrarlo de vuelta en el chat una vez guardado).
+**Nota sobre el modo del connection string** (hallazgo real, confirmado en
+dos instalaciones distintas): el modo por defecto ("URI"/directo) puede
+fallar en `test-connection.mjs` sin motivo evidente en el mensaje de
+error. El modo **Session pooler** es el que funciona de forma consistente
+-- pídelo directamente en los tres caminos de arriba, no lo dejes como
+plan B tras un fallo.
+
+En todos los casos, explica antes de pedir/guardar `service_role`: tiene
+acceso total sin restricciones de RLS y nunca debe salir de `.env` (no se
+comitea, y evita mostrarlo de vuelta en el chat una vez guardado).
 
 ### Aplicar el esquema (siempre tú, sin excepción)
 
@@ -200,9 +238,9 @@ node test-connection.mjs
 node apply-schema.mjs
 ```
 
-Si `test-connection.mjs` falla, diagnostica tú primero (host/puerto/typo en
-la URL son los errores más comunes) antes de pedirle nada de vuelta al
-usuario.
+Si `test-connection.mjs` falla, lo primero que revises es el modo del
+connection string (¿de verdad quedó en Session pooler, no en URI/directo?)
+antes de sospechar de host/puerto/typo.
 
 **Fase 2 completada**, la base existe y tiene el esquema (`pages`,
 `records`, `memories`, `record_memories`, `memory_links`, `memory_pair_checks`).
