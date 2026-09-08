@@ -1,4 +1,4 @@
-# 2oBrain (English/[Español]())
+# 2oBrain (English/[Español](https://github.com/oscampo/2oBrain/blob/41e339882223daf39d17abb1c5238bd678893afe/README_SP.md))
 
 A records+memories "second brain": atomic, dated, sourced records in Postgres
 (Supabase), grouped into memories (projects, people, topics), searchable by
