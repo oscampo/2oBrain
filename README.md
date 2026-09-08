@@ -1,4 +1,4 @@
-# 2oBrain
+# 2oBrain (English/[Español]())
 
 A records+memories "second brain": atomic, dated, sourced records in Postgres
 (Supabase), grouped into memories (projects, people, topics), searchable by
