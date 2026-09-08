@@ -58,7 +58,7 @@ will just fail or stall with no real progress.
 In Claude Code, tell it:
 
 ```
-Sigue las instrucciones definidas aquí: https://github.com/oscampo/2oBrain
+Follow the instructions defined here: https://github.com/oscampo/2oBrain
 ```
 
 That single message is meant to be enough, even in a brand new session
