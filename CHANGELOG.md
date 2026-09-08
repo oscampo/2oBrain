@@ -5,6 +5,18 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.4.12 (2026-09-08)
+
+Cambio visual, solo repo local. Sin cambios en `schema.sql` ni en
+`mcp-server` -- no requiere redespliegue.
+
+- **Logo de 2oBrain**: nuevo `assets/2obrain-logo.svg` (ícono + wordmark)
+  en el encabezado de `README.md`/`README_SP.md`, y `assets/2obrain-icon.svg`
+  (solo el ícono, recortado del mismo vector) apilado en la barra lateral
+  del dashboard -- ícono al 50% del ancho de la barra, "2oBrain" y
+  "dashboard" como texto debajo, separado del nav por una línea. El
+  header superior queda solo con el badge "solo local".
+
 ## v0.4.11 (2026-09-08)
 
 Nueva funcionalidad, solo repo local. Sin cambios en `schema.sql` ni en
