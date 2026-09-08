@@ -33,6 +33,7 @@ import { findAliasCollisions } from './lib/check-alias-collision.mjs';
 import { classifyMentionRelationHybrid, CLASSIFIER_CONFIDENCE_THRESHOLD as MENTION_CONFIDENCE_THRESHOLD } from './lib/classify-mention-relation.mjs';
 import { formatFactsBlock } from './lib/format-records.mjs';
 import { createLink } from './lib/create-link.mjs';
+import { classifyCommitmentResolution, CLASSIFIER_CONFIDENCE_THRESHOLD as COMMITMENT_CONFIDENCE_THRESHOLD } from './lib/classify-commitment-resolution.mjs';
 
 const SIMILARITY_THRESHOLD = 0.6;
 
@@ -373,6 +374,47 @@ if (supersedesIds.length > 0) {
   console.log(`Reemplazó a #${supersedesIds.join(', #')}.`);
 } else if (similar.length > 0 && args.distinct) {
   console.log(`Confirmado como distinto pese al parecido con #${similar.map((c) => c.id).join(', #')}.`);
+}
+
+// Cierre automático de compromisos (2026-09-08, caso real): revisa si este
+// registro resuelve algún compromiso abierto (kind='commitment') de los
+// mismos recuerdos. A propósito NO usa el umbral de similitud de embedding
+// como filtro (ver lib/classify-commitment-resolution.mjs) -- consulta
+// TODOS los compromisos abiertos de esos recuerdos, rara vez hay más de 1-2.
+// "full": se marca como reemplazado por este registro (superseded_by),
+// misma trazabilidad que cualquier otro supersede, sin tocar su kind (sigue
+// diciendo que fue un compromiso, ahora cerrado). "partial": mismo cierre,
+// más un aviso explícito para crear el compromiso que sigue pendiente --
+// nunca se redacta solo, eso requiere criterio de quien captura.
+if (resolvedNodes.length > 0) {
+  const { rows: openCommitments } = await client.query(
+    `select distinct r.id, r.claim
+     from records r
+     join record_memories rm on rm.record_id = r.id
+     where r.kind = 'commitment' and r.valid_until is null
+       and rm.memory_name = any($1::text[])
+       and r.id <> $2`,
+    [resolvedNodes, newId],
+  );
+
+  for (const commitment of openCommitments) {
+    const verdict = await classifyCommitmentResolution(args.claim, commitment.claim);
+    if (!verdict || verdict.verdict === 'none' || verdict.confidence < COMMITMENT_CONFIDENCE_THRESHOLD) continue;
+
+    await client.query(
+      `update records set valid_until = now(), superseded_by = $2::bigint,
+         source = source || ' [SUPERSEDIDO ' || to_char(now(), 'YYYY-MM-DD') || ' por #' || $3 || ': cierre automático de compromiso, confianza ' || $4 || ']'
+       where id = $1`,
+      [commitment.id, newId, String(newId), verdict.confidence.toFixed(2)],
+    );
+
+    if (verdict.verdict === 'full') {
+      console.log(`(compromiso #${commitment.id} cerrado por completo por este registro, confianza ${verdict.confidence.toFixed(2)}: ${verdict.reasoning})`);
+    } else {
+      console.log(`(compromiso #${commitment.id} cerrado PARCIALMENTE por este registro, confianza ${verdict.confidence.toFixed(2)}: ${verdict.reasoning})`);
+      console.log(`  Queda pendiente crear un nuevo --kind commitment con lo que sigue sin resolver de: "${truncateClaim(commitment.claim)}"`);
+    }
+  }
 }
 
 // Etapa 6 (PLAN-recuerdos.md, 2026-09-02, registro #487): co-ocurrencia textual en

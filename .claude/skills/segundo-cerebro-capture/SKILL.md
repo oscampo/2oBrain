@@ -73,32 +73,41 @@ alguien la haya visto y decidido.
 
 ## Cerrar compromisos que este registro resuelve
 
-Si el registro que acabas de guardar (o estás por guardar) va ligado a un
-recuerdo, revisa antes si ese recuerdo tiene compromisos abiertos que
-quedan resueltos:
+`remember.mjs` ya lo hace solo: cada registro nuevo ligado a un recuerdo
+revisa automáticamente los compromisos abiertos de ese recuerdo (sin
+depender de similitud de embedding, ver `lib/classify-commitment-resolution.mjs`)
+y decide si los resuelve total, parcial, o nada:
+
+- **Resuelto por completo**: el compromiso queda marcado como reemplazado
+  por el registro nuevo (`superseded_by`), conserva su `kind` original
+  (sigue diciendo que fue un compromiso, ahora cerrado) y desaparece solo
+  de `list-commitments.mjs`.
+- **Resuelto en parte** (el compromiso tenía más de una cosa pendiente y
+  esto resolvió solo una): mismo cierre automático, más un aviso en
+  consola pidiendo crear un `remember.mjs --kind commitment` nuevo,
+  acotado solo a lo que sigue pendiente. El texto de lo pendiente nunca se
+  redacta solo, eso requiere criterio de quien captura.
+- **No se relaciona**: no pasa nada, sin ruido.
+
+**Esto solo corre dentro de `remember.mjs`.** Si insertas por
+`remember-batch.mjs` o algún otro camino, revisa a mano:
 
 ```bash
 node scripts/db/list-commitments.mjs --memory <ese-recuerdo>
 ```
 
-- **Se resuelve por completo**: `node scripts/db/edit-record.mjs --id <id>
-  --kind fact --reason "..."` (cambia la etiqueta, conserva el texto e
-  historial tal cual).
-- **Se resuelve solo en parte** (el compromiso tenía más de una cosa
-  pendiente y esto resolvió solo una): mismo cambio a `fact` en el
-  original, **sin tocar su `claim`**, más un `remember.mjs --kind
-  commitment` nuevo, acotado solo a lo que sigue pendiente. No se edita el
-  `claim` original para "recortarlo" a lo que falta, la vía normal de
-  guardar un registro nuevo ya cubre eso.
-- **No se relaciona**: no se toca nada.
+y si algo quedó resuelto sin que el registro que lo resuelve exista
+todavía como reemplazo formal, usa `node scripts/db/supersede-record.mjs
+--old <id-compromiso> --new <id-registro-que-lo-resuelve> --reason "..."`
+para vincularlos retroactivamente.
 
 Hallazgo real que motiva esto: un compromiso con dos partes (gestionar un
 trámite + presentar algo en una fecha posterior) quedó vigente sin
 cerrarse pese a que la primera parte ya se había resuelto días antes --
 nadie cruzó el registro nuevo contra el compromiso viejo del mismo
 recuerdo hasta que se preguntó directamente por el estado del proyecto.
-`commitments-check` de `HEARTBEAT.md` es el respaldo para lo que se le
-escape a este chequeo.
+`commitments-check` de `HEARTBEAT.md` sigue como respaldo diario para lo
+que se le escape incluso al chequeo automático.
 
 ## Cómo consultar lo capturado
 

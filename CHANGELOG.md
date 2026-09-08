@@ -5,6 +5,32 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.4.11 (2026-09-08)
+
+Nueva funcionalidad, solo repo local. Sin cambios en `schema.sql` ni en
+`mcp-server` -- no requiere redespliegue.
+
+- **Cierre automático de compromisos resueltos**: cada `remember.mjs`
+  ahora revisa por su cuenta los compromisos abiertos (`kind='commitment'`)
+  del recuerdo del registro nuevo (sin depender de similitud de embedding
+  como filtro, ver `lib/classify-commitment-resolution.mjs`, nuevo) y
+  decide si el registro nuevo los resuelve total, parcial, o nada. Total:
+  el compromiso queda `superseded_by` el registro nuevo, mismo `kind`,
+  misma trazabilidad que cualquier otro supersede. Parcial: mismo cierre +
+  aviso explícito para crear el compromiso que sigue pendiente (nunca se
+  redacta solo). Verificado en vivo con casos de prueba desechables.
+- **Nueva herramienta `supersede-record.mjs`**: vincula dos registros que
+  YA EXISTEN en una relación de reemplazo -- ni `remember.mjs
+  --supersedes` (solo al insertar) ni `forget.mjs` (retracta sin apuntar a
+  un reemplazo) cubrían este caso. Es la pieza que necesita el respaldo
+  diario de `commitments-check` para poder actuar sobre lo que detecte, no
+  solo reportarlo.
+- **`segundo-cerebro-capture` (ambas copias)**: actualizado para reflejar
+  que el cierre de compromisos ya es automático dentro de `remember.mjs`;
+  el chequeo manual (`list-commitments.mjs --memory` + `supersede-record.mjs`)
+  queda documentado solo para `remember-batch.mjs` y otras vías que no
+  pasan por `remember.mjs`.
+
 ## v0.4.10 (2026-09-08)
 
 Cierra los 3 huecos reales de la Fase 2 (Base de datos) que quedaron
