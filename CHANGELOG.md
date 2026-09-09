@@ -5,6 +5,20 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.5.4 (2026-09-09)
+
+Cambio de texto en el dashboard, sin cambios en código funcional ni en
+`schema.sql`/`mcp-server` -- no requiere redespliegue.
+
+- **Textos de sección sin jerga interna**: las descripciones bajo cada
+  encabezado del dashboard (Doctor, Grafo, Fusionar recuerdos, Crear
+  categoría/subcategoría, Alias, Relaciones, Candidatos de categoría,
+  Extraer de sesión, Extraer de página) mencionaban nombres internos de
+  la base de datos y del código (RLS, memory_links, pertenece_a, slug,
+  kebab-case, la tabla "pages") sin sentido para alguien que instala su
+  propia copia de 2oBrain sin haber visto el desarrollo del proyecto.
+  Reescritos en lenguaje llano.
+
 ## v0.5.3 (2026-09-08)
 
 Corrige un bug real, sin cambios en `schema.sql` ni en `mcp-server` -- no

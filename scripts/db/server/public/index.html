@@ -1488,7 +1488,7 @@ function section(id, title, hint, bodyHtml) {
 
 // --- Doctor ---
 {
-  const sec = section('doctor', 'Doctor', 'Corre un chequeo de integridad de la base ("doctor.mjs"): RLS, embeddings, duplicados y consistencia.',
+  const sec = section('doctor', 'Doctor', 'Corre un chequeo de salud de toda la base ("doctor.mjs"): permisos de acceso a los datos, embeddings desactualizados, contenido duplicado y consistencia general entre registros y recuerdos.',
     `<button class="run" id="doctor-run">Correr chequeo</button>`);
   sec.querySelector('#doctor-run').addEventListener('click', async () => out(sec, await call('GET', '/api/doctor')));
 }
@@ -1504,7 +1504,7 @@ function section(id, title, hint, bodyHtml) {
 // El servidor (graph.mjs) solo entrega memories/edges en JSON, sin caché --
 // cada refresco trae el estado vigente.
 {
-  const sec = section('graph', 'Grafo', 'Mapa interactivo de recuerdos y conexiones (memory_links) tal como existen ahora mismo en la base. Arrastra un recuerdo para reacomodarlo, usa la rueda del mouse para zoom, clic en un recuerdo para resaltar sus vecinos directos (clic de nuevo, o en un espacio vacío, para quitar el resaltado).',
+  const sec = section('graph', 'Grafo', 'Mapa interactivo de tus recuerdos y las conexiones declaradas entre ellos, tal como existen ahora mismo en la base. Arrastra un recuerdo para reacomodarlo, usa la rueda del mouse para hacer zoom, y haz clic en un recuerdo para resaltar sus vecinos directos (clic de nuevo, o en un espacio vacío, para quitar el resaltado).',
     `<div class="row" style="align-items:flex-end; gap:10px">
        <div style="flex:0 0 auto"><button class="run" id="graph-run" style="margin-top:0">Refrescar</button></div>
        <div style="flex:0 0 auto"><button class="run secondary" id="graph-fit" style="margin-top:0">Encuadre</button></div>
@@ -1827,9 +1827,9 @@ function section(id, title, hint, bodyHtml) {
 
 // --- Fusionar recuerdos ---
 {
-  const sec = section('merge-memories', 'Fusionar recuerdos', 'Compara los embeddings de todos los recuerdos y sugiere pares parecidos ("list-merge-candidates.mjs", umbral 0.85). Ningún par se fusiona solo. Revisa cada uno y decide a mano abajo: fusionar retira el recuerdo "from" y pasa sus registros al recuerdo "to" ("merge-memories.mjs").',
+  const sec = section('merge-memories', 'Fusionar recuerdos', 'Compara todos los recuerdos entre sí y sugiere cuáles podrían ser en realidad el mismo tema ("list-merge-candidates.mjs"). Ningún par se fusiona solo: revisa cada sugerencia y decide a mano abajo. Al fusionar, el recuerdo que retiras deja de existir como tal y todos sus registros pasan al recuerdo que eliges como vigente ("merge-memories.mjs").',
     `<button class="run" id="mn-run">Buscar candidatos</button>
-     <label style="margin-top:22px">Fusionar (from → to)</label>
+     <label style="margin-top:22px">Fusionar (recuerdo a retirar → recuerdo vigente)</label>
      <div class="row">
        <div><input type="text" id="mn-from" placeholder="recuerdo a retirar" list="mn-memories-list"></div>
        <div><input type="text" id="mn-to" placeholder="recuerdo vigente" list="mn-memories-list"></div>
@@ -1882,7 +1882,7 @@ function section(id, title, hint, bodyHtml) {
 // (/api/create-memory, /api/memory-link) -- revisión humana obligatoria sigue
 // intacta: nada se crea hasta pulsar el botón de la tarjeta.
 {
-  const sec = section('category-candidates', 'Candidatos de categoría', 'Recuerdos de dominio que no están ligados a nada en la jerarquía (ni son hijos ni son padres de otro recuerdo vía "pertenece_a"), agrupados por similitud temática de sus registros. Si el grupo encaja con una categoría/subcategoría ya existente (por el parecido con sus hijos actuales), se propone enlazarlo/anidarlo ahí en vez de crear una nueva -- editable, siempre puedes elegir "categoría nueva" en su lugar. Nada se crea solo: revisa/edita cada tarjeta y confirma.',
+  const sec = section('category-candidates', 'Candidatos de categoría', 'Recuerdos que todavía no pertenecen a ninguna categoría o subcategoría, agrupados por similitud temática de sus registros. Si un grupo encaja con una categoría/subcategoría ya existente (por su parecido con lo que ya contiene), se propone ubicarlo ahí en vez de crear una nueva, aunque siempre puedes elegir "categoría nueva" en su lugar. Nada se crea solo: revisa y edita cada tarjeta antes de confirmar.',
     `<button class="run" id="sc-run">Buscar candidatos</button>
      <div class="status" id="sc-info"></div>
      <datalist id="sc-memories-list"></datalist>
@@ -1948,12 +1948,12 @@ function section(id, title, hint, bodyHtml) {
         <input type="text" class="sc-existing-category" list="sc-memories-list" value="${cluster.existingCategory ?? ''}">
         <div class="hint" style="margin-top:4px">${existingHint}</div>
         ${isGroup ? `<label style="margin-top:10px">Nombre de la subcategoría nueva</label>
-          <input type="text" class="sc-sub-name" value="${cluster.suggestedName ?? ''}" placeholder="nombre-en-kebab-case">` : ''}
+          <input type="text" class="sc-sub-name" value="${cluster.suggestedName ?? ''}" placeholder="ej. rutina-espiritual (minúsculas y guiones, sin espacios)">` : ''}
       </div>
 
       <div class="sc-new-box" style="margin-top:10px; display:none">
         <label>Nombre de la categoría nueva${cluster.suggestedReasoning ? ` -- sugerido: ${cluster.suggestedReasoning}` : ''}</label>
-        <input type="text" class="sc-new-name" value="${hasExistingMatch ? '' : (cluster.suggestedName ?? '')}" placeholder="nombre-en-kebab-case">
+        <input type="text" class="sc-new-name" value="${hasExistingMatch ? '' : (cluster.suggestedName ?? '')}" placeholder="ej. rutina-espiritual (minúsculas y guiones, sin espacios)">
       </div>
 
       <div class="row" style="margin-top:14px">
@@ -2079,7 +2079,7 @@ function section(id, title, hint, bodyHtml) {
 // padre), lleno crea una subcategoría (recuerdo + enlace pertenece_a en el
 // mismo paso, mismo mecanismo que --parent de create-memory.mjs).
 {
-  const sec = section('create-memory', 'Crear categoría/subcategoría', 'Crea un recuerdo nuevo pensado como categoría o subcategoría ("create-memory.mjs"). Deja "Categoría padre" vacío para una categoría de nivel superior, o elígela para crear una subcategoría ligada a ella (pertenece_a). Antes de insertar, revisa que no exista ya algo parecido (mismo filtro de nombre/alias y de semántica que usa la creación automática).',
+  const sec = section('create-memory', 'Crear categoría/subcategoría', 'Crea un recuerdo nuevo pensado como categoría o subcategoría ("create-memory.mjs"). Deja "Categoría padre" vacío para una categoría de nivel superior, o elígela para crear una subcategoría dentro de ella. Antes de insertar, revisa que no exista ya algo parecido (mismo filtro de nombre/alias y de significado que usa la creación automática).',
     `<label>Nombre</label><input type="text" id="cm-name" placeholder="ej. rutina-espiritual">
      <label style="margin-top:16px">Alias (opcional, separados por coma)</label><input type="text" id="cm-aliases" placeholder="ej. vida-espiritual">
      <label style="margin-top:16px">Categoría padre (opcional -- vacío = categoría de nivel superior)</label>
@@ -2143,7 +2143,7 @@ function section(id, title, hint, bodyHtml) {
 // identidad, no relación): el chequeo de colisión vive en el script, acá
 // solo se muestra lo que devuelva.
 {
-  const sec = section('aliases', 'Alias', 'Un alias es una forma natural de nombrar un recuerdo (nombre de pila, sigla), sin alias, el name interno (kebab-case) casi nunca aparece tal cual en prosa, y el sistema no puede reconocer menciones futuras. "Buscar candidatos" propone formas extraídas de los propios registros del recuerdo (verificadas contra el texto real, nunca inventadas). Nada se aplica solo: revisa y aplica/quita abajo.',
+  const sec = section('aliases', 'Alias', 'Un alias es una forma natural de nombrar un recuerdo (nombre de pila, sigla, apodo). Sin alias, el sistema solo reconoce el nombre exacto del recuerdo, y casi nunca aparece así tal cual escrito en un texto normal, por lo que no puede reconocer menciones futuras a él. "Buscar candidatos" propone formas extraídas de los propios registros del recuerdo (verificadas contra el texto real, nunca inventadas). Nada se aplica solo: revisa y aplica/quita abajo.',
     `<label>Recuerdo (opcional, vacío = revisa todos los que tengan alias vacío)</label>
      <input type="text" id="al-scan-memory" list="al-memories-list">
      <datalist id="al-memories-list"></datalist>
@@ -2217,7 +2217,7 @@ function section(id, title, hint, bodyHtml) {
 // cuando la auto-creación no alcanzó confianza suficiente. Ningún enlace se
 // crea solo desde acá salvo que pulses "Crear".
 {
-  const sec = section('relations', 'Relaciones', 'Enlaces persistentes recuerdo-a-recuerdo ("memory_links"), distinto de que un registro puntual mencione a dos recuerdos a la vez. "Buscar candidatos" corre el escaneo de co-ocurrencia contra TODO el histórico ("list-memory-mentions.mjs"), útil para auditar lo que la auto-creación no llegó a resolver sola. Crear/Borrar son siempre manuales.',
+  const sec = section('relations', 'Relaciones', 'Conexiones declaradas entre dos recuerdos (ej. "colabora con", "hace parte de"), distintas de que un registro puntual mencione a ambos de pasada. "Buscar candidatos" revisa todo el historial en busca de recuerdos que aparecen juntos con frecuencia y no tienen ninguna relación declarada todavía ("list-memory-mentions.mjs"), útil para encontrar lo que la detección automática no resolvió sola. Crear o borrar una relación siempre es manual.',
     `<button class="run" id="rl-scan">Buscar candidatos (histórico completo)</button>
 
      <label style="margin-top:22px">Ver enlaces de un recuerdo</label>
@@ -2865,7 +2865,7 @@ function section(id, title, hint, bodyHtml) {
 // comando exacto con los flags elegidos, para copiar y correr donde el
 // usuario prefiera.
 {
-  const sec = section('extract-records', 'Extraer de sesión', 'No hay un único camino: depende de dónde estés. Elige tu caso.',
+  const sec = section('extract-records', 'Extraer de sesión', 'Convierte lo que se dijo en una conversación con un asistente de IA en registros nuevos para el segundo cerebro. El camino correcto depende de dónde estés ahora mismo, elige tu caso:',
     `<ul class="scenarios">
        <li><strong>Chat, Cowork, Code o CLI, en cualquier repo:</strong>
          usa la skill <code>/extract-code-records</code> + MyMCP. O pídele al LLM:
@@ -2963,8 +2963,8 @@ function section(id, title, hint, bodyHtml) {
 // inserta vía /api/remember-batch (el mismo endpoint de "Guardar lote", sin
 // código nuevo de escritura).
 {
-  const sec = section('extract-page-records', 'Extraer de página', 'Extrae registros candidatos del contenido de una página ("extract-page-records.mjs") y los revisa acá mismo, sin terminal. Acepta un slug ya existente, o la ruta a cualquier archivo .md en disco, esté o no en la tabla "pages". Cada candidato trae recuerdos existentes parecidos por contenido, no solo el que sugiere el nombre del archivo.',
-    `<label>Página (slug existente o ruta .md)</label>
+  const sec = section('extract-page-records', 'Extraer de página', 'Lee el contenido de una nota o página y le propone al modelo qué registros nuevos podría contener ("extract-page-records.mjs"), para que los revises y apruebes acá mismo, sin terminal. Acepta el nombre de una página ya guardada en el sistema, o la ruta a cualquier archivo .md en tu disco, esté o no ya cargado. Cada candidato viene con los recuerdos existentes más parecidos por contenido, no solo el que sugiere el nombre del archivo.',
+    `<label>Página (nombre ya guardado o ruta a un archivo .md)</label>
      <input type="text" id="epf-page" placeholder="ej. projects/segundo-cerebro o C:\\notas\\ejemplo.md" list="epf-pages-list">
      <datalist id="epf-pages-list"></datalist>
      <div class="row">
