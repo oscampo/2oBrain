@@ -5,6 +5,23 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.5.6 (2026-09-09)
+
+Corrige una regresión, sin cambios en `schema.sql` ni en `mcp-server` --
+no requiere redespliegue.
+
+- **Restaura la sección "Acerca de"**: se había perdido por completo (HTML
+  y los endpoints `/api/version`, `/api/check-for-updates`,
+  `/api/feedback-config`) en el commit `326ede0` (2026-09-07,
+  "actualización UI timeline"), al reemplazar el archivo por una versión
+  sincronizada con MyBrain sin revisar qué se perdía en el camino.
+  Restaurada palabra por palabra desde el último commit donde existía
+  (`3d0a1c2`): versión instalada, botón "Buscar actualizaciones", y envío
+  de comentarios por correo a una dirección de contacto configurable.
+  Esta sección es específica de 2oBrain (depende de `VERSION` y
+  `check-for-updates.mjs`, que MyBrain no tiene ni necesita), así que no
+  se replica hacia allá.
+
 ## v0.5.5 (2026-09-09)
 
 Cambio visual, sin cambios en `schema.sql` ni en `mcp-server` -- no
