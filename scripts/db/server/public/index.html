@@ -95,6 +95,7 @@
     width: 100%; border: 1px solid var(--border);
     padding: 4px; height: calc(34px * var(--ui-scale)); border-radius: 6px; cursor: pointer;
   }
+  input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
   textarea { font-family: ui-monospace, monospace; min-height: 90px; resize: vertical; }
   .row { display: flex; gap: 12px; }
   .row > div { flex: 1; }
@@ -239,7 +240,7 @@
   .gph-tooltip { position: absolute; transform: translate(-50%, -100%); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; pointer-events: none; z-index: 10; }
   .gph-ctx-menu { display: none; position: fixed; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px; z-index: 50; box-shadow: 0 6px 20px rgba(0,0,0,.45); }
   .gph-ctx-menu button { display: block; width: 100%; text-align: left; padding: 7px 14px; background: none; border: none; color: var(--text); font-size: 13px; cursor: pointer; border-radius: 5px; white-space: nowrap; }
-  .gph-ctx-menu button:hover { background: var(--border); }
+  .gph-ctx-menu button:hover { background: color-mix(in srgb, var(--accent) 22%, var(--panel)); }
   .gph-edge { stroke: var(--border); stroke-width: 1.6; }
   .gph-edge-label { font-size: 10px; fill: var(--muted); }
   .gph-legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 11px; color: var(--muted); }

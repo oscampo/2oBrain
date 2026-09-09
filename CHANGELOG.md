@@ -5,6 +5,18 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.5.5 (2026-09-09)
+
+Cambio visual, sin cambios en `schema.sql` ni en `mcp-server` -- no
+requiere redespliegue.
+
+- **Checkboxes/radios y menú contextual usan el color de acento**: los
+  checkboxes y radios se pintaban con el azul nativo del navegador,
+  distinto del color de acento del tema (`--accent`), y el hover del menú
+  contextual del grafo usaba un gris neutro en vez de un tinte de acento
+  como el resto de estados interactivos del dashboard. Ambos corregidos
+  para mantener un solo lenguaje visual en toda la página.
+
 ## v0.5.4 (2026-09-09)
 
 Cambio de texto en el dashboard, sin cambios en código funcional ni en
