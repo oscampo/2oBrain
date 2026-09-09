@@ -5,6 +5,17 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.5.3 (2026-09-08)
+
+Corrige un bug real, sin cambios en `schema.sql` ni en `mcp-server` -- no
+requiere redespliegue.
+
+- **Timeout de Ollama en extracción, de 60s a 120s**: `nemotron-3-ultra`
+  (550B, el más pesado de los modelos que se pueden elegir en
+  `config/task-models.json`) abortaba con "This operation was aborted" al
+  extraer una página de apenas ~6200 caracteres. 120s deja margen sin
+  penalizar artificialmente al modelo más grande de los seis disponibles.
+
 ## v0.5.2 (2026-09-08)
 
 Corrige un bug real, sin cambios en `schema.sql` ni en `mcp-server` -- no

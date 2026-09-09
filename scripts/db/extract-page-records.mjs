@@ -317,7 +317,11 @@ async function callOllama() {
         headers: { Authorization: `Bearer ${env.OLLAMA_API_KEY}`, 'content-type': 'application/json' },
         body: JSON.stringify({ model, prompt: userPrompt, system: systemPrompt, format: 'json', stream: false }),
       },
-      60_000,
+      // 60s se quedaba corto con nemotron-3-ultra (550B, el más pesado de
+      // los modelos que se comparan en config/task-models.json, ver
+      // lib/task-models.mjs) -- "This operation was aborted" real,
+      // 2026-09-08, extrayendo una página de ~6200 caracteres.
+      120_000,
     );
   } catch (err) {
     console.error(`ERROR DE RED llamando a Ollama Cloud (modelo "${model}"): ${err.message}`);
