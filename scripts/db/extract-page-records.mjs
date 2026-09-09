@@ -320,8 +320,15 @@ async function callOllama() {
       // 60s se quedaba corto con nemotron-3-ultra (550B, el más pesado de
       // los modelos que se comparan en config/task-models.json, ver
       // lib/task-models.mjs) -- "This operation was aborted" real,
-      // 2026-09-08, extrayendo una página de ~6200 caracteres.
-      120_000,
+      // 2026-09-08, extrayendo una página de ~6200 caracteres, subido
+      // entonces a un fijo de 120s. 2026-09-09: se repitió con una página de
+      // 17308 caracteres (cerca del tope MAX_CONTENT_CHARS.ollama), los 120s
+      // fijos ya no alcanzaban -- nemotron-3-ultra escala mal con el tamaño
+      // del contenido, no era un caso aislado. Cambiado a un timeout que
+      // escala con content.length (base 60s + 12ms/carácter, piso 120s) en
+      // vez de perseguir un número fijo cada vez que aparezca una página más
+      // grande: en el tope de 20k caracteres da ~5min.
+      Math.max(120_000, 60_000 + content.length * 12),
     );
   } catch (err) {
     console.error(`ERROR DE RED llamando a Ollama Cloud (modelo "${model}"): ${err.message}`);

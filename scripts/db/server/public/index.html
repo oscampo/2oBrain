@@ -2979,6 +2979,7 @@ function section(id, title, hint, bodyHtml) {
      <div class="status" id="epf-info"></div>
      <datalist id="epf-memories-list"></datalist>
      <div id="epf-cards"></div>
+     <p class="hint" id="epf-merge-hint" style="display:none">Clic derecho sobre cualquier tarjeta marcada "Fusionar con otra(s)" para combinarla con las demás marcadas.</p>
      <div class="checkline" id="epf-confirm-date-wrap" style="display:none">
        <input type="checkbox" id="epf-confirm-date">
        <label for="epf-confirm-date">Confirmo que las fechas distintas de hoy son intencionales (--confirm-date, ej. un timeline histórico)</label>
@@ -2994,6 +2995,7 @@ function section(id, title, hint, bodyHtml) {
   const nodesList = sec.querySelector('#epf-memories-list');
   const confirmDateWrap = sec.querySelector('#epf-confirm-date-wrap');
   const confirmDateCheck = sec.querySelector('#epf-confirm-date');
+  const mergeHint = sec.querySelector('#epf-merge-hint');
 
   // Igual que en "Guardar registro"/"Guardar lote": remember-batch.mjs
   // rechaza (exit 1) cualquier fecha distinta de hoy sin --confirm-date, y
@@ -3050,6 +3052,9 @@ function section(id, title, hint, bodyHtml) {
       <div class="fc-top">
         <input type="checkbox" class="fc-include" checked>
         <label>Incluir #${index + 1} (${fact.kind})</label>
+        <span style="flex:1"></span>
+        <input type="checkbox" class="fc-merge">
+        <label>Fusionar con otra(s)</label>
       </div>
       <label>registro</label>
       <textarea class="fc-claim">${fact.claim.replace(/</g, '&lt;')}</textarea>
@@ -3065,20 +3070,80 @@ function section(id, title, hint, bodyHtml) {
       <label>Recuerdo</label>
       <input type="text" class="fc-node" value="${fact.node}" list="epf-memories-list">
       <div class="fc-suggestions">recuerdos parecidos: ${suggestionsHtml}</div>
+      <div class="checkline"><input type="checkbox" class="fc-distinct"><label>Confirmar distinto pese a registros parecidos (--distinct, solo si "Insertar aprobados" lo bloquea por duplicado)</label></div>
       <div class="fc-fragment">"${(fact.sourceFragment ?? '').replace(/</g, '&lt;')}"</div>`;
     card.querySelector('.fc-kind').value = fact.kind;
     card.querySelector('.fc-include').addEventListener('change', (e) => card.classList.toggle('excluded', !e.target.checked));
+    card.querySelector('.fc-merge').addEventListener('change', () => syncMergeHintVisibility());
     for (const span of card.querySelectorAll('.fc-suggestions span')) {
       span.addEventListener('click', () => { card.querySelector('.fc-node').value = span.dataset.node; });
     }
     return card;
   }
 
+  // Fusión manual de tarjetas (2026-09-09, registro #690/#700 en UAObrain):
+  // pedido de Oscar tras ver que nemotron-3-ultra tiende a sobre-fragmentar
+  // un mismo hecho en varios candidatos. En vez de intentar que el
+  // modelo/prompt lo resuelva (no generaliza a otros modelos ni a
+  // extracciones futuras), la fusión es puramente del lado del dashboard:
+  // concatena los "claim" de las tarjetas marcadas, en el orden en que
+  // aparecen, en la primera de ellas, y borra el resto. El usuario edita el
+  // texto fusionado a mano después, como con cualquier tarjeta -- la
+  // decisión de cómo integrar queda de su lado. Se activa vía menú
+  // contextual (clic derecho sobre cualquier tarjeta marcada, 2+ marcadas)
+  // en vez de un botón fijo debajo de la lista: con extracciones de 20+
+  // candidatos, bajar hasta el final cada vez no era cómodo. Mismo patrón
+  // .gph-ctx-menu ya usado en el grafo ("Ver timeline"/"Ver estado del
+  // recuerdo" más arriba en este archivo).
+  function syncMergeHintVisibility() {
+    const marked = cardsEl.querySelectorAll('.fc-merge:checked');
+    mergeHint.style.display = marked.length >= 2 ? '' : 'none';
+  }
+
+  function performMerge() {
+    const cards = [...cardsEl.querySelectorAll('.fact-card')].filter((c) => c.querySelector('.fc-merge').checked);
+    if (cards.length < 2) return;
+    const [target, ...rest] = cards;
+    const claims = cards.map((c) => c.querySelector('.fc-claim').value.trim());
+    target.querySelector('.fc-claim').value = claims.join(' ');
+    target.querySelector('.fc-merge').checked = false;
+    for (const c of rest) c.remove();
+    syncMergeHintVisibility();
+    syncConfirmDateVisibility();
+  }
+
+  const mergeCtxMenu = document.createElement('div');
+  mergeCtxMenu.className = 'gph-ctx-menu';
+  mergeCtxMenu.innerHTML = `<button type="button">Fusionar seleccionadas</button>`;
+  document.body.appendChild(mergeCtxMenu);
+  function hideMergeCtxMenu() { mergeCtxMenu.style.display = 'none'; }
+  document.addEventListener('click', hideMergeCtxMenu);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideMergeCtxMenu(); });
+  mergeCtxMenu.querySelector('button').addEventListener('click', (e) => {
+    e.stopPropagation();
+    hideMergeCtxMenu();
+    performMerge();
+  });
+  cardsEl.addEventListener('contextmenu', (e) => {
+    const card = e.target.closest('.fact-card');
+    if (!card) return;
+    const marked = cardsEl.querySelectorAll('.fc-merge:checked');
+    if (marked.length < 2) return; // deja el menú nativo del navegador si no hay nada que fusionar
+    e.preventDefault();
+    const btn = mergeCtxMenu.querySelector('button');
+    btn.textContent = `Fusionar seleccionadas (${marked.length})`;
+    mergeCtxMenu.style.display = 'block';
+    const menuW = 220, menuH = 40;
+    mergeCtxMenu.style.left = Math.min(e.clientX, window.innerWidth - menuW - 8) + 'px';
+    mergeCtxMenu.style.top = Math.min(e.clientY, window.innerHeight - menuH - 8) + 'px';
+  });
+
   extractBtn.addEventListener('click', async () => {
     const page = sec.querySelector('#epf-page').value.trim();
     if (!page) { infoEl.textContent = 'Falta la página.'; return; }
     cardsEl.innerHTML = '';
     insertBtn.style.display = 'none';
+    mergeHint.style.display = 'none';
     extractBtn.disabled = true;
     infoEl.textContent = 'Extrayendo (puede tardar, corre un LLM sobre el contenido)…';
     try {
@@ -3107,9 +3172,15 @@ function section(id, title, hint, bodyHtml) {
       claim: c.querySelector('.fc-claim').value.trim(),
       date: c.querySelector('.fc-date').value || undefined,
       kind: c.querySelector('.fc-kind').value,
-      node: c.querySelector('.fc-node').value.trim(),
+      // memory/createMemory, no node/createNode (2026-09-09): remember-batch.mjs
+      // en este repo ya fue renombrado limpio, sin el alias de compatibilidad
+      // que sí tiene UAObrain -- con los nombres viejos, el recuerdo escrito en
+      // la tarjeta se descartaba en silencio en cada inserción (requestedNodes
+      // quedaba vacío, caía siempre a desambiguación automática).
+      memory: c.querySelector('.fc-node').value.trim(),
       source: lastSource,
-      createNode: true,
+      createMemory: true,
+      distinct: c.querySelector('.fc-distinct').checked || undefined,
     }));
     const confirmDate = confirmDateCheck.checked || undefined;
     if (!confirmDate && records.some((r) => r.date && r.date !== todayBogota())) {

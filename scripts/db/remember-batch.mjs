@@ -191,7 +191,15 @@ for (let i = 0; i < records.length; i++) {
   let autoResolved = null;
   let source = f.source;
 
-  if (similar.length > 0) {
+  // distinct por registro (2026-09-09, dashboard "Extraer de página"): mismo
+  // criterio que --distinct de remember.mjs, un humano ya revisó la tarjeta y
+  // confirmó que el parecido no es un duplicado -- salta el clasificador y el
+  // bloqueo, entra directo. Sin esto, este script solo tenía la ruta de
+  // supersedes automático o bloqueo, nunca la de "distinto explícito" que sí
+  // existe en remember.mjs (registro #690/#700 en UAObrain).
+  if (similar.length > 0 && f.distinct) {
+    console.error(`  (confirmado como distinto pese al parecido con #${similar.map((c) => c.id).join(', #')}, explícito en el JSON)`);
+  } else if (similar.length > 0) {
     autoResolved = await classifyDuplicate(f.claim, similar);
     if (autoResolved && autoResolved.confidence >= CLASSIFIER_CONFIDENCE_THRESHOLD) {
       if (autoResolved.verdict === 'supersedes') {
