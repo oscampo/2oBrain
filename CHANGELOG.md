@@ -5,6 +5,21 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.6.1 (2026-09-10)
+
+Corrige un bug real de usabilidad. Sin cambios en `schema.sql`.
+
+- **Zona horaria configurable (`TIMEZONE`), en vez de `America/Bogota`
+  fija**: `remember.mjs`, `remember-batch.mjs` y los dos servidores MCP
+  (Supabase Edge Function, Deno Deploy) calculaban "hoy" siempre en
+  `America/Bogota` para validar `--date`/`confirmDate`, lo que bloqueaba
+  cualquier registro con la fecha real de hoy para alguien en otra zona
+  horaria. Ahora leen `TIMEZONE` (nombre IANA, ej. `Europe/Madrid`) de
+  `.env` en los scripts, o de la variable de entorno del servidor
+  desplegado en los MCP, con `America/Bogota` como default si no está
+  puesta, para no romper instalaciones existentes. Documentado en
+  `.env.example`.
+
 ## v0.6.0 (2026-09-10)
 
 Corrige un vacío real de instalación y documenta un patrón de acceso

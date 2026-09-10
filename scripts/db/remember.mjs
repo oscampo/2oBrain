@@ -75,6 +75,17 @@ if (!/^\d{4}-\d{2}-\d{2}$/.test(args.date)) {
   process.exit(1);
 }
 
+const envPath = new URL('../../.env', import.meta.url);
+const env = Object.fromEntries(
+  readFileSync(envPath, 'utf8')
+    .split(/\r?\n/)
+    .filter((l) => l.includes('='))
+    .map((l) => {
+      const i = l.indexOf('=');
+      return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
+    }),
+);
+
 // --date distinto de hoy es legítimo a propósito (registros históricos,
 // backfill de extract-records.mjs sobre una sesión pasada, timelines de
 // proyectos armados en retrospectiva): nunca debe bloquearse por defecto
@@ -86,26 +97,20 @@ if (!/^\d{4}-\d{2}-\d{2}$/.test(args.date)) {
 // --distinct/--create-memory en este mismo script: no es fricción para el
 // caso histórico legítimo (un flag, no una re-ejecución completa), y hace
 // imposible que el desfase pase desapercibido en el caso accidental.
-const todayBogota = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
-if (args.date !== todayBogota && !args['confirm-date']) {
+// Zona horaria configurable (TIMEZONE en .env, registro #691): estaba fija
+// en America/Bogota, lo que hacía a 2oBrain inutilizable para alguien fuera
+// de esa zona (--date de hoy real le bloqueaba siempre). Default preservado
+// para no romper instalaciones existentes que no la hayan puesto.
+const TIMEZONE = env.TIMEZONE?.trim() || 'America/Bogota';
+const todayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(new Date());
+if (args.date !== todayLocal && !args['confirm-date']) {
   console.error(
-    `--date ${args.date} es distinto de hoy (${todayBogota} en America/Bogota).\n` +
+    `--date ${args.date} es distinto de hoy (${todayLocal} en ${TIMEZONE}).\n` +
       'Si es un registro histórico o backfill intencional, agrega --confirm-date para confirmarlo.\n' +
       'Si fue sin querer, corrige --date y vuelve a intentar.',
   );
   process.exit(1);
 }
-
-const envPath = new URL('../../.env', import.meta.url);
-const env = Object.fromEntries(
-  readFileSync(envPath, 'utf8')
-    .split(/\r?\n/)
-    .filter((l) => l.includes('='))
-    .map((l) => {
-      const i = l.indexOf('=');
-      return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
-    }),
-);
 
 const client = new pg.Client({
   connectionString: env.SUPABASE_DB_URL,

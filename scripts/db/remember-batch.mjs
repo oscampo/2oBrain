@@ -88,17 +88,31 @@ if (!Array.isArray(records) || records.length === 0) {
   process.exit(1);
 }
 
+const envPath = new URL('../../.env', import.meta.url);
+const env = Object.fromEntries(
+  readFileSync(envPath, 'utf8')
+    .split(/\r?\n/)
+    .filter((l) => l.includes('='))
+    .map((l) => {
+      const i = l.indexOf('=');
+      return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
+    }),
+);
+
 // Mismo chequeo que remember.mjs (2026-09-03, registro #528), a nivel de lote:
 // una sola confirmación cubre todo el archivo, en vez de una por registro: no
 // tiene sentido pedir --confirm-date repetido cuando ES el timeline entero
 // el que es histórico (caso real: timeline de "explorando-cuerpo-construir-
 // suenos" armado en retrospectiva en una sola sesión). Se revisa ANTES de
 // conectar a la base o gastar ningún embedding, para fallar barato.
-const todayBogota = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
-const mismatchedDates = records.filter((f) => f.date && f.date !== todayBogota);
+// Zona horaria configurable (TIMEZONE en .env, registro #691) -- ver
+// remember.mjs para el razonamiento completo.
+const TIMEZONE = env.TIMEZONE?.trim() || 'America/Bogota';
+const todayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(new Date());
+const mismatchedDates = records.filter((f) => f.date && f.date !== todayLocal);
 if (mismatchedDates.length > 0 && !args['confirm-date']) {
   console.error(
-    `${mismatchedDates.length} de ${records.length} registro(s) del lote tienen --date distinto de hoy (${todayBogota} en America/Bogota):\n`,
+    `${mismatchedDates.length} de ${records.length} registro(s) del lote tienen --date distinto de hoy (${todayLocal} en ${TIMEZONE}):\n`,
   );
   for (const f of mismatchedDates.slice(0, 10)) {
     console.error(`  [${f.date}] ${truncateClaim(f.claim ?? '(sin claim)')}`);
@@ -110,17 +124,6 @@ if (mismatchedDates.length > 0 && !args['confirm-date']) {
   );
   process.exit(1);
 }
-
-const envPath = new URL('../../.env', import.meta.url);
-const env = Object.fromEntries(
-  readFileSync(envPath, 'utf8')
-    .split(/\r?\n/)
-    .filter((l) => l.includes('='))
-    .map((l) => {
-      const i = l.indexOf('=');
-      return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
-    }),
-);
 
 const client = new pg.Client({
   connectionString: env.SUPABASE_DB_URL,

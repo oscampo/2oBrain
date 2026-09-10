@@ -20,6 +20,11 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
 const OLLAMA_API_KEY = Deno.env.get('OLLAMA_API_KEY');
 
+// Zona horaria configurable (secreto TIMEZONE, registro #691) -- estaba fija
+// en America/Bogota, default preservado para no romper despliegues existentes
+// que no la hayan puesto.
+const TIMEZONE = Deno.env.get('TIMEZONE')?.trim() || 'America/Bogota';
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const SIMILARITY_THRESHOLD = 0.6;
 // Bitácora de construcción del dashboard (28-ago-2026): registros meta que citan
@@ -344,7 +349,7 @@ mcp.tool('remember', {
     createMemory: z.boolean().optional().describe('Crea el/los recuerdo(s) si no existen todavía, en vez de fallar'),
     supersedes: z.array(z.number()).optional().describe('IDs de registros vigentes que este reemplaza'),
     distinct: z.boolean().optional().describe('Confirma que es distinto pese al parecido con candidatos'),
-    confirmDate: z.boolean().optional().describe('Obligatorio si date no es la fecha real de hoy (America/Bogota) -- confirma que un registro con fecha distinta es intencional (histórico, backfill), no un error de no verificar la fecha antes de llamar'),
+    confirmDate: z.boolean().optional().describe(`Obligatorio si date no es la fecha real de hoy (${TIMEZONE}) -- confirma que un registro con fecha distinta es intencional (histórico, backfill), no un error de no verificar la fecha antes de llamar`),
   }),
   handler: async (args: {
     claim: string;
@@ -368,12 +373,12 @@ mcp.tool('remember', {
     // #528/#530): bloquea por defecto si date no es hoy, salvo confirmDate
     // explícito: evita el error real que motivó esto (registro #525, grabado
     // con fecha vieja por no verificar antes de llamar).
-    const todayBogota = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
-    if (args.date !== todayBogota && !args.confirmDate) {
+    const todayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(new Date());
+    if (args.date !== todayLocal && !args.confirmDate) {
       return {
         content: [{
           type: 'text',
-          text: `date ${args.date} es distinto de hoy (${todayBogota} en America/Bogota). Si es un registro histórico o backfill intencional, pasa confirmDate: true. Si fue sin querer, corrige date y vuelve a intentar.`,
+          text: `date ${args.date} es distinto de hoy (${todayLocal} en ${TIMEZONE}). Si es un registro histórico o backfill intencional, pasa confirmDate: true. Si fue sin querer, corrige date y vuelve a intentar.`,
         }],
         isError: true,
       };
