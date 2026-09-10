@@ -100,6 +100,33 @@ app.post('/api/synthesize', async (c) => {
   }
 });
 
+// Qué proveedores de síntesis tienen key configurada (hallazgo real,
+// instalación de una usuaria, 2026-09-08, registro #686): "Buscar"
+// defaultaba a Ollama sin importar qué haya elegido el usuario en la
+// instalación, así que alguien que solo configuró Gemini se topaba con
+// "falta OLLAMA_API_KEY" la primera vez que buscaba, sin saber que había
+// un selector de proveedor escondido en Configuración. Nunca devuelve las
+// keys en sí, solo si existen (mismo principio de la cabecera del
+// archivo: las keys no llegan al navegador), el frontend usa esto SOLO
+// para el default inicial del selector, nunca sobreescribe una elección
+// explícita ya guardada.
+app.get('/api/available-providers', (c) => {
+  try {
+    // Línea por línea, nunca una regex con 'm' sobre el archivo completo: \s
+    // cruza saltos de línea, así que "OLLAMA_API_KEY=\nGEMINI_API_KEY=xyz"
+    // daba falso positivo para OLLAMA_API_KEY (el \S+ del valor vacío
+    // terminaba comiéndose el valor real de la línea siguiente).
+    const lines = readFileSync(join(DB_DIR, '..', '..', '.env'), 'utf8').split(/\r?\n/);
+    const has = (name) => lines.some((line) => {
+      const m = line.match(new RegExp(`^${name}\\s*=\\s*(.*)$`));
+      return !!m && m[1].trim().length > 0;
+    });
+    return c.json({ ok: true, ollama: has('OLLAMA_API_KEY'), gemini: has('GEMINI_API_KEY') });
+  } catch (err) {
+    return c.json({ ok: false, error: err.message }, 500);
+  }
+});
+
 // Lista de slugs de páginas para poblar el autocompletado del campo
 // "Página" en Timeline: sin esto hay que memorizar el slug exacto.
 app.get('/api/pages', (c) => {

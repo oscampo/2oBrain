@@ -5,6 +5,23 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.6.2 (2026-09-10)
+
+Corrige un bug real de instalación. Sin cambios en `schema.sql`.
+
+- **"Buscar" ya no fuerza Ollama si el usuario no lo configuró**: quien
+  elige solo Gemini durante la instalación se topaba con "falta
+  OLLAMA_API_KEY" la primera vez que usaba "Buscar", sin saber que había
+  un selector de proveedor escondido en Configuración. Nuevo endpoint
+  `/api/available-providers` (nunca expone las keys en sí, solo si
+  existen) usado una sola vez al cargar el dashboard para corregir el
+  default guardado, solo si el usuario nunca hizo una elección explícita.
+  Mensaje de error de síntesis también mejorado, apunta directo a la
+  sección de Configuración.
+- Paridad menor: agregada la regla `select { accent-color }` que había
+  quedado solo en la copia interna (inofensiva, ayuda en navegadores que
+  la respeten para el desplegable nativo).
+
 ## v0.6.1 (2026-09-10)
 
 Corrige un bug real de usabilidad. Sin cambios en `schema.sql`.

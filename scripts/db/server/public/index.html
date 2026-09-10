@@ -96,6 +96,7 @@
     padding: 4px; height: calc(34px * var(--ui-scale)); border-radius: 6px; cursor: pointer;
   }
   input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
+  select { accent-color: var(--accent); }
   textarea { font-family: ui-monospace, monospace; min-height: 90px; resize: vertical; }
   .row { display: flex; gap: 12px; }
   .row > div { flex: 1; }
@@ -586,6 +587,7 @@ const DEFAULT_SETTINGS = {
   reduceMotion: 'system', // 'system' | 'on' | 'off'
   searchSynthProvider: 'ollama', // proveedor por defecto para la respuesta sintetizada de "Buscar"
   searchSynthModel: '', // '' = auto (probar en orden)
+  searchSynthProviderAuto: true, // true = todavía no hay elección explícita del usuario, ver corrección de abajo
 };
 
 function loadSettings() {
@@ -598,6 +600,31 @@ function loadSettings() {
 }
 
 let settings = loadSettings();
+
+// Corrige el proveedor de síntesis de "Buscar" si el que quedó guardado
+// (default 'ollama') no tiene su key configurada, pero el otro sí --
+// hallazgo real, instalación de una usuaria, 2026-09-08 (registro #686):
+// eligió solo Gemini durante la instalación, y "Buscar" le tiraba "falta
+// OLLAMA_API_KEY" sin que supiera que había un selector de proveedor en
+// Configuración. Nunca pisa una elección explícita ya hecha
+// (searchSynthProviderAuto pasa a false en cuanto el usuario toca el
+// selector, ver sección "Configuración"). No lee las keys en sí, el
+// endpoint solo dice si existen (mismo principio de nunca exponerlas al
+// navegador).
+(async () => {
+  if (!(settings.searchSynthProviderAuto ?? true)) return;
+  try {
+    const r = await fetch('/api/available-providers').then((res) => res.json());
+    if (!r.ok) return;
+    const currentOk = settings.searchSynthProvider === 'ollama' ? r.ollama : r.gemini;
+    if (currentOk) return;
+    const fallback = settings.searchSynthProvider === 'ollama' ? (r.gemini ? 'gemini' : null) : (r.ollama ? 'ollama' : null);
+    if (fallback) {
+      settings.searchSynthProvider = fallback;
+      saveSettings();
+    }
+  } catch {}
+})();
 
 function saveSettings() {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {}
@@ -801,7 +828,7 @@ function section(id, title, hint, bodyHtml) {
     const provider = settings.searchSynthProvider;
     const model = settings.searchSynthModel || undefined;
     const synth = await call('POST', '/api/synthesize', { query: q, rawResults: raw, provider, model });
-    renderAnswer(synth.ok ? synth.answer : `Error al sintetizar: ${synth.error}. Activa "Ver datos crudos" para ver los fragmentos sin redactar.`, !synth.ok);
+    renderAnswer(synth.ok ? synth.answer : `Error al sintetizar: ${synth.error}. Activa "Ver datos crudos" para ver los fragmentos sin redactar, o cambia el proveedor en Configuración → "Síntesis por defecto en \"Buscar\"".`, !synth.ok);
   });
 }
 
@@ -3304,7 +3331,7 @@ function section(id, title, hint, bodyHtml) {
   densitySel.addEventListener('change', () => update({ density: densitySel.value }));
   motionSel.addEventListener('change', () => update({ reduceMotion: motionSel.value }));
   searchProviderSel.addEventListener('change', async () => {
-    update({ searchSynthProvider: searchProviderSel.value, searchSynthModel: '' });
+    update({ searchSynthProvider: searchProviderSel.value, searchSynthModel: '', searchSynthProviderAuto: false });
     await loadSearchModelOptions();
   });
   searchModelSel.addEventListener('change', () => update({ searchSynthModel: searchModelSel.value }));
