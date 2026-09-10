@@ -631,7 +631,27 @@ otros clientes MCP (Claude Desktop, Claude Chat/Cowork, cualquier app que
 hable MCP), no solo el dashboard/CLI de este repo?
 - **Si NO**: continúa a la Fase 9. Puedes volver a esto cuando quieras, no
   bloquea nada del resto del sistema.
-- **Si SÍ**: hay dos opciones, el usuario elige una (o ambas):
+- **Si SÍ**: primero genera la clave de acceso, la necesitan ambas
+  opciones de abajo (`Deno.env.get('MCP_ACCESS_KEY')!` en el propio
+  código del servidor, sin ella el deploy queda hecho pero cada llamada
+  truena en producción -- hallazgo real, 2026-09-10: ni siquiera la
+  instalación original de referencia dejó esto documentado, se había
+  configurado a mano sin dejar rastro escrito):
+  1. Genera un valor aleatorio largo (ej. `openssl rand -hex 32`, o
+     equivalente si `openssl` no está disponible).
+  2. Escríbelo en `.env` como `MCP_ACCESS_KEY=<valor>` (mismo patrón que
+     las demás keys, para que scripts locales puedan usarlo también).
+  3. Configúralo como secreto en el destino elegido (no hay una
+     herramienta MCP para esto, tienes que correrlo tú vía shell o
+     guiar al usuario si no puedes):
+     - Supabase: `supabase secrets set MCP_ACCESS_KEY=<valor>` (requiere
+       la Supabase CLI autenticada; si el usuario ya usó la Supabase CLI
+       en la Fase 2, reutiliza esa sesión).
+     - Deno Deploy: no tiene un comando CLI equivalente vía
+       `jsr:@deno/deploy` -- indícale al usuario que lo agregue en
+       Project Settings → Environment Variables de dash.deno.com (esto
+       sí es solo suyo, no hay forma de automatizarlo).
+  - Hay dos opciones de dónde desplegar, el usuario elige una (o ambas):
   - **Supabase Edge Function** (`supabase/functions/mcp-server/`): si
     tienes el MCP de Supabase conectado (Fase 2), despliégala tú
     directamente con la herramienta `deploy_edge_function` de ese MCP,
@@ -663,6 +683,55 @@ herramienta (es configuración de la cuenta del usuario, no del
 sistema de archivos), así que díselo tú mismo apenas termine el deploy,
 con la URL exacta del endpoint que acabas de verificar, no lo des por
 sobreentendido.
+
+**Acceso "universal" vía CLI, para LLMs sin cliente MCP nativo** (probado
+en la práctica con Ollama CLI, generaliza a cualquier CLI que reciba
+comandos por stdio, ej. Codex CLI): el endpoint desplegado arriba habla
+SSE/HTTP, no stdio, así que una CLI local no puede apuntarle directo.
+`supergateway` (paquete de npm, sin instalación previa vía `npx -y`)
+hace de puente stdio↔SSE. Después de confirmar el deploy, escribe estos
+dos archivos en la raíz del repo del usuario (uno por plataforma, deja
+los dos, no adivines cuál necesita):
+
+`2oBrain.bat` (Windows):
+```bat
+@echo off
+setlocal enabledelayedexpansion
+if "%MCP_ACCESS_KEY%"=="" (
+    echo [ERROR] La variable de entorno MCP_ACCESS_KEY no esta configurada.
+    echo Guardala con: setx MCP_ACCESS_KEY "tu_clave"
+    echo Si acabas de usar setx, reinicia la terminal para que surta efecto.
+    pause
+    exit /b 1
+)
+set "MCP_URL=<URL_REAL_DEL_ENDPOINT>?key=%MCP_ACCESS_KEY%"
+npx -y supergateway --sse "%MCP_URL%"
+endlocal
+```
+
+`2oBrain.sh` (Linux/macOS, recuerda `chmod +x`):
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+if [ -z "${MCP_ACCESS_KEY:-}" ]; then
+  echo "[ERROR] La variable de entorno MCP_ACCESS_KEY no esta configurada." >&2
+  echo 'Guardala en tu ~/.bashrc o ~/.zshrc: export MCP_ACCESS_KEY="tu_clave"' >&2
+  exit 1
+fi
+MCP_URL="<URL_REAL_DEL_ENDPOINT>?key=${MCP_ACCESS_KEY}"
+npx -y supergateway --sse "$MCP_URL"
+```
+
+Sustituye `<URL_REAL_DEL_ENDPOINT>` por la URL exacta que ya verificaste
+(la del Supabase Edge Function o la de Deno Deploy, según cuál eligió el
+usuario; si eligió ambas, uno de los dos scripts por plataforma alcanza,
+apuntando al que prefiera como principal). La clave NUNCA va escrita en
+el archivo, siempre se lee de la variable de entorno persistente
+(`setx`/`export`), mismo criterio de seguridad que `.env`: nada secreto
+queda commiteado si el usuario decide versionar estos scripts más
+adelante. Explícale al usuario que debe guardar `MCP_ACCESS_KEY` como
+variable de entorno de su sistema (no solo en `.env`, ese archivo no lo
+lee un CLI externo) antes de que el script funcione.
 
 ## Fase 9: Skills y hooks
 

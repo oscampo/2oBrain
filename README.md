@@ -17,7 +17,7 @@ from what was actually written down.
 ## Access it from anywhere
 
 The database is the single source of truth, not any one app or machine.
-Once a hosted MCP server is deployed (Fase 7 of the install), the same
+Once a hosted MCP server is deployed (Fase 8 of the install), the same
 `search`/`remember` reach whatever client you're in, Claude Code, Claude
 Chat, Claude Cowork, a generic MCP-speaking CLI, desktop or mobile, with
 no separate sync step and no client-specific setup beyond connecting to
@@ -25,6 +25,11 @@ the one URL. This isn't aspirational: the same design was verified live
 across all four of those surfaces (Code, Chat, Cowork, a generic CLI) and
 from a phone, before this scaffold existed. No client gets a special path
 or a degraded one; the MCP server is the same thin layer for all of them.
+
+Even a CLI that only speaks stdio, not MCP over HTTP/SSE, natively (proven
+with Ollama's own CLI) can reach it: Fase 8 generates a small launcher
+script (`2oBrain.bat`/`2oBrain.sh`) that bridges stdio to the deployed
+endpoint via `supergateway`, no code changes needed on either side.
 
 ## Architecture
 

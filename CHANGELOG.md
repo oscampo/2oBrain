@@ -5,6 +5,27 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.6.0 (2026-09-10)
+
+Corrige un vacío real de instalación y documenta un patrón de acceso
+nuevo. Sin cambios en `schema.sql`; sí toca la Fase 8 de `CLAUDE.md`.
+
+- **Fase 8 nunca documentaba cómo configurar el secreto `MCP_ACCESS_KEY`**
+  del servidor MCP desplegado: el código lo exige
+  (`Deno.env.get('MCP_ACCESS_KEY')!`), pero ni Supabase ni Deno Deploy lo
+  reciben automáticamente al desplegar, así que cualquier instalación
+  quedaba con un servidor desplegado y verificado por `deploy_edge_function`
+  pero roto en la primera llamada real. Agregados los pasos concretos:
+  generar la clave, escribirla en `.env`, y configurarla como secreto en
+  el destino elegido (`supabase secrets set` para Supabase; Project
+  Settings → Environment Variables de dash.deno.com para Deno Deploy, no
+  automatizable).
+- **Acceso "universal" vía CLI para LLMs sin cliente MCP nativo**
+  (probado con Ollama CLI): nueva sección en Fase 8 que genera
+  `2oBrain.bat`/`2oBrain.sh`, un puente stdio↔SSE vía `supergateway` hacia
+  el endpoint ya desplegado, sin tocar código de ningún lado. Documentado
+  también en README.md/README_SP.md.
+
 ## v0.5.6 (2026-09-09)
 
 Corrige una regresión, sin cambios en `schema.sql` ni en `mcp-server` --

@@ -7,7 +7,9 @@ No es una aplicación para tomar notas. No es una wiki. Cada hecho tiene una fec
 
 ## Accede a él desde cualquier lugar
 
-La base de datos es la única fuente de verdad, no una aplicación o máquina en particular. Una vez desplegado el servidor MCP alojado (Fase 7 de la instalación), las mismas funciones `search`/`remember` alcanzan a cualquier cliente en el que te encuentres: Claude Code, Claude Chat, Claude Cowork, una CLI genérica que hable MCP, escritorio o móvil, sin un paso de sincronización independiente y sin configuración específica por cliente más allá de conectarse a esa única URL. Esto no es una aspiración: el mismo diseño fue verificado en vivo en esas cuatro superficies (Code, Chat, Cowork, una CLI genérica) y desde un teléfono, antes de que existiera este andamiaje. Ningún cliente recibe una ruta especial ni una degradada; el servidor MCP es la misma capa delgada para todos ellos.
+La base de datos es la única fuente de verdad, no una aplicación o máquina en particular. Una vez desplegado el servidor MCP alojado (Fase 8 de la instalación), las mismas funciones `search`/`remember` alcanzan a cualquier cliente en el que te encuentres: Claude Code, Claude Chat, Claude Cowork, una CLI genérica que hable MCP, escritorio o móvil, sin un paso de sincronización independiente y sin configuración específica por cliente más allá de conectarse a esa única URL. Esto no es una aspiración: el mismo diseño fue verificado en vivo en esas cuatro superficies (Code, Chat, Cowork, una CLI genérica) y desde un teléfono, antes de que existiera este andamiaje. Ningún cliente recibe una ruta especial ni una degradada; el servidor MCP es la misma capa delgada para todos ellos.
+
+Incluso una CLI que solo hable stdio, no MCP sobre HTTP/SSE, de forma nativa (probado con la propia CLI de Ollama) puede llegar a él: la Fase 8 genera un script pequeño (`2oBrain.bat`/`2oBrain.sh`) que hace de puente entre stdio y el endpoint desplegado vía `supergateway`, sin tocar código de ningún lado.
 
 ## Arquitectura
 
