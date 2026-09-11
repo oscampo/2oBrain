@@ -5,6 +5,33 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.6.3 (2026-09-11)
+
+`doctor.mjs` pasa de diagnóstico puro a diagnóstico + tratamiento. Sin
+cambios en `schema.sql`.
+
+- **`doctor.mjs --fix`**: aplica sin preguntar los chequeos donde el
+  estado correcto es determinista y no hay una segunda respuesta válida
+  (RLS apagado, `superseded_by` sin `valid_until`, `memory_links`/
+  `memory_pair_checks` huérfanos por una fusión de recuerdos). Lo que sí
+  requiere decidir algo (qué fecha es la correcta, a qué recuerdo
+  pertenece un registro, quién se queda con un alias en disputa) se queda
+  como diagnóstico, con el comando manual impreso.
+- **`doctor.mjs --json`**: salida estructurada (`{ ok, fixed, warnings,
+  checks: [...] }`), pensada para que el dashboard renderice tarjetas en
+  vez de texto plano.
+- **Dashboard, sección Doctor rehecha**: botón "Corregir" que aplica lo
+  mecánico de una sola llamada, y una tarjeta por caso individual para lo
+  que requiere tu decisión (fecha correcta, recuerdo a asignar, alias en
+  disputa), cada una con su control, motivo y botón de aplicar.
+- **Retirados los 3 chequeos de páginas del vault** ("Páginas con
+  embedding", "Embeddings al día", "Contenido duplicado entre páginas"):
+  `pages`/`load-pages.mjs` es una particularidad de la instalación
+  personal de quien construyó 2oBrain (indexa carpetas de su propio vault
+  vía un hook de git), 2oBrain no distribuye esa carpeta ni ese flujo a
+  ningún usuario, así que esos chequeos eran ruido permanente, nunca un
+  caso real que alguien fuera a atender.
+
 ## v0.6.2 (2026-09-10)
 
 Corrige un bug real de instalación. Sin cambios en `schema.sql`.

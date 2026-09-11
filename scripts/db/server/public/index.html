@@ -1516,10 +1516,176 @@ function section(id, title, hint, bodyHtml) {
 }
 
 // --- Doctor ---
+// doctor.mjs distingue chequeos "mecánicos" (el dato correcto es único y
+// determinista: permisos apagados, un campo huérfano por un bug de
+// escritura, caché vencida por una fusión) de los que requieren que el
+// usuario decida algo (qué fecha es la correcta, a qué recuerdo pertenece un
+// registro, quién se queda con un alias en disputa). "Corregir" aplica los
+// primeros sin preguntar (ver doctor.mjs --fix, 2026-09-11); los segundos
+// se renderizan como una tarjeta por caso individual con el control que
+// hace falta y un botón para aplicar, mismo patrón que "Candidatos de
+// categoría". Sin chequeos de páginas del vault (retirados 2026-09-11):
+// 2oBrain no distribuye esa carpeta ni ese flujo, load-pages.mjs es una
+// particularidad del vault personal de quien construyó el proyecto original.
 {
-  const sec = section('doctor', 'Doctor', 'Corre un chequeo de salud de toda la base ("doctor.mjs"): permisos de acceso a los datos, embeddings desactualizados, contenido duplicado y consistencia general entre registros y recuerdos.',
-    `<button class="run" id="doctor-run">Correr chequeo</button>`);
-  sec.querySelector('#doctor-run').addEventListener('click', async () => out(sec, await call('GET', '/api/doctor')));
+  const sec = section('doctor', 'Doctor', 'Corre un chequeo de salud de toda la base ("doctor.mjs"): permisos de acceso a los datos, fechas y consistencia entre registros y recuerdos. "Corregir" aplica de una vez lo que no tiene ambigüedad; lo demás requiere tu decisión y aparece abajo, un caso a la vez, con la acción lista para aplicar.',
+    `<button class="run" id="doctor-run">Correr chequeo</button>
+     <button class="run secondary" id="doctor-fix">Corregir</button>
+     <pre class="out" id="doctor-summary"></pre>
+     <div id="doctor-cards"></div>`);
+
+  const summaryEl = sec.querySelector('#doctor-summary');
+  const cardsEl = sec.querySelector('#doctor-cards');
+  let memoriesListEl = null;
+
+  function ensureMemoriesList() {
+    if (memoriesListEl) return memoriesListEl;
+    memoriesListEl = document.createElement('datalist');
+    memoriesListEl.id = 'doctor-memories-list';
+    sec.appendChild(memoriesListEl);
+    call('GET', '/api/memories').then((r) => {
+      for (const n of r.memories ?? []) {
+        const opt = document.createElement('option');
+        opt.value = n.name;
+        memoriesListEl.appendChild(opt);
+      }
+    });
+    return memoriesListEl;
+  }
+
+  function renderFutureDateCase(c) {
+    const card = document.createElement('div');
+    card.className = 'fact-card';
+    card.innerHTML = `
+      <div class="fc-top"><label>#${c.id}, fecha registrada: ${c.date} (futura)</label></div>
+      <div class="fc-fragment">"${escapeHtml(c.claim)}"</div>
+      <label style="margin-top:10px">Fecha correcta</label>
+      <input type="date" class="dc-date">
+      <label>Motivo</label>
+      <input type="text" class="dc-reason" placeholder="ej. typo de año al capturar">
+      <button class="run secondary dc-apply">Corregir fecha</button>`;
+    const btn = card.querySelector('.dc-apply');
+    btn.addEventListener('click', async () => {
+      const date = card.querySelector('.dc-date').value;
+      const reason = card.querySelector('.dc-reason').value.trim();
+      if (!date) { out(card, { ok: false, stdout: '', stderr: 'Falta la fecha correcta.' }); return; }
+      if (!reason) { out(card, { ok: false, stdout: '', stderr: 'Falta el motivo.' }); return; }
+      if (!(await confirmAction(`¿Corregir #${c.id} a fecha ${date}?`))) return;
+      btn.disabled = true;
+      const r = await call('POST', '/api/edit-record', { id: c.id, date, reason });
+      out(card, r);
+      if (r.ok) card.classList.add('excluded'); else btn.disabled = false;
+    });
+    return card;
+  }
+
+  function renderNoMemoryCase(c) {
+    const card = document.createElement('div');
+    card.className = 'fact-card';
+    ensureMemoriesList();
+    card.innerHTML = `
+      <div class="fc-top"><label>#${c.id}, sin recuerdo asignado</label></div>
+      <div class="fc-fragment">"${escapeHtml(c.claim)}"</div>
+      <label style="margin-top:10px">Recuerdo</label>
+      <input type="text" class="dc-memory" list="doctor-memories-list" placeholder="nombre del recuerdo">
+      <div class="checkline"><input type="checkbox" class="dc-create" id="dc-create-${c.id}"><label for="dc-create-${c.id}">Crear el recuerdo si no existe</label></div>
+      <label>Motivo</label>
+      <input type="text" class="dc-reason" placeholder="ej. se coló sin recuerdo al capturar por lote">
+      <button class="run secondary dc-apply">Asignar recuerdo</button>`;
+    const btn = card.querySelector('.dc-apply');
+    btn.addEventListener('click', async () => {
+      const memory = card.querySelector('.dc-memory').value.trim();
+      const createMemory = card.querySelector('.dc-create').checked;
+      const reason = card.querySelector('.dc-reason').value.trim();
+      if (!memory) { out(card, { ok: false, stdout: '', stderr: 'Falta el recuerdo.' }); return; }
+      if (!reason) { out(card, { ok: false, stdout: '', stderr: 'Falta el motivo.' }); return; }
+      if (!(await confirmAction(`¿Asignar #${c.id} al recuerdo "${memory}"?`))) return;
+      btn.disabled = true;
+      const r = await call('POST', '/api/edit-record', { id: c.id, memory, createMemory, reason });
+      out(card, r);
+      if (r.ok) card.classList.add('excluded'); else btn.disabled = false;
+    });
+    return card;
+  }
+
+  let aliasCaseCounter = 0;
+  function renderAliasCase(c) {
+    const card = document.createElement('div');
+    card.className = 'fact-card';
+    const groupName = `dc-owner-${aliasCaseCounter++}`;
+    const ownersHtml = c.owners
+      .map(
+        (o, i) => `
+      <div class="fc-top">
+        <input type="radio" name="${groupName}" class="dc-owner" value="${escapeHtml(o)}" ${i === 0 ? 'checked' : ''}>
+        <label>${escapeHtml(o)} se queda con el alias</label>
+      </div>`,
+      )
+      .join('');
+    card.innerHTML = `
+      <div class="fc-top"><label>Alias en disputa: "${escapeHtml(c.form)}"</label></div>
+      ${ownersHtml}
+      <label style="margin-top:10px">Motivo</label>
+      <input type="text" class="dc-reason" placeholder="ej. el alias describe mejor al primero, el segundo ya tiene nombre propio claro">
+      <button class="run secondary dc-apply">Quitar el alias al resto</button>`;
+    const btn = card.querySelector('.dc-apply');
+    btn.addEventListener('click', async () => {
+      const winner = card.querySelector('.dc-owner:checked').value;
+      const losers = c.owners.filter((o) => o !== winner);
+      const reason = card.querySelector('.dc-reason').value.trim();
+      if (!reason) { out(card, { ok: false, stdout: '', stderr: 'Falta el motivo.' }); return; }
+      if (!(await confirmAction(`¿Dejar "${c.form}" solo en "${winner}" y quitárselo a ${losers.join(', ')}?`))) return;
+      btn.disabled = true;
+      const lines = [];
+      let anyFailed = false;
+      for (const loser of losers) {
+        const r = await call('POST', '/api/set-memory-aliases', { memory: loser, remove: c.form, reason });
+        lines.push(r.stdout || r.stderr || r.error);
+        if (!r.ok) anyFailed = true;
+      }
+      out(card, { ok: !anyFailed, stdout: lines.join('\n'), stderr: '' });
+      if (!anyFailed) card.classList.add('excluded'); else btn.disabled = false;
+    });
+    return card;
+  }
+
+  const CASE_RENDERERS = {
+    'records-future-date': renderFutureDateCase,
+    'records-no-memory': renderNoMemoryCase,
+    'alias-collisions': renderAliasCase,
+  };
+
+  async function run(fix) {
+    cardsEl.innerHTML = '';
+    summaryEl.className = 'out';
+    summaryEl.textContent = fix ? 'Corrigiendo…' : 'Corriendo chequeo…';
+    const r = await call('GET', '/api/doctor' + (fix ? '?fix=1' : ''));
+    if (!r.checks) {
+      summaryEl.className = 'out err';
+      summaryEl.textContent = 'Error: ' + (r.error || 'doctor.mjs no respondió');
+      return;
+    }
+    const lines = r.checks.map((chk) => {
+      if (chk.status === 'ok') return `OK    ${chk.label}`;
+      if (chk.status === 'fixed') return `FIXED ${chk.label} (${chk.cases.length} corregida(s))`;
+      return `WARN  ${chk.label} (${chk.cases.length})${chk.mechanical ? ' -- pulsa "Corregir"' : ''}`;
+    });
+    lines.push('');
+    if (r.fixed > 0) lines.push(`${r.fixed} chequeo(s) corregido(s) automáticamente.`);
+    lines.push(r.warnings === 0 ? 'Todo limpio.' : `${r.warnings} chequeo(s) con avisos.`);
+    summaryEl.className = 'out ' + (r.warnings === 0 ? 'ok' : 'err');
+    summaryEl.textContent = lines.join('\n');
+
+    for (const chk of r.checks) {
+      if (chk.status !== 'warn' || chk.mechanical) continue; // mecánico: "Corregir" ya lo resuelve, no necesita tarjeta
+      const renderer = CASE_RENDERERS[chk.id];
+      if (!renderer) continue; // sin tarjeta todavía (ej. embeddings faltantes: cuestan llamadas de API, no son de este flujo)
+      for (const c of chk.cases) cardsEl.appendChild(renderer(c));
+    }
+  }
+
+  sec.querySelector('#doctor-run').addEventListener('click', () => run(false));
+  sec.querySelector('#doctor-fix').addEventListener('click', () => run(true));
 }
 
 // --- Grafo ---

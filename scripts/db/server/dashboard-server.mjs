@@ -181,7 +181,28 @@ app.get('/api/delta', (c) => {
   return respond(c, runScript('delta.mjs', args));
 });
 
-app.get('/api/doctor', (c) => respond(c, runScript('doctor.mjs', [])));
+// Siempre pide salida estructurada a doctor.mjs (--json): el frontend
+// renderiza una tarjeta por caso individual, no un bloque de texto (ver
+// contrato en el encabezado de doctor.mjs). ?fix=1 aplica de una vez los
+// chequeos mecánicos (RLS, superseded_by, memory_links/memory_pair_checks
+// huérfanos) antes de devolver el diagnóstico, así que el botón "Corregir"
+// del dashboard es una sola llamada, no dos.
+//
+// warnings > 0 (doctor.mjs sale con exit 1) NO es un error de transporte,
+// es un resultado de diagnóstico válido -- se devuelve 200 igual, para que
+// el frontend lo trate como dato, no como fallo de red. Solo un stdout que
+// no parsea como JSON (el proceso realmente crasheó, ej. no pudo conectar a
+// Supabase) cuenta como error real.
+app.get('/api/doctor', (c) => {
+  const args = ['--json'];
+  if (c.req.query('fix')) args.push('--fix');
+  const result = runScript('doctor.mjs', args);
+  try {
+    return c.json(JSON.parse(result.stdout));
+  } catch {
+    return c.json({ ok: false, error: result.stderr || 'doctor.mjs no devolvió JSON válido' }, 500);
+  }
+});
 
 // Datos del grafo (graph.mjs, reescrito 2026-09-03 para grafo interactivo
 // dirigido por fuerzas -- ver comentario en graph.mjs) -- sin caché: cada
