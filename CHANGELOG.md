@@ -5,6 +5,23 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.6.4 (2026-09-12)
+
+Ajuste visual del dashboard, sin cambios de comportamiento ni en `schema.sql`.
+
+- **Cabecera fija de dos columnas**: el logo vivía dentro de `.sidebar`,
+  arriba del menú, así que un menú largo lo empujaba fuera de vista al
+  hacer scroll (`.layout` usaba `min-height`, no `height`, nada tenía
+  scroll propio). Ahora el logo y el título/badge quedan en una franja
+  superior fija, alineada en las mismas dos columnas que el cuerpo (logo
+  sobre el ancho del sidebar, título+badge sobre el ancho del contenido).
+  `.sidebar` (solo el menú) y el contenido tienen cada uno su propio
+  scroll, independientes entre sí y de la cabecera.
+- **Logo y título más grandes**: se veían pequeños en la cabecera nueva
+  (logo 38px→76px, título 16px→32px, subtítulo 11.5px→20px).
+- **Badge recortado a "solo local"**: la IP (`127.0.0.1`) era ruido, la
+  restricción real ya la dice el texto sin ella.
+
 ## v0.6.3 (2026-09-11)
 
 `doctor.mjs` pasa de diagnóstico puro a diagnóstico + tratamiento. Sin
