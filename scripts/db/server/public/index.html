@@ -61,13 +61,13 @@
      del contenido), y .sidebar debajo queda como una región de scroll
      propia, corta e independiente del contenido. */
   header { flex-shrink: 0; display: flex; align-items: stretch; border-bottom: 1px solid var(--border); }
-  .header-brand { width: calc(190px * var(--ui-scale)); flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 8px; border-right: 1px solid var(--border); }
+  .header-brand { width: calc(200px * var(--ui-scale)); flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 8px; border-right: 1px solid var(--border); }
   .header-brand .brand-logo { width: calc(76px * var(--ui-scale)); height: auto; }
-  .header-info { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: calc(3px * var(--ui-scale)); padding: calc(10px * var(--ui-scale)) 20px; }
+  .header-info { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: calc(3px * var(--ui-scale)); padding: calc(10px * var(--ui-scale)) 24px; }
   .header-info .badge { align-self: flex-start; margin-top: calc(4px * var(--ui-scale)); }
   header .badge { font-size: calc(11px * var(--ui-scale)); color: var(--warn); border: 1px solid var(--warn); padding: 2px 8px; border-radius: 999px; }
   .layout { display: flex; flex: 1; min-height: 0; }
-  .sidebar { width: calc(190px * var(--ui-scale)); border-right: 1px solid var(--border); flex-shrink: 0; overflow-y: auto; }
+  .sidebar { width: calc(200px * var(--ui-scale)); border-right: 1px solid var(--border); flex-shrink: 0; overflow-y: auto; }
   .brand-name { font-size: calc(32px * var(--ui-scale)); font-weight: 700; color: var(--text); }
   .brand-sub { font-size: calc(20px * var(--ui-scale)); color: var(--muted); }
   nav { padding: 12px 0; }
@@ -81,12 +81,13 @@
     color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); border-radius: 5px;
   }
   .nav-group:first-child { margin-top: calc(6px * var(--ui-scale)); }
-  main { flex: 1; min-width: 0; overflow-y: auto; padding: 22px 26px; max-width: 900px; }
-  section { display: none; }
+  /* Aprovechamiento completo de la ventana: eliminamos max-width: 900px */
+  main { flex: 1; min-width: 0; overflow-y: auto; padding: 22px 32px; width: 100%; }
+  section { display: none; width: 100%; }
   section.active { display: block; }
-  h2 { font-size: calc(16px * var(--ui-scale)); margin: 0 0 4px; }
-  .hint { color: var(--muted); font-size: calc(12px * var(--ui-scale)); margin: 0 0 16px; }
-  ul.scenarios { margin: 0; padding-left: 20px; font-size: calc(13px * var(--ui-scale)); line-height: 1.6; }
+  h2 { font-size: calc(17px * var(--ui-scale)); margin: 0 0 4px; }
+  .hint { color: var(--muted); font-size: calc(12px * var(--ui-scale)); margin: 0 0 16px; max-width: 1300px; line-height: 1.5; }
+  ul.scenarios { margin: 0; padding-left: 20px; font-size: calc(13px * var(--ui-scale)); line-height: 1.6; max-width: 1200px; }
   ul.scenarios li { margin-bottom: 12px; }
   ul.scenarios code { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: calc(12px * var(--ui-scale)); }
   ul.scenarios em { color: var(--muted); font-style: normal; }
@@ -101,7 +102,7 @@
      un selector visual, no un campo de texto. */
   input[type=text], input[type=date], input[type=time], input[type=number], select, textarea {
     width: 100%; background: color-mix(in srgb, var(--accent) 18%, var(--panel)); border: 1px solid var(--border); color: var(--text);
-    padding: calc(7px * var(--ui-scale)) 9px; border-radius: 6px; font-size: calc(13px * var(--ui-scale)); font-family: inherit;
+    padding: calc(7px * var(--ui-scale)) 10px; border-radius: 6px; font-size: calc(13px * var(--ui-scale)); font-family: inherit;
   }
   input[type=color] {
     width: 100%; border: 1px solid var(--border);
@@ -110,28 +111,28 @@
   input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
   select { accent-color: var(--accent); }
   textarea { font-family: ui-monospace, monospace; min-height: 90px; resize: vertical; }
-  .row { display: flex; gap: 12px; }
+  .row { display: flex; gap: 14px; }
   .row > div { flex: 1; }
   .checkline { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
   .confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-  .confirm-box { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 20px; max-width: 520px; width: 90%; max-height: 80vh; overflow-y: auto; }
+  .confirm-box { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 20px; max-width: 540px; width: 90%; max-height: 80vh; overflow-y: auto; }
   .confirm-message { white-space: pre-wrap; font-family: inherit; color: var(--text); font-size: calc(13px * var(--ui-scale)); margin: 0 0 16px; }
   .confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
   .checkline label { margin: 0; }
   button.run {
-    margin-top: 16px; background: var(--accent); color: var(--accent-text); border: none; padding: calc(8px * var(--ui-scale)) 18px;
+    margin-top: 16px; background: var(--accent); color: var(--accent-text); border: none; padding: calc(8px * var(--ui-scale)) 20px;
     border-radius: 6px; font-size: calc(13px * var(--ui-scale)); font-weight: 600; cursor: pointer;
   }
   button.run:disabled { opacity: 0.5; cursor: default; }
   button.secondary { background: none; border: 1px solid var(--border); color: var(--text); margin-left: 8px; }
   .out {
     margin-top: 16px; background: var(--console-bg); border: 1px solid var(--border); border-radius: 6px;
-    padding: 12px; font-size: calc(12.5px * var(--ui-scale)); max-height: 60vh; overflow-y: auto;
+    padding: 14px; font-size: calc(12.5px * var(--ui-scale)); max-height: 65vh; overflow-y: auto; width: 100%;
   }
   pre.out { white-space: pre-wrap; word-break: break-word; }
   .out.err { border-color: var(--err); }
   .out.ok { border-color: var(--ok); }
-  .out-md { font-size: 13.5px; line-height: 1.6; }
+  .out-md { font-size: 13.5px; line-height: 1.6; max-width: 1400px; }
   .out-md h2, .out-md h3, .out-md h4, .out-md h5, .out-md h6 { margin: 16px 0 6px; color: var(--text); }
   .out-md :first-child { margin-top: 0; }
   .out-md p { margin: 0 0 10px; }
@@ -142,7 +143,7 @@
   .out-md code { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 12px; font-family: ui-monospace, monospace; }
   .out-md-table-wrap { overflow-x: auto; margin: 0 0 10px; }
   .out-md table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
-  .out-md th, .out-md td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+  .out-md th, .out-md td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
   .out-md th { background: var(--panel); color: var(--text); white-space: nowrap; }
   .status { font-size: 12px; margin-top: 10px; color: var(--muted); }
   /* Timeline visual (reconstruido 2026-09-07 tras un intento con otro LLM que
@@ -151,30 +152,30 @@
      por registro, coloreado por kind, agrupado por mes, más una franja de
      densidad (registros por mes) arriba, en el mismo lenguaje visual que
      .gph-stats/.fact-card ya usan en el resto del dashboard. */
-  .tl-density { display: flex; gap: 3px; align-items: flex-end; height: 36px; margin-top: 14px; }
+  .tl-density { display: flex; gap: 3px; align-items: flex-end; height: 38px; margin-top: 14px; width: 100%; }
   .tl-density-bar { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; min-height: 2px; opacity: .55; }
   .tl-density-bar:hover { opacity: .9; }
-  .tl-line { margin-top: 18px; }
+  .tl-line { margin-top: 18px; width: 100%; }
   /* Meses colapsables (<details> nativo, sin JS de toggle propio) + paginación
      por bloques dentro de cada mes -- ver comentario junto a la sección
      Timeline en el <script> para el porqué (2026-09-07). */
-  .tl-month-group, .tl-year-group { border: 1px solid var(--border); border-radius: 8px; margin-top: 10px; background: var(--panel); overflow: hidden; }
-  .tl-month-group summary, .tl-year-group summary { cursor: pointer; padding: 9px 12px; font-size: 12.5px; font-weight: 600; color: var(--text); list-style: none; display: flex; align-items: center; gap: 8px; text-transform: capitalize; }
+  .tl-month-group, .tl-year-group { border: 1px solid var(--border); border-radius: 8px; margin-top: 10px; background: var(--panel); overflow: hidden; width: 100%; }
+  .tl-month-group summary, .tl-year-group summary { cursor: pointer; padding: 10px 14px; font-size: 12.5px; font-weight: 600; color: var(--text); list-style: none; display: flex; align-items: center; gap: 8px; text-transform: capitalize; }
   .tl-year-group summary { font-size: 13.5px; }
   .tl-month-group summary::-webkit-details-marker, .tl-year-group summary::-webkit-details-marker { display: none; }
   .tl-month-group summary::before, .tl-year-group summary::before { content: '▶'; font-size: 9px; color: var(--muted); transition: transform .15s; flex-shrink: 0; }
   .tl-month-group[open] summary::before, .tl-year-group[open] summary::before { transform: rotate(90deg); }
   .tl-month-count { color: var(--muted); font-weight: 400; text-transform: none; }
-  .tl-year-content { padding: 2px 12px 10px; border-top: 1px solid var(--border); }
-  .tl-month-content { padding: 2px 12px 10px 26px; position: relative; border-top: 1px solid var(--border); }
-  .tl-month-content::before { content: ''; position: absolute; left: 11px; top: 0; bottom: 10px; width: 2px; background: var(--border); }
+  .tl-year-content { padding: 4px 14px 12px; border-top: 1px solid var(--border); }
+  .tl-month-content { padding: 4px 14px 12px 28px; position: relative; border-top: 1px solid var(--border); }
+  .tl-month-content::before { content: ''; position: absolute; left: 13px; top: 0; bottom: 10px; width: 2px; background: var(--border); }
   .tl-entry { position: relative; padding: 12px 0 0 14px; }
   .tl-entry::before { content: ''; position: absolute; left: -20px; top: 15px; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); border: 2px solid var(--panel); }
   .tl-entry.tl-kind-event::before { background: var(--warn); }
   .tl-entry.tl-kind-commitment::before { background: var(--ok); }
   .tl-entry.tl-reemplazado::before { background: var(--muted); }
   .tl-entry-date { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-  .tl-entry-claim { font-size: 13.5px; margin-top: 2px; }
+  .tl-entry-claim { font-size: 13.5px; margin-top: 2px; line-height: 1.5; }
   .tl-entry.tl-reemplazado .tl-entry-claim { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--border); }
   .tl-entry-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
   /* Hilos de versión: la cabeza (vigente) de una cadena de reemplazos trae
@@ -198,7 +199,7 @@
   .tl-view-btn.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
   .tl-hl { background: color-mix(in srgb, var(--accent) 40%, transparent); color: var(--text); border-radius: 2px; padding: 0 1px; }
   .tl-month-header-plain { font-size: 12.5px; font-weight: 600; color: var(--text); margin: 14px 0 10px; text-transform: capitalize; }
-  .tl-heatmap-scroll { overflow-x: auto; padding-bottom: 4px; margin-top: 18px; }
+  .tl-heatmap-scroll { overflow-x: auto; padding-bottom: 8px; margin-top: 18px; width: 100%; }
   .tl-heatmap-months { display: flex; gap: 3px; margin-bottom: 4px; }
   .tl-heatmap-month-label { width: 12px; font-size: 10px; color: var(--muted); flex-shrink: 0; text-transform: capitalize; overflow: visible; white-space: nowrap; }
   .tl-heatmap-grid { display: flex; gap: 3px; }
@@ -214,9 +215,9 @@
   .tl-chart-dot { fill: var(--accent); stroke: var(--panel); stroke-width: 1; }
   .tl-chart-dot.tl-kind-event { fill: var(--warn); }
   .tl-chart-dot.tl-kind-commitment { fill: var(--ok); }
-  .tl-chart-tooltip { position: absolute; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 12px; color: var(--text); white-space: pre-wrap; max-width: 420px; line-height: 1.4; pointer-events: none; z-index: 10; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
+  .tl-chart-tooltip { position: absolute; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; font-size: 12px; color: var(--text); white-space: pre-wrap; max-width: 480px; line-height: 1.4; pointer-events: none; z-index: 10; box-shadow: 0 4px 14px rgba(0,0,0,.3); }
   .tl-chart-tooltip b { font-size: 11px; color: var(--muted); font-weight: 600; }
-  .fact-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-top: 14px; }
+  .fact-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-top: 14px; width: 100%; max-width: 1400px; }
   .fact-card.excluded { opacity: 0.5; }
   .fact-card .fc-top { display: flex; align-items: flex-start; gap: 10px; }
   .fact-card .fc-top label { margin: 0; color: var(--text); font-size: 13px; }
@@ -225,9 +226,23 @@
   .fact-card .fc-suggestions { color: var(--accent); font-size: 12px; margin-top: 6px; cursor: default; }
   .fact-card .fc-suggestions span { cursor: pointer; text-decoration: underline dotted; }
   .gph-stats { display: flex; flex-wrap: wrap; gap: 10px; }
-  .gph-stat { display: flex; align-items: baseline; gap: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; }
+  .gph-stat { display: flex; align-items: baseline; gap: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px; }
   .gph-stat b { font-size: 16px; color: var(--accent); font-variant-numeric: tabular-nums; }
   .gph-stat span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+
+  /* Contenedor del Grafo: altura fluida adaptada al alto de pantalla */
+  #graph-canvas {
+    position: relative;
+    margin-top: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--panel);
+    width: 100%;
+    height: calc(100vh - 270px);
+    min-height: 540px;
+  }
+
   .gph-circle { fill: color-mix(in srgb, var(--graph-normal, var(--accent)) 60%, transparent); stroke: var(--graph-normal, var(--accent)); stroke-width: 2; }
   .gph-circle.gph-meta { fill: color-mix(in srgb, var(--graph-meta, var(--warn)) 60%, transparent); stroke: var(--graph-meta, var(--warn)); stroke-width: 2; stroke-dasharray: 4 3; }
   .gph-circle.gph-circle-highlight { fill: color-mix(in srgb, var(--graph-highlight, var(--err)) 30%, transparent); stroke: var(--graph-highlight, var(--err)); stroke-width: 2.5; }
@@ -250,7 +265,7 @@
     fill: var(--accent-text);
   }
   .gph-label { font-size: 10.5px; fill: var(--muted); }
-  .gph-tooltip { position: absolute; transform: translate(-50%, -100%); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; pointer-events: none; z-index: 10; }
+  .gph-tooltip { position: absolute; transform: translate(-50%, -100%); background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; pointer-events: none; z-index: 10; }
   .gph-ctx-menu { display: none; position: fixed; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 4px; z-index: 50; box-shadow: 0 6px 20px rgba(0,0,0,.45); }
   .gph-ctx-menu button { display: block; width: 100%; text-align: left; padding: 7px 14px; background: none; border: none; color: var(--text); font-size: 13px; cursor: pointer; border-radius: 5px; white-space: nowrap; }
   .gph-ctx-menu button:hover { background: color-mix(in srgb, var(--accent) 22%, var(--panel)); }
@@ -454,7 +469,7 @@ function out(container, result) {
 }
 
 function escapeHtml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 // Renderer de Markdown minimalista, a propósito (sin librería externa, sin
@@ -891,7 +906,7 @@ function section(id, title, hint, bodyHtml) {
      <div id="tl-density" class="tl-density"></div>
 
      <div id="tl-view-list-box"><div id="tl-line" class="tl-line"></div></div>
-     <div id="tl-view-chart-box" style="display:none; position:relative"></div>
+     <div id="tl-view-chart-box" style="display:none; position:relative; width:100%; margin-top:18px"></div>
      <div id="tl-view-heatmap-box" class="tl-heatmap-scroll" style="display:none"></div>`);
 
   const statsEl = sec.querySelector('#tl-stats');
@@ -906,8 +921,8 @@ function section(id, title, hint, bodyHtml) {
     heatmap: heatmapEl,
   };
   const viewButtons = sec.querySelectorAll('.tl-view-btn');
-  const MONTHS_PAGE_SIZE = 3;
-  const ENTRIES_PAGE_SIZE = 25;
+  const MONTHS_PAGE_SIZE = 4;
+  const ENTRIES_PAGE_SIZE = 30;
 
   let allRows = [];
   let dayFilter = null; // 'YYYY-MM-DD' o null
@@ -1239,7 +1254,8 @@ function section(id, title, hint, bodyHtml) {
     const parsed = parseQuery(rawQuery);
     const textLower = parsed ? parsed.text.toLowerCase() : '';
 
-    const W = 900, H = 260, M = { top: 16, right: 20, bottom: 28, left: 96 };
+    const W = Math.max(700, chartEl.clientWidth || 900);
+    const H = 280, M = { top: 20, right: 28, bottom: 28, left: 100 };
     const dates = rows.map((r) => new Date(r.date));
     const x = d3.scaleTime().domain(d3.extent(dates)).nice().range([M.left, W - M.right]);
     const lanes = ['fact', 'event', 'commitment'];
@@ -1259,7 +1275,7 @@ function section(id, title, hint, bodyHtml) {
     yAxisG.selectAll('path,line').attr('stroke', 'var(--border)');
 
     function drawXAxis(scale) {
-      xAxisG.call(d3.axisBottom(scale).ticks(6)).selectAll('text').attr('fill', 'var(--muted)').attr('font-size', 10);
+      xAxisG.call(d3.axisBottom(scale).ticks(Math.max(6, Math.floor(W / 120)))).selectAll('text').attr('fill', 'var(--muted)').attr('font-size', 10);
       xAxisG.selectAll('path,line').attr('stroke', 'var(--border)');
     }
     drawXAxis(x);
@@ -1723,8 +1739,8 @@ function section(id, title, hint, bodyHtml) {
      </div>
      <datalist id="graph-memories-list"></datalist>
      <div class="checkline"><input type="checkbox" id="graph-show-labels" checked><label for="graph-show-labels">Mostrar nombres de relaciones</label></div>
-     <div class="gph-stats" id="graph-stats" style="margin-top:16px"></div>
-     <div id="graph-canvas" style="position:relative; margin-top:12px; border:1px solid var(--border); border-radius:8px; overflow:hidden; background:var(--panel)"></div>
+     <div class="gph-stats" id="graph-stats" style="margin-top:14px"></div>
+     <div id="graph-canvas"></div>
      <div class="gph-legend" style="margin-top:10px">
        <div class="gph-legend-item"><span class="gph-dot"></span>recuerdo de dominio</div>
        <div class="gph-legend-item"><span class="gph-dot gph-meta"></span>recuerdo meta (sobre el propio sistema)</div>
@@ -1732,9 +1748,9 @@ function section(id, title, hint, bodyHtml) {
 
   const statsEl = sec.querySelector('#graph-stats');
   const canvasEl = sec.querySelector('#graph-canvas');
-  const W = 1100, H = 700;
   let simulation = null;
   let graph = null; // estado del render vigente (recuerdos, selección d3, zoom) para los controles de fuera: encuadre, buscador, checkbox
+  let cachedGraphData = null;
 
   function radius(factCount) {
     return Math.max(16, Math.min(50, 16 + Math.sqrt(factCount) * 2.8));
@@ -1766,6 +1782,7 @@ function section(id, title, hint, bodyHtml) {
       canvasEl.innerHTML = `<pre class="out err">${escapeHtml(r.error || 'graph.mjs falló')}</pre>`;
       return;
     }
+    cachedGraphData = r;
     renderGraph(r.memories, r.edges);
   }
 
@@ -1782,6 +1799,11 @@ function section(id, title, hint, bodyHtml) {
     // mientras la simulación inicial todavía no terminaba de asentarse.
     let hasAutoFitted = false;
 
+    // Dimensiones reales de la ventana/canvas
+    const rect = canvasEl.getBoundingClientRect();
+    const W = rect.width || 1200;
+    const H = rect.height || 650;
+
     const touched = new Set();
     for (const e of rawEdges) { touched.add(e.from); touched.add(e.to); }
     const isolatedCount = rawNodes.filter((n) => !touched.has(n.name)).length;
@@ -1795,7 +1817,9 @@ function section(id, title, hint, bodyHtml) {
     const links = rawEdges.map((e) => ({ source: e.from, target: e.to, relation: e.relation }));
 
     const svg = d3.select(canvasEl).append('svg')
-      .attr('viewBox', [0, 0, W, H]).attr('width', '100%').attr('height', 'auto')
+      .attr('viewBox', [0, 0, W, H])
+      .attr('width', '100%')
+      .attr('height', '100%')
       .style('display', 'block');
 
     svg.append('defs').html(`
@@ -1804,7 +1828,7 @@ function section(id, title, hint, bodyHtml) {
       </marker>`);
 
     const g = svg.append('g');
-    const zoomBehavior = d3.zoom().scaleExtent([0.2, 4]).on('zoom', (event) => g.attr('transform', event.transform));
+    const zoomBehavior = d3.zoom().scaleExtent([0.15, 5]).on('zoom', (event) => g.attr('transform', event.transform));
     svg.call(zoomBehavior);
 
     const linkSel = g.append('g').selectAll('line').data(links).join('line')
@@ -1913,10 +1937,10 @@ function section(id, title, hint, bodyHtml) {
     // animación visible de asentamiento. simulation.restart() al final deja
     // el arrastre con inercia normal después.
     simulation = d3.forceSimulation(memories)
-      .force('link', d3.forceLink(links).id((d) => d.name).distance(95).strength(0.5))
-      .force('charge', d3.forceManyBody().strength(-260))
+      .force('link', d3.forceLink(links).id((d) => d.name).distance(105).strength(0.45))
+      .force('charge', d3.forceManyBody().strength(-280))
       .force('center', d3.forceCenter(W / 2, H / 2))
-      .force('collide', d3.forceCollide((d) => radius(d.factCount) + 14))
+      .force('collide', d3.forceCollide((d) => radius(d.factCount) + 16))
       .on('tick', renderTick)
       .on('end', () => {
         if (hasAutoFitted) return;
@@ -1930,11 +1954,11 @@ function section(id, title, hint, bodyHtml) {
       renderTick();
       hasAutoFitted = true;
       fitToView(false);
-      simulation.restart(); // alpha ya casi en 0 -- no anima nada visible, pero deja el arrastre con inercia normal
+      simulation.restart();
     }
 
     graph = {
-      memories, svg, zoomBehavior, linkLabelSel,
+      memories, svg, zoomBehavior, linkLabelSel, W, H,
       setHighlight: (name) => { highlighted = name; applyHighlight(); },
     };
     sec.querySelector('#graph-show-labels').dispatchEvent(new Event('change'));
@@ -1947,14 +1971,14 @@ function section(id, title, hint, bodyHtml) {
   function fitToView(animate = true) {
     if (!graph || graph.memories.length === 0) return;
     const pad = 60;
-    const xs = graph.memories.map((n) => n.x ?? W / 2);
-    const ys = graph.memories.map((n) => n.y ?? H / 2);
+    const xs = graph.memories.map((n) => n.x ?? graph.W / 2);
+    const ys = graph.memories.map((n) => n.y ?? graph.H / 2);
     const minX = Math.min(...xs) - pad, maxX = Math.max(...xs) + pad;
     const minY = Math.min(...ys) - pad, maxY = Math.max(...ys) + pad;
     const w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
-    const scale = Math.max(0.2, Math.min(4, Math.min(W / w, H / h)));
-    const tx = W / 2 - scale * (minX + maxX) / 2;
-    const ty = H / 2 - scale * (minY + maxY) / 2;
+    const scale = Math.max(0.15, Math.min(3, Math.min(graph.W / w, graph.H / h)));
+    const tx = graph.W / 2 - scale * (minX + maxX) / 2;
+    const ty = graph.H / 2 - scale * (minY + maxY) / 2;
     const transform = d3.zoomIdentity.translate(tx, ty).scale(scale);
     const target = animate ? graph.svg.transition().duration(400) : graph.svg;
     target.call(graph.zoomBehavior.transform, transform);
@@ -1965,7 +1989,7 @@ function section(id, title, hint, bodyHtml) {
     const node = graph.memories.find((n) => n.name === name);
     if (!node) return;
     const scale = 1.6;
-    const transform = d3.zoomIdentity.translate(W / 2 - scale * node.x, H / 2 - scale * node.y).scale(scale);
+    const transform = d3.zoomIdentity.translate(graph.W / 2 - scale * node.x, graph.H / 2 - scale * node.y).scale(scale);
     graph.svg.transition().duration(400).call(graph.zoomBehavior.transform, transform);
     graph.setHighlight(name);
   }
@@ -2031,6 +2055,18 @@ function section(id, title, hint, bodyHtml) {
       list.appendChild(opt);
     }
   });
+
+  // Reajuste responsivo del grafo si la ventana cambia de tamaño
+  let resizeTimer = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (sec.classList.contains('active') && cachedGraphData) {
+        renderGraph(cachedGraphData.memories, cachedGraphData.edges);
+      }
+    }, 250);
+  });
+
   loadGraph();
 }
 

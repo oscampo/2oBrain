@@ -5,6 +5,22 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.6.5 (2026-09-13)
+
+Ajuste visual del dashboard, sin cambios en `schema.sql`.
+
+- **Aprovecha todo el ancho de la ventana**: se quita el `max-width: 900px`
+  de `main`, ensancha `.sidebar`/`.header-brand` de 190px a 200px, y suma
+  `max-width` generosos (1200-1400px) a tarjetas, tablas y bloques de
+  salida en vez de un tope fijo angosto.
+- **Grafo de verdad responsivo**: medía el ancho/alto del contenedor real
+  en vez de un `1100x700` fijo, y se re-renderiza solo al cambiar el
+  tamaño de la ventana (debounce de 250ms). El gráfico d3 de Timeline
+  también mide su contenedor real para el eje de tiempo.
+- Ajustes menores de padding/tamaño en varios componentes (botones,
+  tarjetas, tooltips, paginación de Timeline) para que se sientan
+  proporcionados al nuevo ancho.
+
 ## v0.6.4 (2026-09-12)
 
 Ajuste visual del dashboard, sin cambios de comportamiento ni en `schema.sql`.
