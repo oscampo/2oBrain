@@ -16,7 +16,7 @@
 // Uso: node server/dashboard-server.mjs [--port 4287]
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, openSync } from 'node:fs';
 import { spawnSync, spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,7 +24,8 @@ import { stream } from 'hono/streaming';
 import { synthesize } from '../lib/synthesize.mjs';
 import { getAllTaskModels, AVAILABLE_OLLAMA_MODELS, TASK_GROUPS } from '../lib/task-models.mjs';
 
-const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
+const THIS_SCRIPT = fileURLToPath(import.meta.url);
+const SERVER_DIR = dirname(THIS_SCRIPT);
 const DB_DIR = join(SERVER_DIR, '..');
 const REPO_DIR = join(DB_DIR, '..', '..');
 const INDEX_HTML_PATH = join(SERVER_DIR, 'public', 'index.html');
@@ -625,6 +626,65 @@ app.post('/api/feedback-config', async (c) => {
   } catch (err) {
     return c.json({ ok: false, error: err.message }, 500);
   }
+});
+
+// Botón "Reiniciar servidor" del dashboard (2026-09-14, portado desde
+// D:\UAObrain tras 3 iteraciones probadas en vivo, ver ahí para el
+// historial completo de qué se probó y falló):
+//
+// v1 (descartada): `spawn` directo del propio hijo, sin `windowsHide`. En
+// UAObrain causó ~15 ventanas de terminal abriéndose y muriendo -- teoría
+// en su momento: una Tarea Programada de Windows (install-boot-task.ps1,
+// si está instalada en esta máquina) también vigila este proceso, matar
+// "el suyo" haría que Windows lo relanzara por su cuenta, compitiendo por
+// el puerto.
+//
+// v2 (descartada): delegar el reinicio por completo a la tarea (`schtasks
+// /end` + `/run` síncronos) en vez de competir con ella. Falló distinto y
+// peor: `/run` sobre una tarea configurada con `-WindowStyle Hidden` SÍ
+// abre una ventana visible cuando se dispara a mano en la misma sesión
+// interactiva -- limitación conocida de `-WindowStyle Hidden` de
+// PowerShell, no de Task Scheduler. Esa ventana quedaba como el único
+// proceso real corriendo el server, cerrarla mataba el dashboard sin
+// ningún respaldo.
+//
+// v3 (esta): `spawn` directo del propio hijo (nunca PowerShell, nunca
+// `schtasks /run`), con `windowsHide: true` -- el mecanismo propio de Node
+// para esto, documentado y confiable a diferencia de `-WindowStyle
+// Hidden`. `schtasks /end` se mantiene solo como limpieza defensiva del
+// estado "corriendo" de la tarea si existe, nunca dispara un proceso ni
+// abre nada. Verificado en UAObrain: un solo proceso tras el clic, estable
+// 80s después (pasado el RestartInterval de 1 min de la tarea).
+const TASK_NAME = 'SegundoCerebroDashboard';
+function hasScheduledTask() {
+  if (process.platform !== 'win32') return false;
+  const r = spawnSync('schtasks', ['/query', '/tn', TASK_NAME], { windowsHide: true });
+  return r.status === 0;
+}
+
+app.post('/api/restart', (c) => {
+  c.header('Connection', 'close');
+  const managedByTask = hasScheduledTask();
+  setTimeout(() => {
+    server.close(() => {
+      if (managedByTask) spawnSync('schtasks', ['/end', '/tn', TASK_NAME], { windowsHide: true });
+
+      // Append, no 'w': mismo archivo que ya usa quien arranca este server a
+      // mano (`> dashboard.log 2>&1`) -- con 'ignore' el proceso relanzado
+      // no dejaba ningún rastro si fallaba al iniciar, justo el escenario
+      // que este botón existe para diagnosticar.
+      const logFd = openSync(join(SERVER_DIR, 'dashboard.log'), 'a');
+      const child = spawn(process.execPath, [THIS_SCRIPT, '--port', String(PORT)], {
+        detached: true,
+        stdio: ['ignore', logFd, logFd],
+        windowsHide: true,
+        cwd: SERVER_DIR,
+      });
+      child.unref();
+      process.exit(0);
+    });
+  }, 200); // deja que la respuesta de abajo salga por el socket antes de cerrar el server
+  return c.json({ ok: true, message: 'Reiniciando. Espera unos segundos y recarga la página.' });
 });
 
 const server = serve({ fetch: app.fetch, port: PORT, hostname: '127.0.0.1' }, (info) => {

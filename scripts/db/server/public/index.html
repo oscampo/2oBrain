@@ -66,6 +66,8 @@
   .header-info { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: calc(3px * var(--ui-scale)); padding: calc(10px * var(--ui-scale)) 24px; }
   .header-info .badge { align-self: flex-start; margin-top: calc(4px * var(--ui-scale)); }
   header .badge { font-size: calc(11px * var(--ui-scale)); color: var(--warn); border: 1px solid var(--warn); padding: 2px 8px; border-radius: 999px; }
+  .header-actions { flex-shrink: 0; display: flex; align-items: center; padding: 0 20px; }
+  .header-actions button.run { margin-top: 0; font-size: calc(12px * var(--ui-scale)); padding: calc(6px * var(--ui-scale)) 14px; }
   .layout { display: flex; flex: 1; min-height: 0; }
   .sidebar { width: calc(200px * var(--ui-scale)); border-right: 1px solid var(--border); flex-shrink: 0; overflow-y: auto; }
   .brand-name { font-size: calc(32px * var(--ui-scale)); font-weight: 700; color: var(--text); }
@@ -290,6 +292,9 @@
     <div class="brand-name">2oBrain</div>
     <div class="brand-sub">dashboard</div>
     <span class="badge">solo local</span>
+  </div>
+  <div class="header-actions">
+    <button class="run secondary" id="restart-server-btn" title="Mata y relanza el proceso del servidor (mismo puerto). Útil si el dashboard no responde o algún endpoint falla en seco.">Reiniciar servidor</button>
   </div>
 </header>
 <div class="layout">
@@ -3671,6 +3676,26 @@ function section(id, title, hint, bodyHtml) {
     else box.textContent = 'Error: ' + (r.error || 'desconocido');
   });
 }
+
+// Botón global "Reiniciar servidor" (2026-09-14, portado desde D:\UAObrain).
+// El servidor responde antes de matarse a sí mismo (ver dashboard-server.mjs),
+// así que el fetch normalmente completa; si no completa (la ventana entre
+// que el proceso viejo muere y el nuevo bindea el puerto), igual se asume
+// en curso y se reintenta el reload solo.
+document.getElementById('restart-server-btn').addEventListener('click', async () => {
+  const ok = await confirmAction('Esto mata el proceso actual del servidor y lanza uno nuevo en el mismo puerto (breve corte, unos segundos). Úsalo si el dashboard dejó de responder o algo falla en seco sin motivo aparente.\n\n¿Reiniciar ahora?');
+  if (!ok) return;
+  const btn = document.getElementById('restart-server-btn');
+  btn.disabled = true;
+  btn.textContent = 'Reiniciando…';
+  try {
+    await fetch('/api/restart', { method: 'POST' });
+  } catch {
+    // Esperado: el servidor puede cerrar la conexión antes de que el
+    // navegador termine de leer la respuesta, no es un fallo real.
+  }
+  setTimeout(() => location.reload(), 2500);
+});
 
 renderNav();
 </script>
