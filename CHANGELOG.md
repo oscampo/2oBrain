@@ -5,6 +5,37 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.7.0 (2026-09-14)
+
+Sin cambios en `schema.sql`. Portado desde D:\UAObrain (misma sesión de
+comparación 2nd-brain vs. LightRAG) más un fix propio de este repo.
+
+- **Multi-salto sobre `memory_links`**: la tool `search` de MyMCP detecta
+  cuando la pregunta nombra 2-4 recuerdos a la vez y agrega el camino que
+  los conecta en el grafo (BFS no dirigido, hasta 4 saltos), sin necesitar
+  una tool `traverse` separada -- riesgo de que un LLM llamador externo
+  nunca la eligiera para una pregunta relacional. `scripts/db/traverse.mjs`
+  nuevo para uso directo desde shell.
+- **Extracción automática en segundo plano**: el hook `Stop` ahora lanza
+  `extract-records.mjs` desacoplado (spawn detached + unref) sobre la
+  ventana de turnos desde la última extracción, sin bloquear el cierre de
+  turno. Los candidatos se muestran para que `remember.mjs` decida, nunca
+  se insertan solos.
+- **Botón "Reiniciar servidor" en el dashboard**: soluciona el caso real de
+  un proceso del dashboard quedado obsoleto/colgado tras editar código,
+  directo desde la UI, sin depender de la terminal.
+- **Fix: caché de embeddings de `load-pages.mjs` invalidada por line
+  endings**: el hash de contenido no normalizaba CRLF/LF antes de
+  hashear, causando re-embeddings innecesarios contra Voyage AI cuando el
+  único cambio real era el line-ending.
+- **Fix: el router de recuerdos de MyMCP fallaba en silencio**:
+  `memory_match_records` se llamaba con el parámetro nombrado
+  `node_names`, pero la función SQL lo define como `memory_names` -- typo
+  presente desde el scaffold original. De paso, sus registros ahora se
+  reordenan por relevancia real a la pregunta (mismo reranker que
+  `records_search`) en vez de solo por fecha, evitando que un recuerdo que
+  agrupa temas sin relación entre sí llene el cupo mostrado con ruido.
+
 ## v0.6.5 (2026-09-13)
 
 Ajuste visual del dashboard, sin cambios en `schema.sql`.
