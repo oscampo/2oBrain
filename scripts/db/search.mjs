@@ -99,12 +99,27 @@ for (const n of allNodes) {
   if (live && live !== excludeMemory) matchedLiveNodes.add(live);
 }
 
+// Pool más grande que lo mostrado (2026-09-14, portado desde D:\UAObrain,
+// hallazgo real ahí): antes se traían los MAX_NODE_MATCH_FACTS más
+// recientes sin ranking (order by fecha desc, adentro de
+// memory_match_records) -- un recuerdo "paraguas" que agrupa temas sin
+// relación entre sí podía llenar el cupo con ruido reciente en vez de lo
+// realmente relevante a la pregunta. Mismo patrón que
+// records_search/search_pages: pool amplio, reordenado por relevancia real
+// (rerankTop), cortado al final. nodeMatchTotal sigue siendo el total real,
+// la función SQL lo calcula antes de aplicar su propio limit, independiente
+// del tamaño del pool que se le pida.
+const NODE_MATCH_POOL = 50;
 let nodeMatchFacts = [];
 let nodeMatchTotal = 0;
 if (matchedLiveNodes.size > 0) {
-  const { rows } = await client.query(`select * from memory_match_records($1, $2)`, [[...matchedLiveNodes], MAX_NODE_MATCH_FACTS]);
-  nodeMatchFacts = rows;
+  const { rows } = await client.query(`select * from memory_match_records($1, $2)`, [[...matchedLiveNodes], NODE_MATCH_POOL]);
   nodeMatchTotal = rows.length > 0 ? Number(rows[0].total_count) : 0;
+  // Solo el claim, sin prefijo [memories]: el recuerdo ya está garantizado
+  // por el router, el prefijo solo sesga hacia registros cuyo tag comparte
+  // vocabulario con la pregunta, no cuyo contenido responde (hallazgo en
+  // vivo en D:\UAObrain).
+  nodeMatchFacts = await rerankTop(rows, (f) => f.claim, MAX_NODE_MATCH_FACTS);
 }
 const nodeMatchTruncated = nodeMatchTotal > nodeMatchFacts.length;
 

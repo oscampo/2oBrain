@@ -65,6 +65,17 @@ async function rerank(query: string, documents: string[]): Promise<{ index: numb
 // contenido. Mismo criterio y misma función SQL (memory_match_records) que
 // scripts/db/search.mjs.
 const MAX_NODE_MATCH_FACTS = 15;
+// Pool más grande que lo mostrado (2026-09-14, portado desde D:\UAObrain,
+// hallazgo real ahí): antes se traían los MAX_NODE_MATCH_FACTS más
+// recientes sin ranking (order by fecha desc, adentro de
+// memory_match_records) -- un recuerdo "paraguas" que agrupa temas sin
+// relación entre sí podía llenar el cupo con ruido reciente en vez de lo
+// realmente relevante a la pregunta. Mismo patrón que
+// records_search/search_pages: pool amplio, reordenado por relevancia real,
+// cortado al final. El total mostrado sigue siendo el real (la función SQL
+// lo calcula antes de aplicar su propio limit, independiente del tamaño
+// del pool que se le pida).
+const NODE_MATCH_POOL = 50;
 
 function normalizeText(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -358,7 +369,7 @@ mcp.tool('search', {
     const [{ data: factCandidates }, { data: nodeMatchRows }, { data: linkRows }] = await Promise.all([
       supabase.rpc('records_search', { query_embedding: queryEmbedding, query_text: query, match_count: 10, exclude_memory: DASHBOARD_LOG_NODE }),
       matchedLiveNodes.size > 0
-        ? supabase.rpc('memory_match_records', { node_names: [...matchedLiveNodes], match_count: MAX_NODE_MATCH_FACTS })
+        ? supabase.rpc('memory_match_records', { memory_names: [...matchedLiveNodes], match_count: NODE_MATCH_POOL })
         : Promise.resolve({ data: [] as any[] }),
       wantsPaths
         ? supabase.from('memory_links').select('from_memory, to_memory, relation')
@@ -393,8 +404,13 @@ mcp.tool('search', {
     // 2026-08-31 que motivó el router de arriba).
     const rerankedFacts = await rerankTop(factCandidates ?? [], (f) => (f.memories ? `[${f.memories}] ${f.claim}` : f.claim), 5);
 
-    const nodeMatchFacts = nodeMatchRows ?? [];
-    const nodeMatchTotal = nodeMatchFacts.length > 0 ? Number(nodeMatchFacts[0].total_count) : 0;
+    const rawNodeMatches = nodeMatchRows ?? [];
+    const nodeMatchTotal = rawNodeMatches.length > 0 ? Number(rawNodeMatches[0].total_count) : 0;
+    // Solo el claim, sin prefijo [memories]: el recuerdo ya está garantizado
+    // por el router, el prefijo solo sesga hacia registros cuyo tag
+    // comparte vocabulario con la pregunta, no cuyo contenido responde
+    // (hallazgo en vivo en D:\UAObrain, portado acá).
+    const nodeMatchFacts = await rerankTop(rawNodeMatches, (f: any) => f.claim, MAX_NODE_MATCH_FACTS);
     const nodeMatchTruncated = nodeMatchTotal > nodeMatchFacts.length;
     const nodeMatchIds = new Set(nodeMatchFacts.map((f: any) => f.id));
     // Los registros del router de recuerdos van primero (garantizados completos
