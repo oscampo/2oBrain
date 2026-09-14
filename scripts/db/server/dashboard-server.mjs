@@ -54,10 +54,17 @@ const PORT = cliArgs.port ? Number(cliArgs.port) : 4287;
 
 /** Corre un script de scripts/db/ como subproceso y captura su salida. */
 function runScript(scriptName, args, { input } = {}) {
+  // windowsHide (2026-09-14, portado desde D:\UAObrain, ver registro #754):
+  // sin esto, cada spawnSync abre una ventana de consola visible en
+  // Windows. No hacía falta que fuera frecuente para notarse -- 14
+  // secciones del dashboard llaman /api/memories de forma independiente al
+  // cargar la página (ver callMemoriesOnce más abajo en el frontend), así
+  // que cada carga sin este flag abría 14 ventanas reales.
   const result = spawnSync(process.execPath, [join(DB_DIR, scriptName), ...args], {
     cwd: DB_DIR,
     encoding: 'utf8',
     input,
+    windowsHide: true,
   });
   return {
     ok: result.status === 0,

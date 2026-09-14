@@ -699,6 +699,19 @@ function applySettings() {
 
 applySettings();
 
+// Caché de un solo vuelo para /api/memories (2026-09-14, portado desde
+// D:\UAObrain, ver registro #754): 14 secciones del dashboard llaman esto
+// de forma independiente al construirse, todas al cargar la página -- 14
+// spawns reales de list-memories.mjs por carga (runScript es spawnSync,
+// bloqueante). La lista de recuerdos no cambia dentro de una misma carga
+// de página, así que memoizar la promesa es seguro: 14 llamadas se
+// vuelven 1.
+let memoriesOnceCache = null;
+function callMemoriesOnce() {
+  if (!memoriesOnceCache) memoriesOnceCache = call('GET', '/api/memories');
+  return memoriesOnceCache;
+}
+
 async function call(method, url, body) {
   let res;
   try {
@@ -933,7 +946,7 @@ function section(id, title, hint, bodyHtml) {
   let dayFilter = null; // 'YYYY-MM-DD' o null
   let currentView = 'list';
 
-  call('GET', '/api/memories').then((r) => {
+  callMemoriesOnce().then((r) => {
     const list = sec.querySelector('#tl-memories-list');
     for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
@@ -1512,7 +1525,7 @@ function section(id, title, hint, bodyHtml) {
   nsProviderSel.addEventListener('change', loadNsModelOptions);
   loadNsModelOptions();
 
-  call('GET', '/api/memories').then((r) => {
+  callMemoriesOnce().then((r) => {
     const list = sec.querySelector('#ns-memories-list');
     for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
@@ -1578,7 +1591,7 @@ function section(id, title, hint, bodyHtml) {
     memoriesListEl = document.createElement('datalist');
     memoriesListEl.id = 'doctor-memories-list';
     sec.appendChild(memoriesListEl);
-    call('GET', '/api/memories').then((r) => {
+    callMemoriesOnce().then((r) => {
       for (const n of r.memories ?? []) {
         const opt = document.createElement('option');
         opt.value = n.name;
@@ -2052,7 +2065,7 @@ function section(id, title, hint, bodyHtml) {
   sec.querySelector('#graph-search').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); sec.querySelector('#graph-search-go').click(); }
   });
-  call('GET', '/api/memories').then((r) => {
+  callMemoriesOnce().then((r) => {
     const list = sec.querySelector('#graph-memories-list');
     for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
@@ -2090,7 +2103,7 @@ function section(id, title, hint, bodyHtml) {
 
   sec.querySelector('#mn-run').addEventListener('click', async () => out(sec, await call('GET', '/api/merge-candidates')));
 
-  call('GET', '/api/memories').then((r) => {
+  callMemoriesOnce().then((r) => {
     const list = sec.querySelector('#mn-memories-list');
     for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
@@ -2142,7 +2155,7 @@ function section(id, title, hint, bodyHtml) {
   const infoEl = sec.querySelector('#sc-info');
   const cardsEl = sec.querySelector('#sc-cards');
 
-  call('GET', '/api/memories').then((r) => {
+  callMemoriesOnce().then((r) => {
     const list = sec.querySelector('#sc-memories-list');
     for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
@@ -2346,7 +2359,7 @@ function section(id, title, hint, bodyHtml) {
      <button class="run" id="cm-run" style="margin-top:16px">Crear</button>
      <div class="status" id="cm-status"></div>`);
 
-  call('GET', '/api/memories').then((r) => {
+  callMemoriesOnce().then((r) => {
     const list = sec.querySelector('#cm-memories-list');
     (r.memories ?? []).forEach((m) => { const opt = document.createElement('option'); opt.value = m.name; list.appendChild(opt); });
   });
@@ -2413,7 +2426,7 @@ function section(id, title, hint, bodyHtml) {
      <label>Motivo</label><input type="text" id="al-rm-reason" placeholder="ej. forma genérica, colisiona con otro recuerdo">
      <button class="run secondary" id="al-rm">Quitar</button>`);
 
-  call('GET', '/api/memories').then((r) => {
+  callMemoriesOnce().then((r) => {
     const list = sec.querySelector('#al-memories-list');
     for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
@@ -2497,7 +2510,7 @@ function section(id, title, hint, bodyHtml) {
      <label>Motivo</label><input type="text" id="rl-un-reason" placeholder="ej. colisión de alias, no era relación real">
      <button class="run secondary" id="rl-unlink">Borrar</button>`);
 
-  call('GET', '/api/memories').then((r) => {
+  callMemoriesOnce().then((r) => {
     const list = sec.querySelector('#rl-memories-list');
     for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
@@ -2567,7 +2580,7 @@ function section(id, title, hint, bodyHtml) {
      <label>Motivo</label><input type="text" id="rc-reason" placeholder="ej. el registro es sobre CABD, no sobre el vault en general">
      <button class="run" id="rc-run">Reasignar</button>`);
 
-  call('GET', '/api/memories').then((r) => {
+  callMemoriesOnce().then((r) => {
     const list = sec.querySelector('#rc-memories-list');
     for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
@@ -2697,7 +2710,7 @@ function section(id, title, hint, bodyHtml) {
      </div>
      <div class="status" id="er-status">Primero pulsa "Ver registro" para cargar sus valores actuales.</div>`);
 
-  call('GET', '/api/memories').then((r) => {
+  callMemoriesOnce().then((r) => {
     const list = sec.querySelector('#er-memories-list');
     (r.memories ?? []).forEach((m) => { const opt = document.createElement('option'); opt.value = m.name; list.appendChild(opt); });
   });
@@ -2801,7 +2814,7 @@ function section(id, title, hint, bodyHtml) {
      </div>
      <button class="run" id="rm-run">Guardar</button>`);
 
-  call('GET', '/api/memories').then((r) => {
+  callMemoriesOnce().then((r) => {
     const list = sec.querySelector('#rm-memories-list');
     for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
@@ -3017,7 +3030,7 @@ function section(id, title, hint, bodyHtml) {
      <datalist id="pm-memories-list"></datalist>
      <button class="run" id="pm-run" style="margin-top:16px">Borrar para siempre</button>`);
 
-  call('GET', '/api/memories').then((r) => {
+  callMemoriesOnce().then((r) => {
     const list = sec.querySelector('#pm-memories-list');
     for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
@@ -3269,7 +3282,7 @@ function section(id, title, hint, bodyHtml) {
       list.appendChild(opt);
     }
   });
-  call('GET', '/api/memories').then((r) => {
+  callMemoriesOnce().then((r) => {
     for (const n of r.memories ?? []) {
       const opt = document.createElement('option');
       opt.value = n.name;
