@@ -81,7 +81,14 @@ await client.connect();
 let loaded = 0;
 let skipped = 0;
 for (const file of files) {
-  const raw = readFileSync(file, 'utf8');
+  // Normaliza CRLF -> LF antes de hashear/guardar (2026-09-14, bug real
+  // encontrado en vivo en D:\UAObrain, ver projects/segundo-cerebro.md):
+  // un repo con core.autocrlf=true sin .gitattributes trae CRLF en disco
+  // mientras git guarda LF internamente. Sin esto, un `pull`/checkout que
+  // renormalice el working tree hace que el hash cambie para archivos que
+  // nadie editó de verdad (mismo contenido, distintos bytes), disparando
+  // un re-embed real contra Voyage sin necesidad.
+  const raw = readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
   const relPath = relative(repoRoot, file).replace(/\\/g, '/');
   const slug = relPath.replace(/\.md$/, '');
   const fileHash = hash(raw);
