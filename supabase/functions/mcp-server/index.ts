@@ -93,6 +93,70 @@ function resolveLiveMemory(name: string, byName: Map<string, { name: string; mer
   }
 }
 
+// Multi-salto sobre memory_links (2026-09-14, portado desde D:\UAObrain, ver
+// projects/segundo-cerebro.md Etapa 19): se descartó una tool 'traverse'
+// separada por riesgo de que un LLM llamador externo (o más débil) nunca la
+// eligiera para una pregunta relacional -- mismo problema, a otra escala,
+// que motivó el router de nodos de arriba. En vez de eso, 'search' corre
+// esto solo, y solo, cuando el propio router ya detectó 2+ recuerdos
+// nombrados en la misma pregunta: mismo BFS no dirigido de
+// scripts/db/traverse.mjs, portado a TS, reusando byName/resolveLiveMemory
+// que 'search' ya calcula para el router. Costo real: una consulta extra a
+// memory_links (grafo personal, decenas de filas), nunca en una búsqueda de
+// un solo tema.
+const MAX_HOPS = 4;
+function buildUndirectedAdjacency(
+  links: { from_memory: string; to_memory: string; relation: string }[],
+  byName: Map<string, { name: string; merged_into: string | null }>,
+): Map<string, { to: string; relation: string }[]> {
+  const adj = new Map<string, { to: string; relation: string }[]>();
+  const add = (a: string, b: string, relation: string) => {
+    if (!adj.has(a)) adj.set(a, []);
+    adj.get(a)!.push({ to: b, relation });
+  };
+  const seen = new Set<string>();
+  for (const l of links) {
+    const from = resolveLiveMemory(l.from_memory, byName);
+    const to = resolveLiveMemory(l.to_memory, byName);
+    if (!from || !to || from === to) continue;
+    const key = `${from}|${to}|${l.relation}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    add(from, to, l.relation);
+    add(to, from, l.relation);
+  }
+  return adj;
+}
+function shortestPath(
+  adj: Map<string, { to: string; relation: string }[]>,
+  start: string,
+  target: string,
+): { node: string; relation: string | null }[] | null {
+  if (start === target) return null;
+  const visited = new Set([start]);
+  const queue: { node: string; path: { node: string; relation: string | null }[] }[] = [
+    { node: start, path: [{ node: start, relation: null }] },
+  ];
+  let qi = 0;
+  while (qi < queue.length) {
+    const { node, path } = queue[qi++];
+    if (path.length - 1 >= MAX_HOPS) continue;
+    for (const e of adj.get(node) ?? []) {
+      if (visited.has(e.to)) continue;
+      const newPath = [...path, { node: e.to, relation: e.relation }];
+      if (e.to === target) return newPath;
+      visited.add(e.to);
+      queue.push({ node: e.to, path: newPath });
+    }
+  }
+  return null;
+}
+function formatPath(path: { node: string; relation: string | null }[]): string {
+  let out = path[0].node;
+  for (let i = 1; i < path.length; i++) out += ` --(${path[i].relation})--> ${path[i].node}`;
+  return out;
+}
+
 // Tiering del gate de contradicciones (ver registro #149/#152 en segundo-cerebro):
 // primera pasada barata vía Ollama Cloud antes de bloquear. Portado desde
 // scripts/db/lib/classify-duplicate.mjs: misma lógica, mismo modelo, mismo
@@ -272,7 +336,7 @@ const mcp = new McpServer({
 
 mcp.tool('search', {
   description:
-    'Busca registros vigentes en el segundo cerebro por una pregunta en lenguaje natural. Devuelve los registros más relevantes, con su fuente.',
+    'Busca registros vigentes en el segundo cerebro por una pregunta en lenguaje natural. Devuelve los registros más relevantes, con su fuente. Si la pregunta nombra dos o más recuerdos (proyectos, personas, temas) a la vez -- ej. "cómo se relaciona X con Y" -- también busca y devuelve el camino que los conecta en el grafo de recuerdos, no hace falta ninguna otra tool para eso.',
   inputSchema: z.object({ query: z.string().describe('La pregunta o tema a buscar') }),
   handler: async ({ query }: { query: string }) => {
     const queryEmbedding = await embed(query, 'query');
@@ -286,13 +350,36 @@ mcp.tool('search', {
       const live = resolveLiveMemory(n.name, byName);
       if (live && live !== DASHBOARD_LOG_NODE) matchedLiveNodes.add(live);
     }
+    // Guard de tamaño: 2-4 nodos es una pregunta relacional real; más que eso
+    // suele ser una pregunta amplia que solo coincide por palabras sueltas, no
+    // vale la pena C(n,2) caminos que nadie pidió.
+    const wantsPaths = matchedLiveNodes.size >= 2 && matchedLiveNodes.size <= 4;
 
-    const [{ data: factCandidates }, { data: nodeMatchRows }] = await Promise.all([
+    const [{ data: factCandidates }, { data: nodeMatchRows }, { data: linkRows }] = await Promise.all([
       supabase.rpc('records_search', { query_embedding: queryEmbedding, query_text: query, match_count: 10, exclude_memory: DASHBOARD_LOG_NODE }),
       matchedLiveNodes.size > 0
         ? supabase.rpc('memory_match_records', { node_names: [...matchedLiveNodes], match_count: MAX_NODE_MATCH_FACTS })
         : Promise.resolve({ data: [] as any[] }),
+      wantsPaths
+        ? supabase.from('memory_links').select('from_memory, to_memory, relation')
+        : Promise.resolve({ data: [] as any[] }),
     ]);
+
+    let pathLines: string[] = [];
+    if (wantsPaths) {
+      const adj = buildUndirectedAdjacency(linkRows ?? [], byName);
+      const nodes = [...matchedLiveNodes];
+      const found = new Set<string>();
+      for (let i = 0; i < nodes.length; i++) {
+        for (let j = i + 1; j < nodes.length; j++) {
+          const path = shortestPath(adj, nodes[i], nodes[j]);
+          if (path) {
+            const key = formatPath(path);
+            if (!found.has(key)) { found.add(key); pathLines.push(key); }
+          }
+        }
+      }
+    }
 
     async function rerankTop(candidates: any[], toDoc: (c: any) => string, topN: number) {
       if (!candidates || candidates.length === 0) return [];
@@ -324,6 +411,12 @@ mcp.tool('search', {
         ? ` (mostrando ${MAX_NODE_MATCH_FACTS} de ${nodeMatchTotal}, pide "estado del recuerdo X" para el resto)`
         : '';
       text += `(recuerdo(s) detectado(s) en la pregunta: ${[...matchedLiveNodes].join(', ')}${suffix})\n`;
+    }
+
+    if (wantsPaths) {
+      text += pathLines.length > 0
+        ? `\n--- conexión encontrada entre los recuerdos detectados ---\n${pathLines.map((p) => `${p}\n`).join('')}`
+        : `\n(sin conexión directa registrada entre ${[...matchedLiveNodes].join(' y ')} dentro de ${MAX_HOPS} saltos)\n`;
     }
 
     if (records.length === 0) text += 'Sin resultados.\n';
