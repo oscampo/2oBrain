@@ -1,0 +1,51 @@
+name: Release
+
+# Crea (o actualiza) el GitHub Release para un tag, usando el token integrado
+# de Actions (permisos que una sesión de Claude Code / su MCP de GitHub no
+# tiene, ver registros #472/#723 en segundo-cerebro de D:\UAObrain). Las
+# notas se extraen directo de la sección correspondiente en CHANGELOG.md --
+# nunca se redactan aparte, para no tener dos fuentes de verdad.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag a publicar (ej. v0.7.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Fijar variable TAG
+        run: echo "TAG=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_ENV"
+
+      - name: Extraer la sección del CHANGELOG para este tag
+        run: |
+          VERSION="${TAG#v}"
+          awk "/^## v$VERSION /{flag=1; next} /^## v/{flag=0} flag" CHANGELOG.md > /tmp/notes.md
+          if [ ! -s /tmp/notes.md ]; then
+            echo "Sin sección '## v$VERSION' en CHANGELOG.md, revisa antes de reintentar." >&2
+            exit 1
+          fi
+          echo "--- notas extraídas ---"
+          cat /tmp/notes.md
+
+      - name: Crear o actualizar el release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file /tmp/notes.md
+          else
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file /tmp/notes.md
+          fi
