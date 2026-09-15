@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs';
 import { getTaskProviderModel } from './task-models.mjs';
 import { callOpenRouter, OPENROUTER_ENABLED } from './openrouter.mjs';
 
-// Proveedor elegible (2026-09-16, portado desde D:\MyBrain): "ollama"
+// Proveedor elegible (2026-09-15, portado desde D:\MyBrain): "ollama"
 // (default, gratis, sin prefijo en config/task-models.json) u
 // "openrouter" (mismas familias de modelo -- gpt-oss, Nemotron -- por
 // infraestructura distinta, útil de respaldo cuando Ollama Cloud aborta

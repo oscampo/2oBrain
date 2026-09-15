@@ -5,7 +5,7 @@
 // explícitamente: no hay ruta silenciosa para que una contradicción quede
 // sin resolver.
 //
-// --complements <id> (2026-09-16, portado desde D:\MyBrain): el registro
+// --complements <id> (2026-09-15, portado desde D:\MyBrain): el registro
 // nuevo agrega información real sobre el mismo asunto de <id>, pero no
 // repite todo lo que <id> ya decía, así que NO lo reemplaza (a diferencia
 // de --supersedes). Queda como fila propia, ligada a <id> vía la columna
@@ -48,7 +48,7 @@ import { classifyCommitmentResolution, CLASSIFIER_CONFIDENCE_THRESHOLD as COMMIT
 const SIMILARITY_THRESHOLD = 0.6;
 
 // Nombre legible del proveedor para los mensajes de auto-resolución
-// (2026-09-16, portado desde D:\MyBrain): antes decían "Ollama Cloud" fijo,
+// (2026-09-15, portado desde D:\MyBrain): antes decían "Ollama Cloud" fijo,
 // ahora el clasificador puede correr en OpenRouter también (ver
 // lib/openrouter.mjs y lib/task-models.mjs).
 function providerLabel(provider) {

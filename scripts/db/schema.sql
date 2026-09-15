@@ -277,7 +277,7 @@ alter table records add column if not exists embedding vector(1024);
 alter table records add column if not exists valid_until timestamptz;
 alter table records add column if not exists superseded_by bigint references records(id);
 
--- Complemento estructural (2026-09-16, portado desde D:\MyBrain): un
+-- Complemento estructural (2026-09-15, portado desde D:\MyBrain): un
 -- registro que agrega informacion real sobre el mismo asunto de otro,
 -- pero no repite todo lo que el otro ya decia, no debe reemplazarlo
 -- (perderia lo que el viejo aportaba) ni tampoco mutarlo por texto
@@ -342,7 +342,7 @@ drop function if exists facts_search(vector(1024), text, int, text);
 -- que compara el nombre/alias del recuerdo ligado a cada registro contra
 -- la consulta, para que el nombre del proyecto sea, por si solo, una senal
 -- de busqueda valida.
--- 2026-09-16 (portado desde D:\MyBrain): se agrega `complements` al tipo
+-- 2026-09-15 (portado desde D:\MyBrain): se agrega `complements` al tipo
 -- de retorno, y una segunda pasada despues del ranking normal que anexa
 -- cualquier registro que complemente a uno de los ganadores, sin
 -- importar su propio score. Los winners (top match_count por RRF) no
@@ -595,7 +595,7 @@ $$;
 -- consulta.
 drop function if exists node_match_facts(text[], int);
 
--- 2026-09-16 (portado desde D:\MyBrain): se agrega `complements` y una
+-- 2026-09-15 (portado desde D:\MyBrain): se agrega `complements` y una
 -- segunda pasada que anexa cualquier registro que complemente a uno de
 -- los ya encontrados por recuerdo, aunque ese complemento no este ligado
 -- el mismo a ninguno de los memory_names consultados. Mismo principio

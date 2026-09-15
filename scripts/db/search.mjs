@@ -151,7 +151,7 @@ const rerankedFacts = await rerankTop(factCandidates, (f) => (f.memories ? `[${f
 const nodeMatchIds = new Set(nodeMatchFacts.map((f) => f.id));
 const records = [...nodeMatchFacts.map((f) => ({ ...f, score: null })), ...rerankedFacts.filter((f) => !nodeMatchIds.has(f.id))];
 
-// 2026-09-16 (portado desde D:\MyBrain): records_search/memory_match_records
+// 2026-09-15 (portado desde D:\MyBrain): records_search/memory_match_records
 // ya garantizan que un complemento entra al POOL siempre que su registro
 // complementado esté en el pool, pero el rerank de arriba (relevancia
 // semántica a la pregunta, no al registro que complementa) puede igual

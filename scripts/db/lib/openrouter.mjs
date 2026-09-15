@@ -1,4 +1,4 @@
-// Cliente compartido para OpenRouter (2026-09-16, a pedido de Oscar: darle
+// Cliente compartido para OpenRouter (2026-09-15, a pedido de Oscar: darle
 // al usuario posibilidad de elegir proveedor/modelo más allá de Ollama Cloud
 // y Gemini). Un solo lugar para el fetch + manejo de error, mismo criterio
 // que gemini-fallback.mjs ya aplica para Gemini -- evita repetir esto en

@@ -31,7 +31,7 @@ import { callOpenRouter, OPENROUTER_ENABLED } from './openrouter.mjs';
 
 // El modelo de Ollama de este archivo sigue el mismo grupo 'classifiers' que
 // el resto de los clasificadores baratos (config/task-models.json), pero
-// ese grupo ahora puede apuntar a OpenRouter en vez de Ollama (2026-09-16,
+// ese grupo ahora puede apuntar a OpenRouter en vez de Ollama (2026-09-15,
 // portado desde D:\MyBrain). Si apunta a otro proveedor, MODELS.ollama/
 // MODELS.openrouter caen a un modelo por defecto razonable para esa rama
 // específica, en vez de romper silenciosamente el callOllama/callOpenRouter

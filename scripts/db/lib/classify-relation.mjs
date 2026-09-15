@@ -26,7 +26,7 @@ import { generateWithGeminiFallback } from './gemini-fallback.mjs';
 import { getTaskProviderModel } from './task-models.mjs';
 import { callOpenRouter, OPENROUTER_ENABLED } from './openrouter.mjs';
 
-// Mismo criterio que classify-mention-relation.mjs (2026-09-16, portado
+// Mismo criterio que classify-mention-relation.mjs (2026-09-15, portado
 // desde D:\MyBrain): el grupo 'deepSweep' puede apuntar a OpenRouter en vez
 // de Ollama, así que MODELS.ollama/MODELS.openrouter caen a un modelo por
 // defecto razonable para la rama que NO coincida con la configuración

@@ -64,7 +64,7 @@ export async function embed(text, inputType) {
   }
 }
 
-// Proveedor de reranking, elegible por el usuario (2026-09-16, portado
+// Proveedor de reranking, elegible por el usuario (2026-09-15, portado
 // desde D:\MyBrain): Voyage tiene 200M tokens gratis para rerank, con más
 // de 2M ya consumidos en la cuenta de Oscar -- no es crítico todavía, pero
 // no es infinito, y además exige tarjeta en la cuenta para el límite de

@@ -22,7 +22,7 @@
 // faltante/vacía, cada grupo cae a su propio default razonable (el mismo
 // que ya corría hardcodeado antes de esto).
 //
-// Proveedor elegible por tarea (2026-09-16, portado desde D:\MyBrain): el
+// Proveedor elegible por tarea (2026-09-15, portado desde D:\MyBrain): el
 // valor de cada grupo puede llevar el prefijo "proveedor::" (ej.
 // "openrouter::openai/gpt-oss-20b"). Sin ese prefijo, se asume "ollama" --
 // así ningún config/task-models.json existente necesita migrarse, sigue
