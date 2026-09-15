@@ -64,18 +64,21 @@ export async function embed(text, inputType) {
   }
 }
 
-/**
- * Reordena documentos por relevancia real a la query (cross-encoder), sobre
- * el candidate pool que ya trajo el RRF vector+texto. rerank-2.5-lite:
- * multilingüe, oficial, HTTPS, 200M tokens gratis (a diferencia del
- * bge-reranker de Ollama descartado en Etapa 2: ese era empaquetado de
- * comunidad y corría local, rompiendo el acceso desde el celular).
- * @param {string} query
- * @param {string[]} documents
- * @returns {Promise<{index: number, relevance_score: number}[]>} ordenado desc por relevancia
- */
-export async function rerank(query, documents) {
-  if (documents.length === 0) return [];
+// Proveedor de reranking, elegible por el usuario (2026-09-16, portado
+// desde D:\MyBrain): Voyage tiene 200M tokens gratis para rerank, con más
+// de 2M ya consumidos en la cuenta de Oscar -- no es crítico todavía, pero
+// no es infinito, y además exige tarjeta en la cuenta para el límite de
+// tasa cómodo. Algunos usuarios de 2oBrain van a preferir no poner tarjeta
+// en ningún lado. RERANK_PROVIDER en .env ('voyage' por defecto, o
+// 'openrouter') deja elegir sin tocar código. openrouter usa
+// nvidia/llama-nemotron-rerank-vl-1b-v2:free -- gratis, cross-encoder,
+// acepta documentos de solo texto (el "VL" es opcional: también toma
+// imágenes, pero no las necesitamos aquí). Mismo shape de retorno para
+// ambos proveedores, para no tocar a los llamadores (rerankTop en
+// search.mjs y quien más use esto).
+const RERANK_PROVIDER = (env.RERANK_PROVIDER || 'voyage').trim().toLowerCase();
+
+async function rerankVoyage(query, documents) {
   const res = await fetch('https://api.voyageai.com/v1/rerank', {
     method: 'POST',
     headers: {
@@ -94,6 +97,47 @@ export async function rerank(query, documents) {
   const { data } = await res.json();
   return data;
 }
+
+async function rerankOpenRouter(query, documents) {
+  const res = await fetch('https://openrouter.ai/api/v1/rerank', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'nvidia/llama-nemotron-rerank-vl-1b-v2:free',
+      query,
+      documents: documents.map((text) => ({ text })),
+      top_n: documents.length,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`OpenRouter rerank falló: ${res.status} ${await res.text()}`);
+  }
+  const { results } = await res.json();
+  // Normaliza al mismo shape que devuelve Voyage: [{index, relevance_score}].
+  return results.map((r) => ({ index: r.index, relevance_score: r.relevance_score }));
+}
+
+/**
+ * Reordena documentos por relevancia real a la query (cross-encoder), sobre
+ * el candidate pool que ya trajo el RRF vector+texto. Proveedor elegido vía
+ * RERANK_PROVIDER en .env ('voyage', default, o 'openrouter').
+ * @param {string} query
+ * @param {string[]} documents
+ * @returns {Promise<{index: number, relevance_score: number}[]>} ordenado desc por relevancia
+ */
+export async function rerank(query, documents) {
+  if (documents.length === 0) return [];
+  if (RERANK_PROVIDER === 'openrouter') return rerankOpenRouter(query, documents);
+  if (RERANK_PROVIDER !== 'voyage') {
+    throw new Error(`RERANK_PROVIDER desconocido: "${RERANK_PROVIDER}". Usa "voyage" u "openrouter".`);
+  }
+  return rerankVoyage(query, documents);
+}
+
+export const RERANK_PROVIDER_NAME = RERANK_PROVIDER;
 
 export function toVectorLiteral(embedding) {
   return `[${embedding.join(',')}]`;
