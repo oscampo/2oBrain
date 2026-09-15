@@ -650,9 +650,8 @@ let settings = loadSettings();
   try {
     const r = await fetch('/api/available-providers').then((res) => res.json());
     if (!r.ok) return;
-    const currentOk = settings.searchSynthProvider === 'ollama' ? r.ollama : r.gemini;
-    if (currentOk) return;
-    const fallback = settings.searchSynthProvider === 'ollama' ? (r.gemini ? 'gemini' : null) : (r.ollama ? 'ollama' : null);
+    if (r[settings.searchSynthProvider]) return;
+    const fallback = ['ollama', 'gemini', 'openrouter'].find((p) => p !== settings.searchSynthProvider && r[p]);
     if (fallback) {
       settings.searchSynthProvider = fallback;
       saveSettings();
@@ -3507,6 +3506,7 @@ function section(id, title, hint, bodyHtml) {
          <select id="cfg-search-provider">
            <option value="ollama">Ollama Cloud</option>
            <option value="gemini">Gemini</option>
+           <option value="openrouter">OpenRouter</option>
          </select>
        </div>
        <div><label style="margin-top:0">Modelo (opcional, override sin fallback)</label>

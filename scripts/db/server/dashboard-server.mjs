@@ -130,7 +130,7 @@ app.get('/api/available-providers', (c) => {
       const m = line.match(new RegExp(`^${name}\\s*=\\s*(.*)$`));
       return !!m && m[1].trim().length > 0;
     });
-    return c.json({ ok: true, ollama: has('OLLAMA_API_KEY'), gemini: has('GEMINI_API_KEY') });
+    return c.json({ ok: true, ollama: has('OLLAMA_API_KEY'), gemini: has('GEMINI_API_KEY'), openrouter: has('OPENROUTER_API_KEY') });
   } catch (err) {
     return c.json({ ok: false, error: err.message }, 500);
   }

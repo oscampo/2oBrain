@@ -3,18 +3,21 @@
 // búsqueda sigue siendo determinista y gratis (RRF + rerank, sin LLM), esto
 // es un paso opcional aparte que el llamador pide explícitamente.
 //
-// Solo dos proveedores hoy, ambos ya usados en el resto del sistema (mismas
-// keys que classify-duplicate.mjs y extract-records.mjs, nada nuevo que
-// configurar): Ollama Cloud (gpt-oss:20b-cloud) y Gemini (gemini-flash-latest).
+// Tres proveedores, todos ya usados en el resto del sistema (mismas keys
+// que classify-duplicate.mjs y extract-records.mjs, nada nuevo que
+// configurar): Ollama Cloud (gpt-oss:20b-cloud), Gemini
+// (gemini-flash-latest) y OpenRouter (posibilidad real de elegir
+// proveedor también acá, no solo en clasificadores/extracción/rerank).
 // "Claude" quedó fuera a propósito (decisión del usuario, 2026-08-28): requeriría
 // ANTHROPIC_API_KEY, facturada aparte de la suscripción de Claude Code, no
-// configurada. Si se agrega después, va aquí mismo como un tercer 'case'.
+// configurada. Si se agrega después, va aquí mismo como un cuarto 'case'.
 import { readFileSync } from 'node:fs';
 import { generateWithGeminiFallback } from './gemini-fallback.mjs';
 import { getTaskModel } from './task-models.mjs';
+import { callOpenRouter, AVAILABLE_OPENROUTER_MODELS } from './openrouter.mjs';
 
-const MODELS = { ollama: getTaskModel('synthesis') };
-const SYNTHESIS_PROVIDER_LIST = ['ollama', 'gemini'];
+const MODELS = { ollama: getTaskModel('synthesis'), openrouter: AVAILABLE_OPENROUTER_MODELS[0] };
+const SYNTHESIS_PROVIDER_LIST = ['ollama', 'gemini', 'openrouter'];
 
 function loadEnv() {
   const envPath = new URL('../../../.env', import.meta.url);
@@ -95,7 +98,7 @@ async function generate(prompt, provider, model) {
   if (!SYNTHESIS_PROVIDERS.includes(provider)) {
     throw new Error(`Proveedor de síntesis desconocido: "${provider}". Válidos: ${SYNTHESIS_PROVIDERS.join(', ')}.`);
   }
-  const apiKeyVar = provider === 'gemini' ? 'GEMINI_API_KEY' : 'OLLAMA_API_KEY';
+  const apiKeyVar = provider === 'gemini' ? 'GEMINI_API_KEY' : provider === 'openrouter' ? 'OPENROUTER_API_KEY' : 'OLLAMA_API_KEY';
   if (!env[apiKeyVar]) throw new Error(`Falta ${apiKeyVar} en .env, no se puede sintetizar con ${provider}.`);
 
   if (provider === 'gemini') {
@@ -103,6 +106,14 @@ async function generate(prompt, provider, model) {
     // mismo mecanismo de extract-records.mjs): reintenta el siguiente modelo
     // solo en fallos transitorios (503/UNAVAILABLE, timeout/red).
     return generateWithGeminiFallback(env.GEMINI_API_KEY, prompt, { model });
+  }
+  if (provider === 'openrouter') {
+    // Sin fallback automático entre modelos de OpenRouter acá (a diferencia
+    // de extract-records.mjs): es una síntesis interactiva desde "Buscar",
+    // el usuario ve el error y puede reintentar con otro modelo del
+    // selector, no vale la pena la complejidad de un fallback en cadena
+    // para una llamada puntual.
+    return callOpenRouter(prompt, model || MODELS.openrouter, { json: false });
   }
   return callOllama(prompt, model || MODELS.ollama);
 }

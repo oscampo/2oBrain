@@ -46,11 +46,16 @@ export const AVAILABLE_OPENROUTER_MODELS = [
 /**
  * @param {string} prompt
  * @param {string} model ej. "openai/gpt-oss-20b"
- * @param {{timeoutMs?: number}} [opts]
- * @returns {Promise<string>} texto crudo de la respuesta (se espera JSON, sin limpiar fences)
+ * @param {{timeoutMs?: number, json?: boolean}} [opts] json (default true): pide
+ *   response_format json_object, para llamadores que esperan JSON (clasificadores).
+ *   Pasar json:false para prosa libre (ej. synthesize.mjs) -- forzar json_object
+ *   ahí hace que el modelo trunque la respuesta a un objeto JSON vacío en vez de
+ *   la prosa pedida.
+ * @returns {Promise<string>} texto crudo de la respuesta
  */
 export async function callOpenRouter(prompt, model, opts = {}) {
   const timeoutMs = opts.timeoutMs ?? 30_000;
+  const json = opts.json ?? true;
   if (!env.OPENROUTER_API_KEY) throw new Error('Falta OPENROUTER_API_KEY.');
 
   let res;
@@ -64,7 +69,7 @@ export async function callOpenRouter(prompt, model, opts = {}) {
       body: JSON.stringify({
         model,
         messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
+        ...(json ? { response_format: { type: 'json_object' } } : {}),
       }),
       signal: AbortSignal.timeout(timeoutMs),
     });
