@@ -5,6 +5,23 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.7.5 (2026-09-15)
+
+Sin cambios en `schema.sql`. Portado desde D:\MyBrain (misma sesión que
+v0.7.4): completa la elección de proveedor en el último punto que
+faltaba, la síntesis de "Buscar".
+
+- **OpenRouter como proveedor de síntesis en "Buscar"**: Configuración →
+  "Síntesis por defecto en Buscar" ahora ofrece OpenRouter junto a Ollama
+  Cloud y Gemini (`lib/synthesize.mjs`, `/api/available-providers`,
+  reutiliza `config/openrouter-models.json`).
+- **Fix: `callOpenRouter()` forzaba siempre `response_format:json_object`**,
+  correcto para los clasificadores pero no para síntesis en prosa libre
+  -- el modelo truncaba la respuesta a un objeto JSON vacío en vez de
+  contestar la pregunta. Se agrega `opts.json` (default `true`, `false`
+  en `synthesize.mjs`) para permitir prosa cuando el llamador la
+  necesita. Hallazgo en vivo, probado end-to-end en el dashboard.
+
 ## v0.7.4 (2026-09-15)
 
 Sin cambios en `schema.sql`. Portado desde D:\MyBrain (misma sesión que
