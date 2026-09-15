@@ -3088,25 +3088,37 @@ function section(id, title, hint, bodyHtml) {
 // fijar un modelo distinto por grupo y comparar calidad en vivo durante la
 // tarde, no un fallback automático.
 {
-  const sec = section('task-models', 'Modelos por tarea', 'Elige qué modelo de Ollama Cloud usa cada grupo de tareas del sistema. classifiers: duplicados, memoria, alias, resolución de compromisos, relaciones de mención. extraction: extraer de sesión/página. synthesis: síntesis de búsqueda y estado de recuerdo. deepSweep: candidatos de relación profundos.',
+  const sec = section('task-models', 'Modelos por tarea', 'Elige qué modelo, y de qué proveedor, usa cada grupo de tareas del sistema. classifiers: duplicados, memoria, alias, resolución de compromisos, relaciones de mención. extraction: extraer de sesión/página. synthesis: síntesis de búsqueda y estado de recuerdo. deepSweep: candidatos de relación profundos. Ollama Cloud es gratis pero puede abortar bajo carga; OpenRouter (mismas familias de modelo, gpt-oss/Nemotron, por otra infraestructura) es una alternativa, útil también si prefieres no depender de Ollama.',
     `<div id="tm-groups"></div>`);
 
   async function loadTaskModels() {
     const r = await call('GET', '/api/task-models');
     const container = sec.querySelector('#tm-groups');
     container.innerHTML = '';
+    // modelsByProvider: {ollama: [...modelos pelados], openrouter: [...ya con
+    // prefijo "openrouter::"]} -- el valor "pelado" (sin prefijo) de ollama
+    // sigue siendo compatible con config/task-models.json existentes.
+    const byProvider = r.modelsByProvider ?? { ollama: r.availableModels ?? [] };
+    const providerLabels = { ollama: 'Ollama Cloud', openrouter: 'OpenRouter' };
     for (const group of r.groups ?? []) {
       const row = document.createElement('div');
       row.style.marginBottom = '16px';
       const label = document.createElement('label');
       label.textContent = group;
       const select = document.createElement('select');
-      for (const m of r.availableModels ?? []) {
-        const opt = document.createElement('option');
-        opt.value = m;
-        opt.textContent = m;
-        if (m === r.models?.[group]) opt.selected = true;
-        select.appendChild(opt);
+      for (const [provider, models] of Object.entries(byProvider)) {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = providerLabels[provider] ?? provider;
+        for (const m of models) {
+          const opt = document.createElement('option');
+          opt.value = m;
+          // Muestra el nombre de modelo sin el prefijo "proveedor::", el
+          // <optgroup> ya deja claro de qué proveedor es.
+          opt.textContent = m.includes('::') ? m.slice(m.indexOf('::') + 2) : m;
+          if (m === r.models?.[group]) opt.selected = true;
+          optgroup.appendChild(opt);
+        }
+        select.appendChild(optgroup);
       }
       select.addEventListener('change', async () => {
         out(sec, await call('POST', '/api/task-models', { group, model: select.value }));

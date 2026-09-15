@@ -36,8 +36,8 @@
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { embed, toVectorLiteral } from './lib/embed.mjs';
-import { classifyDuplicate, CLASSIFIER_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL } from './lib/classify-duplicate.mjs';
-import { classifyNode, CLASSIFIER_CONFIDENCE_THRESHOLD as NODE_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL as NODE_CLASSIFIER_MODEL } from './lib/classify-memory.mjs';
+import { classifyDuplicate, CLASSIFIER_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL, CLASSIFIER_PROVIDER } from './lib/classify-duplicate.mjs';
+import { classifyNode, CLASSIFIER_CONFIDENCE_THRESHOLD as NODE_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL as NODE_CLASSIFIER_MODEL, CLASSIFIER_PROVIDER as NODE_CLASSIFIER_PROVIDER } from './lib/classify-memory.mjs';
 import { detectNodeMentions } from './lib/detect-memory-mentions.mjs';
 import { findAliasCollisions } from './lib/check-alias-collision.mjs';
 import { classifyMentionRelationHybrid, CLASSIFIER_CONFIDENCE_THRESHOLD as MENTION_CONFIDENCE_THRESHOLD } from './lib/classify-mention-relation.mjs';
@@ -46,6 +46,14 @@ import { createLink } from './lib/create-link.mjs';
 import { classifyCommitmentResolution, CLASSIFIER_CONFIDENCE_THRESHOLD as COMMITMENT_CONFIDENCE_THRESHOLD } from './lib/classify-commitment-resolution.mjs';
 
 const SIMILARITY_THRESHOLD = 0.6;
+
+// Nombre legible del proveedor para los mensajes de auto-resolución
+// (2026-09-16, portado desde D:\MyBrain): antes decían "Ollama Cloud" fijo,
+// ahora el clasificador puede correr en OpenRouter también (ver
+// lib/openrouter.mjs y lib/task-models.mjs).
+function providerLabel(provider) {
+  return provider === 'openrouter' ? 'OpenRouter' : 'Ollama Cloud';
+}
 
 function truncateClaim(claim, maxWords = 15) {
   const words = claim.split(/\s+/);
@@ -167,7 +175,7 @@ if (similar.length > 0 && supersedesIds.length === 0 && complementsId === null &
       args.distinct = true;
     }
     console.error(
-      `(auto-resuelto por Ollama Cloud, ${CLASSIFIER_MODEL}, confianza ${autoResolved.confidence.toFixed(2)}: ${autoResolved.reasoning})`,
+      `(auto-resuelto por ${providerLabel(CLASSIFIER_PROVIDER)}, ${CLASSIFIER_MODEL}, confianza ${autoResolved.confidence.toFixed(2)}: ${autoResolved.reasoning})`,
     );
   } else {
     autoResolved = null; // confianza insuficiente o clasificador no disponible: no se usa como resolución
@@ -192,7 +200,7 @@ if (similar.length > 0 && supersedesIds.length === 0 && complementsId === null &
 }
 
 if (autoResolved) {
-  args.source = `${args.source} [auto-resuelto por Ollama Cloud (${CLASSIFIER_MODEL}), confianza ${autoResolved.confidence.toFixed(2)}: ${autoResolved.reasoning}]`;
+  args.source = `${args.source} [auto-resuelto por ${providerLabel(CLASSIFIER_PROVIDER)} (${CLASSIFIER_MODEL}), confianza ${autoResolved.confidence.toFixed(2)}: ${autoResolved.reasoning}]`;
 }
 
 if (supersedesIds.length > 0) {

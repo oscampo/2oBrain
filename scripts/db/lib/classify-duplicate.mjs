@@ -10,9 +10,15 @@
 // o una respuesta inválida como "distinct": fallar hacia el lado seguro es
 // bloquear, no insertar.
 import { readFileSync } from 'node:fs';
-import { getTaskModel } from './task-models.mjs';
+import { getTaskProviderModel } from './task-models.mjs';
+import { callOpenRouter, OPENROUTER_ENABLED } from './openrouter.mjs';
 
-const MODEL = getTaskModel('classifiers');
+// Proveedor elegible (2026-09-16, portado desde D:\MyBrain): "ollama"
+// (default, gratis, sin prefijo en config/task-models.json) u
+// "openrouter" (mismas familias de modelo -- gpt-oss, Nemotron -- por
+// infraestructura distinta, útil de respaldo cuando Ollama Cloud aborta
+// bajo carga).
+const { provider: PROVIDER, model: MODEL } = getTaskProviderModel('classifiers');
 const CONFIDENCE_THRESHOLD = 0.85;
 
 function loadEnv() {
@@ -30,7 +36,7 @@ function loadEnv() {
 
 const env = loadEnv();
 
-export const classifierEnabled = Boolean(env.OLLAMA_API_KEY);
+export const classifierEnabled = PROVIDER === 'openrouter' ? OPENROUTER_ENABLED : Boolean(env.OLLAMA_API_KEY);
 
 function buildPrompt(newClaim, candidates) {
   const candidateList = candidates
@@ -74,38 +80,34 @@ la confidence en vez de adivinar.`;
 export async function classifyDuplicate(newClaim, candidates) {
   if (!classifierEnabled) return null;
 
-  let res;
+  const prompt = buildPrompt(newClaim, candidates);
+  let responseText;
   try {
-    res = await fetch('https://ollama.com/api/generate', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.OLLAMA_API_KEY}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        prompt: buildPrompt(newClaim, candidates),
-        format: 'json',
-        stream: false,
-      }),
-      signal: AbortSignal.timeout(20_000),
-    });
+    if (PROVIDER === 'openrouter') {
+      responseText = await callOpenRouter(prompt, MODEL, { timeoutMs: 20_000 });
+    } else {
+      const res = await fetch('https://ollama.com/api/generate', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.OLLAMA_API_KEY}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ model: MODEL, prompt, format: 'json', stream: false }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!res.ok) throw new Error(`Ollama Cloud falló: ${res.status}`);
+      responseText = (await res.json()).response;
+    }
   } catch (err) {
-    console.error(`  (clasificador Ollama Cloud no disponible: ${err.message}, cae a bloqueo manual)`);
-    return null;
-  }
-
-  if (!res.ok) {
-    console.error(`  (clasificador Ollama Cloud falló: ${res.status}, cae a bloqueo manual)`);
+    console.error(`  (clasificador ${PROVIDER} no disponible: ${err.message}, cae a bloqueo manual)`);
     return null;
   }
 
   let parsed;
   try {
-    const { response } = await res.json();
-    // format:"json" fuerza JSON válido en el campo response, pero el modelo a
-    // veces igual lo envuelve en fences de markdown (```json ... ```).
-    const cleaned = response.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    // format:"json"/response_format:json_object fuerza JSON válido, pero el
+    // modelo a veces igual lo envuelve en fences de markdown (```json ... ```).
+    const cleaned = responseText.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
     parsed = JSON.parse(cleaned);
   } catch (err) {
     console.error(`  (respuesta del clasificador no es JSON válido: ${err.message}, cae a bloqueo manual)`);
@@ -146,3 +148,4 @@ export async function classifyDuplicate(newClaim, candidates) {
 
 export const CLASSIFIER_CONFIDENCE_THRESHOLD = CONFIDENCE_THRESHOLD;
 export const CLASSIFIER_MODEL = MODEL;
+export const CLASSIFIER_PROVIDER = PROVIDER;

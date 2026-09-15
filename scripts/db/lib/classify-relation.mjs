@@ -23,9 +23,23 @@
 // demostró una diferencia real de calidad, no solo teórica.
 import { readFileSync } from 'node:fs';
 import { generateWithGeminiFallback } from './gemini-fallback.mjs';
-import { getTaskModel } from './task-models.mjs';
+import { getTaskProviderModel } from './task-models.mjs';
+import { callOpenRouter, OPENROUTER_ENABLED } from './openrouter.mjs';
 
-const MODELS = { ollama: getTaskModel('deepSweep'), gemini: 'gemini-flash-latest' };
+// Mismo criterio que classify-mention-relation.mjs (2026-09-16, portado
+// desde D:\MyBrain): el grupo 'deepSweep' puede apuntar a OpenRouter en vez
+// de Ollama, así que MODELS.ollama/MODELS.openrouter caen a un modelo por
+// defecto razonable para la rama que NO coincida con la configuración
+// global, en vez de romper el callOllama/callOpenRouter de este archivo si
+// alguien cambia 'deepSweep' a otro proveedor. El default sigue siendo
+// gemini (ver nota de cabecera, es el único validado contra el patrón
+// espurio real).
+const { provider: DEEPSWEEP_PROVIDER, model: DEEPSWEEP_MODEL } = getTaskProviderModel('deepSweep');
+const MODELS = {
+  ollama: DEEPSWEEP_PROVIDER === 'ollama' ? DEEPSWEEP_MODEL : 'gemma4:31b-cloud',
+  openrouter: DEEPSWEEP_PROVIDER === 'openrouter' ? DEEPSWEEP_MODEL : 'openai/gpt-oss-20b',
+  gemini: 'gemini-flash-latest',
+};
 const DEFAULT_PROVIDER = 'gemini';
 
 function loadEnv() {
@@ -43,7 +57,7 @@ function loadEnv() {
 
 const env = loadEnv();
 
-export const classifierEnabled = Boolean(env.OLLAMA_API_KEY || env.GEMINI_API_KEY);
+export const classifierEnabled = Boolean(env.OLLAMA_API_KEY || env.GEMINI_API_KEY || OPENROUTER_ENABLED);
 
 const SYSTEM_PROMPT = `# Prompt del Sistema: Descubridor y Depurador de Relaciones entre recuerdos de Memoria (Graph Linker & Deduplicator)
 
@@ -217,14 +231,23 @@ async function callGemini(prompt) {
   }
 }
 
+async function callOpenRouterProvider(prompt, model) {
+  try {
+    return await callOpenRouter(prompt, model ?? MODELS.openrouter, { timeoutMs: 90_000 });
+  } catch (err) {
+    console.error(`  (clasificador de relaciones OpenRouter falló: ${err.message})`);
+    return null;
+  }
+}
+
 /**
  * @param {string} memoryA
  * @param {string} factsTextA texto completo de los registros de A (mismo formato que timeline.mjs)
  * @param {string} memoryB
  * @param {string} factsTextB texto completo de los registros de B
- * @param {'gemini'|'ollama'} [provider] default 'gemini' -- ver nota de cabecera, es el único
+ * @param {'gemini'|'ollama'|'openrouter'} [provider] default 'gemini' -- ver nota de cabecera, es el único
  *   validado en la práctica contra el patrón espurio "ambos registros mencionan a la misma persona"
- * @param {string} [model] override del modelo (solo aplica a provider 'ollama' -- gemini
+ * @param {string} [model] override del modelo (solo aplica a provider 'ollama'/'openrouter' -- gemini
  *   siempre usa su lista de respaldo, ver callGemini). Ej. "gemma4:31b-cloud".
  * @returns {Promise<{relation: string, evidence: string, fact_a: string, fact_b: string}[] | null>}
  *   null si el clasificador está deshabilitado o falla por cualquier motivo, el
@@ -237,7 +260,12 @@ export async function classifyRelation(memoryA, factsTextA, memoryB, factsTextB,
   if (!classifierEnabled) return null;
 
   const prompt = buildPrompt(memoryA, factsTextA, memoryB, factsTextB);
-  const rawResponse = provider === 'gemini' ? await callGemini(prompt) : await callOllama(prompt, model);
+  const rawResponse =
+    provider === 'gemini'
+      ? await callGemini(prompt)
+      : provider === 'openrouter'
+        ? await callOpenRouterProvider(prompt, model)
+        : await callOllama(prompt, model);
   if (rawResponse == null) return null;
 
   let parsed;

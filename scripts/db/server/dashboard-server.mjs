@@ -22,7 +22,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { stream } from 'hono/streaming';
 import { synthesize } from '../lib/synthesize.mjs';
-import { getAllTaskModels, AVAILABLE_OLLAMA_MODELS, TASK_GROUPS } from '../lib/task-models.mjs';
+import { getAllTaskModels, AVAILABLE_OLLAMA_MODELS, TASK_GROUPS, getAvailableModelsByProvider } from '../lib/task-models.mjs';
 
 const THIS_SCRIPT = fileURLToPath(import.meta.url);
 const SERVER_DIR = dirname(THIS_SCRIPT);
@@ -389,7 +389,13 @@ app.post('/api/model-config', async (c) => {
 const TASK_MODELS_CONFIG_PATH = join(DB_DIR, 'config', 'task-models.json');
 
 app.get('/api/task-models', (c) => {
-  return c.json({ ok: true, groups: TASK_GROUPS, availableModels: AVAILABLE_OLLAMA_MODELS, models: getAllTaskModels() });
+  return c.json({
+    ok: true,
+    groups: TASK_GROUPS,
+    availableModels: AVAILABLE_OLLAMA_MODELS, // compat: sigue existiendo para quien no haya migrado el frontend
+    modelsByProvider: getAvailableModelsByProvider(),
+    models: getAllTaskModels(),
+  });
 });
 
 app.post('/api/task-models', async (c) => {

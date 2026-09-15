@@ -8,9 +8,10 @@
 // candidatos) devuelve null: el llamador (remember.mjs) nunca inserta con
 // recuerdo nulo o placeholder, bloquea y deja que un humano decida.
 import { readFileSync } from 'node:fs';
-import { getTaskModel } from './task-models.mjs';
+import { getTaskProviderModel } from './task-models.mjs';
+import { callOpenRouter, OPENROUTER_ENABLED } from './openrouter.mjs';
 
-const MODEL = getTaskModel('classifiers');
+const { provider: PROVIDER, model: MODEL } = getTaskProviderModel('classifiers');
 const CONFIDENCE_THRESHOLD = 0.85;
 
 function loadEnv() {
@@ -28,7 +29,7 @@ function loadEnv() {
 
 const env = loadEnv();
 
-export const classifierEnabled = Boolean(env.OLLAMA_API_KEY);
+export const classifierEnabled = PROVIDER === 'openrouter' ? OPENROUTER_ENABLED : Boolean(env.OLLAMA_API_KEY);
 
 function buildPrompt(newClaim, candidates) {
   const candidateList = candidates
@@ -76,36 +77,32 @@ export async function classifyNode(newClaim, candidates) {
   if (!classifierEnabled) return null;
   if (candidates.length === 0) return null; // nada que comparar: no hay decisión que tomar aquí
 
-  let res;
+  const prompt = buildPrompt(newClaim, candidates);
+  let responseText;
   try {
-    res = await fetch('https://ollama.com/api/generate', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.OLLAMA_API_KEY}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        prompt: buildPrompt(newClaim, candidates),
-        format: 'json',
-        stream: false,
-      }),
-      signal: AbortSignal.timeout(20_000),
-    });
+    if (PROVIDER === 'openrouter') {
+      responseText = await callOpenRouter(prompt, MODEL, { timeoutMs: 20_000 });
+    } else {
+      const res = await fetch('https://ollama.com/api/generate', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.OLLAMA_API_KEY}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ model: MODEL, prompt, format: 'json', stream: false }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!res.ok) throw new Error(`Ollama Cloud falló: ${res.status}`);
+      responseText = (await res.json()).response;
+    }
   } catch (err) {
-    console.error(`  (clasificador de recuerdos Ollama Cloud no disponible: ${err.message}, cae a bloqueo manual)`);
-    return null;
-  }
-
-  if (!res.ok) {
-    console.error(`  (clasificador de recuerdos Ollama Cloud falló: ${res.status}, cae a bloqueo manual)`);
+    console.error(`  (clasificador de recuerdos ${PROVIDER} no disponible: ${err.message}, cae a bloqueo manual)`);
     return null;
   }
 
   let parsed;
   try {
-    const { response } = await res.json();
-    const cleaned = response.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    const cleaned = responseText.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
     parsed = JSON.parse(cleaned);
   } catch (err) {
     console.error(`  (respuesta del clasificador de recuerdos no es JSON válido: ${err.message}, cae a bloqueo manual)`);
@@ -138,3 +135,4 @@ export async function classifyNode(newClaim, candidates) {
 
 export const CLASSIFIER_CONFIDENCE_THRESHOLD = CONFIDENCE_THRESHOLD;
 export const CLASSIFIER_MODEL = MODEL;
+export const CLASSIFIER_PROVIDER = PROVIDER;

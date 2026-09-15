@@ -26,9 +26,25 @@
 // completo, no en este.
 import { readFileSync } from 'node:fs';
 import { generateWithGeminiFallback } from './gemini-fallback.mjs';
-import { getTaskModel } from './task-models.mjs';
+import { getTaskProviderModel } from './task-models.mjs';
+import { callOpenRouter, OPENROUTER_ENABLED } from './openrouter.mjs';
 
-const MODELS = { ollama: getTaskModel('classifiers'), gemini: 'gemini-flash-latest' };
+// El modelo de Ollama de este archivo sigue el mismo grupo 'classifiers' que
+// el resto de los clasificadores baratos (config/task-models.json), pero
+// ese grupo ahora puede apuntar a OpenRouter en vez de Ollama (2026-09-16,
+// portado desde D:\MyBrain). Si apunta a otro proveedor, MODELS.ollama/
+// MODELS.openrouter caen a un modelo por defecto razonable para esa rama
+// específica, en vez de romper silenciosamente el callOllama/callOpenRouter
+// de este archivo (que sí necesitan un modelo real de SU proveedor, sin
+// importar a cuál apunte la configuración global). classifyMentionRelationHybrid
+// (abajo) sigue probando ollama primero, gemini después -- ese orden es
+// empírico y no cambia con esto.
+const { provider: CLASSIFIERS_PROVIDER, model: CLASSIFIERS_MODEL } = getTaskProviderModel('classifiers');
+const MODELS = {
+  ollama: CLASSIFIERS_PROVIDER === 'ollama' ? CLASSIFIERS_MODEL : 'gpt-oss:20b-cloud',
+  openrouter: CLASSIFIERS_PROVIDER === 'openrouter' ? CLASSIFIERS_MODEL : 'openai/gpt-oss-20b',
+  gemini: 'gemini-flash-latest',
+};
 const DEFAULT_PROVIDER = 'ollama';
 const CONFIDENCE_THRESHOLD = 0.85;
 
@@ -47,7 +63,7 @@ function loadEnv() {
 
 const env = loadEnv();
 
-export const classifierEnabled = Boolean(env.OLLAMA_API_KEY || env.GEMINI_API_KEY);
+export const classifierEnabled = Boolean(env.OLLAMA_API_KEY || env.GEMINI_API_KEY || OPENROUTER_ENABLED);
 
 function buildPrompt(claim, memoryA, memoryB, factsTextB) {
   return `Eres un clasificador que decide si la mención de un recuerdo dentro de un registro \
@@ -105,13 +121,22 @@ async function callGemini(prompt) {
   }
 }
 
+async function callOpenRouterProvider(prompt, model) {
+  try {
+    return await callOpenRouter(prompt, model ?? MODELS.openrouter, { timeoutMs: 20_000 });
+  } catch (err) {
+    console.error(`  (clasificador de menciones OpenRouter falló: ${err.message})`);
+    return null;
+  }
+}
+
 /**
  * @param {string} claim registro nuevo de memoryA
  * @param {string} memoryA
  * @param {string} memoryB recuerdo mencionado dentro del claim
  * @param {string} factsTextB texto de los registros existentes de memoryB (formato libre, mismo estilo que timeline.mjs)
- * @param {'ollama'|'gemini'} [provider] default 'ollama' -- sin validar empíricamente todavía, ver cabecera
- * @param {string} [model] override del modelo (solo aplica a provider 'ollama')
+ * @param {'ollama'|'gemini'|'openrouter'} [provider] default 'ollama' -- sin validar empíricamente todavía, ver cabecera
+ * @param {string} [model] override del modelo (solo aplica a provider 'ollama'/'openrouter')
  * @returns {Promise<{verdict: 'relation'|'no_relation', relation: string, confidence: number, reasoning: string} | null>}
  *   null si el clasificador está deshabilitado o falla -- el llamador debe caer al
  *   candidato de revisión manual, nunca tratar null como "no_relation".
@@ -120,7 +145,12 @@ export async function classifyMentionRelation(claim, memoryA, memoryB, factsText
   if (!classifierEnabled) return null;
 
   const prompt = buildPrompt(claim, memoryA, memoryB, factsTextB);
-  const rawResponse = provider === 'gemini' ? await callGemini(prompt) : await callOllama(prompt, model);
+  const rawResponse =
+    provider === 'gemini'
+      ? await callGemini(prompt)
+      : provider === 'openrouter'
+        ? await callOpenRouterProvider(prompt, model)
+        : await callOllama(prompt, model);
   if (rawResponse == null) return null;
 
   let parsed;

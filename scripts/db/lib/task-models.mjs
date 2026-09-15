@@ -21,7 +21,16 @@
 // a mano en config/task-models.json. Sin ese archivo, o con una clave
 // faltante/vacía, cada grupo cae a su propio default razonable (el mismo
 // que ya corría hardcodeado antes de esto).
+//
+// Proveedor elegible por tarea (2026-09-16, portado desde D:\MyBrain): el
+// valor de cada grupo puede llevar el prefijo "proveedor::" (ej.
+// "openrouter::openai/gpt-oss-20b"). Sin ese prefijo, se asume "ollama" --
+// así ningún config/task-models.json existente necesita migrarse, sigue
+// leyéndose igual que antes. "::" y no ":" solo, porque los nombres de
+// modelo de Ollama ya usan ":" (ej. "gemma4:31b-cloud") y un separador de
+// un solo carácter sería ambiguo.
 import { readFileSync } from 'node:fs';
+import { AVAILABLE_OPENROUTER_MODELS } from './openrouter.mjs';
 
 const CONFIG_PATH = new URL('../config/task-models.json', import.meta.url);
 
@@ -68,6 +77,35 @@ export function getTaskModel(group) {
 export function getAllTaskModels() {
   const config = loadConfig();
   return Object.fromEntries(TASK_GROUPS.map((g) => [g, typeof config[g] === 'string' && config[g].trim() ? config[g].trim() : DEFAULTS[g]]));
+}
+
+export const KNOWN_PROVIDERS = ['ollama', 'openrouter'];
+
+/**
+ * @param {string} value ej. "openrouter::openai/gpt-oss-20b" o "gemma4:31b-cloud" (sin prefijo = ollama)
+ * @returns {{provider: string, model: string}}
+ */
+export function parseProviderModel(value) {
+  const idx = value.indexOf('::');
+  if (idx === -1) return { provider: 'ollama', model: value };
+  const provider = value.slice(0, idx);
+  if (!KNOWN_PROVIDERS.includes(provider)) return { provider: 'ollama', model: value };
+  return { provider, model: value.slice(idx + 2) };
+}
+
+/** Mismo valor que getTaskModel(group), ya separado en {provider, model}. */
+export function getTaskProviderModel(group) {
+  return parseProviderModel(getTaskModel(group));
+}
+
+// Modelos disponibles por proveedor, para el selector del dashboard -- un
+// solo <select> por grupo, con valores "proveedor::modelo" (o el modelo
+// pelado para ollama, que sigue siendo el default sin prefijo).
+export function getAvailableModelsByProvider() {
+  return {
+    ollama: AVAILABLE_OLLAMA_MODELS,
+    openrouter: AVAILABLE_OPENROUTER_MODELS.map((m) => `openrouter::${m}`),
+  };
 }
 
 export const TASK_MODEL_DEFAULTS = DEFAULTS;

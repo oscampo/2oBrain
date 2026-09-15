@@ -7,9 +7,10 @@
 // null (no bloquea, el llamador simplemente no muestra sugerencia, el campo
 // queda vacío para que el usuario escriba a mano).
 import { readFileSync } from 'node:fs';
-import { getTaskModel } from './task-models.mjs';
+import { getTaskProviderModel } from './task-models.mjs';
+import { callOpenRouter, OPENROUTER_ENABLED } from './openrouter.mjs';
 
-const MODEL = getTaskModel('classifiers');
+const { provider: PROVIDER, model: MODEL } = getTaskProviderModel('classifiers');
 
 function loadEnv() {
   const envPath = new URL('../../../.env', import.meta.url);
@@ -26,7 +27,7 @@ function loadEnv() {
 
 const env = loadEnv();
 
-export const suggesterEnabled = Boolean(env.OLLAMA_API_KEY);
+export const suggesterEnabled = PROVIDER === 'openrouter' ? OPENROUTER_ENABLED : Boolean(env.OLLAMA_API_KEY);
 
 // Longitud (2026-09-06, feedback de Oscar): el modelo tendía a nombres
 // descriptivos de más de 3 segmentos ("rutina-espiritual-de-cada-mañana" en
@@ -71,36 +72,32 @@ export async function suggestCategoryName(members) {
   if (!suggesterEnabled) return null;
   if (!members || members.length === 0) return null;
 
-  let res;
+  const prompt = buildPrompt(members);
+  let responseText;
   try {
-    res = await fetch('https://ollama.com/api/generate', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.OLLAMA_API_KEY}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        prompt: buildPrompt(members),
-        format: 'json',
-        stream: false,
-      }),
-      signal: AbortSignal.timeout(20_000),
-    });
+    if (PROVIDER === 'openrouter') {
+      responseText = await callOpenRouter(prompt, MODEL, { timeoutMs: 20_000 });
+    } else {
+      const res = await fetch('https://ollama.com/api/generate', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.OLLAMA_API_KEY}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ model: MODEL, prompt, format: 'json', stream: false }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!res.ok) throw new Error(`Ollama Cloud falló: ${res.status}`);
+      responseText = (await res.json()).response;
+    }
   } catch (err) {
-    console.error(`  (sugeridor de nombre de categoría no disponible: ${err.message})`);
-    return null;
-  }
-
-  if (!res.ok) {
-    console.error(`  (sugeridor de nombre de categoría falló: ${res.status})`);
+    console.error(`  (sugeridor de nombre de categoría (${PROVIDER}) no disponible: ${err.message})`);
     return null;
   }
 
   let parsed;
   try {
-    const { response } = await res.json();
-    const cleaned = response.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    const cleaned = responseText.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
     parsed = JSON.parse(cleaned);
   } catch (err) {
     console.error(`  (respuesta del sugeridor de nombre no es JSON válido: ${err.message})`);
@@ -115,5 +112,7 @@ export async function suggestCategoryName(members) {
 
   return { name, reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '' };
 }
+
+export const SUGGESTER_PROVIDER = PROVIDER;
 
 export const SUGGESTER_MODEL = MODEL;
