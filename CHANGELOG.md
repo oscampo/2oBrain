@@ -5,6 +5,30 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.7.1 (2026-09-15)
+
+**Cambia `schema.sql`** -- corre `node scripts/db/apply-schema.mjs`
+después de actualizar. Portado desde D:\MyBrain (misma sesión).
+
+- **Nuevo: complemento estructural (`records.complements`)**: el
+  clasificador de duplicados de `remember.mjs` ganaba un caso real de
+  pérdida silenciosa de información -- marcaba "supersedes" con
+  confianza alta cuando el registro nuevo en realidad solo agregaba un
+  dato sobre el mismo asunto de uno viejo, sin repetir todo lo que ese
+  viejo ya decía (el viejo quedaba retractado y su información única se
+  perdía, detectado y corregido a mano 3 veces en la sesión que motivó
+  este cambio). Ahora el clasificador tiene un tercer veredicto,
+  "complements": el registro nuevo queda como fila propia, ligado al
+  que complementa vía la nueva columna `records.complements`, sin
+  reemplazarlo ni mutar su texto (evita reproducir, registro por
+  registro, la misma dilución semántica que un recuerdo con temas
+  mezclados). `records_search`/`memory_match_records` anexan siempre el
+  complemento de cualquier registro que entre al resultado, sin importar
+  su propio ranking de similitud; `search.mjs` agrega un respaldo en JS
+  por si el rerank por relevancia a la pregunta lo deja fuera del corte
+  pese a que el SQL ya lo trajo al pool. `remember.mjs` gana
+  `--complements <id>` explícito, además de la auto-resolución.
+
 ## v0.7.0 (2026-09-14)
 
 Sin cambios en `schema.sql`. Portado desde D:\UAObrain (misma sesión de
