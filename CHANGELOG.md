@@ -5,6 +5,30 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.7.3 (2026-09-15)
+
+Sin cambios en `schema.sql`. Portado desde D:\MyBrain (misma sesión que
+v0.7.1/v0.7.2): darle al usuario posibilidad real de elegir proveedor,
+más allá de Ollama/Gemini.
+
+- **OpenRouter como proveedor alternativo de reranking**:
+  `RERANK_PROVIDER` en `.env` (`voyage` por defecto, o `openrouter`,
+  modelo `nvidia/llama-nemotron-rerank-vl-1b-v2:free`, gratis). Motivo:
+  Voyage da 200M tokens gratis para rerank, pero se agotan con el tiempo,
+  y además exige tarjeta en la cuenta para un límite de tasa cómodo -- no
+  todos los usuarios de 2oBrain van a querer poner tarjeta en ningún lado.
+- **OpenRouter elegible para `classifiers`/`deepSweep`**: los 7
+  clasificadores baratos del sistema (duplicados, memoria, alias,
+  resolución de compromisos, relaciones de mención y de barrido profundo)
+  ganan OpenRouter como proveedor alternativo a Ollama Cloud, elegible
+  desde el dashboard ("Modelos por tarea") o a mano en
+  `config/task-models.json` con el prefijo `openrouter::` (sin prefijo
+  sigue siendo Ollama, ningún config existente necesita migrarse). Los dos
+  clasificadores que ya soportaban Gemini como segunda opinión
+  (relaciones de mención y de barrido profundo) mantienen su orden de
+  escalación empírico intacto, OpenRouter se agrega como tercera opción
+  explícita, no reemplaza nada.
+
 ## v0.7.2 (2026-09-15)
 
 Sin cambios en `schema.sql`. Corrige un hueco real de usabilidad para
