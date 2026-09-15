@@ -1,8 +1,18 @@
 // Fase 3: registra un registro atómico con fecha y fuente obligatorias.
 // Fase 4: antes de insertar, busca registros vivos parecidos por embedding.
 // Si hay candidatos por encima del umbral, se niega a insertar salvo que
-// se pase --supersedes <id>[,<id>...] o --distinct explícitamente: no hay
-// ruta silenciosa para que una contradicción quede sin resolver.
+// se pase --supersedes <id>[,<id>...], --complements <id>, o --distinct
+// explícitamente: no hay ruta silenciosa para que una contradicción quede
+// sin resolver.
+//
+// --complements <id> (2026-09-16, portado desde D:\MyBrain): el registro
+// nuevo agrega información real sobre el mismo asunto de <id>, pero no
+// repite todo lo que <id> ya decía, así que NO lo reemplaza (a diferencia
+// de --supersedes). Queda como fila propia, ligada a <id> vía la columna
+// `complements`, para que records_search/memory_match_records lo anexen
+// siempre al resultado de <id>, sin competir por ranking ni mutar su
+// texto (evita reproducir, registro por registro, el mismo problema de
+// dilución semántica que ya se documentó a nivel de recuerdo).
 //
 // Rediseño 2026-08-29 (ver PLAN-recuerdos.md): --slug (page_slug, columna
 // única) reemplazado por --memory (record_memories, many-to-many). Etapa 2
@@ -16,7 +26,7 @@
 // --create-memory explícitamente. Si un recuerdo fue fusionado a otro
 // (`merged_into`), se resuelve solo al recuerdo vigente.
 // Uso:
-//   node remember.mjs --claim "texto del registro" --date 2026-08-22 --source "conversación Claude Code" [--kind fact|event|commitment] [--memory recuerdo1,recuerdo2] [--create-memory] [--aliases "alias1,alias2"] [--confidence 0.9] [--supersedes 12,15] [--distinct] [--confirm-date]
+//   node remember.mjs --claim "texto del registro" --date 2026-08-22 --source "conversación Claude Code" [--kind fact|event|commitment] [--memory recuerdo1,recuerdo2] [--create-memory] [--aliases "alias1,alias2"] [--confidence 0.9] [--supersedes 12,15] [--complements 12] [--distinct] [--confirm-date]
 //
 // --confirm-date: obligatorio si --date no es la fecha real de hoy (America/
 // Bogota): confirma que un registro con fecha distinta es intencional
@@ -65,7 +75,7 @@ const args = parseArgs(process.argv.slice(2));
 if (!args.claim || !args.date || !args.source) {
   console.error(
     'Faltan campos obligatorios. Uso:\n' +
-      '  node remember.mjs --claim "..." --date YYYY-MM-DD --source "..." [--kind fact] [--memory recuerdo1,recuerdo2] [--create-memory] [--aliases "a,b"] [--confidence 1.0] [--supersedes id,id] [--distinct] [--confirm-date]',
+      '  node remember.mjs --claim "..." --date YYYY-MM-DD --source "..." [--kind fact] [--memory recuerdo1,recuerdo2] [--create-memory] [--aliases "a,b"] [--confidence 1.0] [--supersedes id,id] [--complements id] [--distinct] [--confirm-date]',
   );
   process.exit(1);
 }
@@ -141,13 +151,18 @@ let supersedesIds = args.supersedes
       .filter((n) => Number.isInteger(n))
   : [];
 
+let complementsId = args.complements ? Number(args.complements) : null;
+if (complementsId !== null && !Number.isInteger(complementsId)) complementsId = null;
+
 let autoResolved = null;
 
-if (similar.length > 0 && supersedesIds.length === 0 && !args.distinct) {
+if (similar.length > 0 && supersedesIds.length === 0 && complementsId === null && !args.distinct) {
   autoResolved = await classifyDuplicate(args.claim, similar);
   if (autoResolved && autoResolved.confidence >= CLASSIFIER_CONFIDENCE_THRESHOLD) {
     if (autoResolved.verdict === 'supersedes') {
       supersedesIds = autoResolved.supersedesIds;
+    } else if (autoResolved.verdict === 'complements') {
+      complementsId = autoResolved.complementsId;
     } else {
       args.distinct = true;
     }
@@ -159,7 +174,7 @@ if (similar.length > 0 && supersedesIds.length === 0 && !args.distinct) {
   }
 }
 
-if (similar.length > 0 && supersedesIds.length === 0 && !args.distinct) {
+if (similar.length > 0 && supersedesIds.length === 0 && complementsId === null && !args.distinct) {
   console.error(`Hay ${similar.length} registro(s) vivo(s) parecido(s), resuélvelo antes de insertar:\n`);
   for (const c of similar) {
     console.error(
@@ -169,6 +184,7 @@ if (similar.length > 0 && supersedesIds.length === 0 && !args.distinct) {
   }
   console.error(
     '\nSi este registro reemplaza a alguno de los anteriores, pasa --supersedes <id>[,<id>...].\n' +
+      'Si agrega información real sobre UNO de ellos sin repetir todo lo que ya dice, pasa --complements <id>.\n' +
       'Si es genuinamente distinto pese al parecido, pasa --distinct para confirmarlo explícitamente.',
   );
   await client.end();
@@ -188,6 +204,14 @@ if (supersedesIds.length > 0) {
     await client.end();
     process.exit(1);
   }
+}
+
+if (complementsId !== null && !candidates.some((c) => Number(c.id) === complementsId)) {
+  console.error(
+    `--complements referencia un id que no apareció entre los parecidos vivos: ${complementsId}. Verifica el id con timeline.mjs.`,
+  );
+  await client.end();
+  process.exit(1);
 }
 
 // Etapa 2 (PLAN-recuerdos.md, 2026-08-29): desambiguación por búsqueda vectorial
@@ -346,8 +370,8 @@ for (const name of requestedNodes) {
 }
 
 const { rows } = await client.query(
-  `insert into records (claim, kind, date, source, confidence, embedding)
-   values ($1, $2, $3, $4, $5, $6)
+  `insert into records (claim, kind, date, source, confidence, embedding, complements)
+   values ($1, $2, $3, $4, $5, $6, $7)
    returning id, date, claim`,
   [
     args.claim,
@@ -356,6 +380,7 @@ const { rows } = await client.query(
     args.source,
     args.confidence ? Number(args.confidence) : 1.0,
     vectorLiteral,
+    complementsId,
   ],
 );
 
@@ -377,6 +402,8 @@ if (supersedesIds.length > 0) {
     [newId, supersedesIds],
   );
   console.log(`Reemplazó a #${supersedesIds.join(', #')}.`);
+} else if (complementsId !== null) {
+  console.log(`Complementa a #${complementsId} (ambos quedan vigentes, se anexan juntos en la búsqueda).`);
 } else if (similar.length > 0 && args.distinct) {
   console.log(`Confirmado como distinto pese al parecido con #${similar.map((c) => c.id).join(', #')}.`);
 }

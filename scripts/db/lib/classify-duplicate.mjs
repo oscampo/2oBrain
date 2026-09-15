@@ -37,8 +37,8 @@ function buildPrompt(newClaim, candidates) {
     .map((c) => `  #${c.id} (similitud ${c.similarity.toFixed(2)}): "${c.claim}"`)
     .join('\n');
   return `Eres un clasificador que decide si un registro nuevo, comparado con registros ya \
-registrados y parecidos por embedding, es genuinamente distinto o si reemplaza \
-(supersede) a alguno de ellos por describir el mismo estado de cosas actualizado.
+registrados y parecidos por embedding, es genuinamente distinto, si reemplaza \
+(supersede) a alguno de ellos, o si lo complementa sin reemplazarlo.
 
 registro nuevo: "${newClaim}"
 
@@ -46,18 +46,27 @@ registros vigentes parecidos:
 ${candidateList}
 
 Responde SOLO con JSON, sin texto adicional, con esta forma exacta:
-{"verdict": "distinct" | "supersedes", "supersedes_ids": [ids numéricos de los registros que reemplaza, vacío si verdict es "distinct"], "confidence": número entre 0 y 1, "reasoning": "una oración breve en español"}
+{"verdict": "distinct" | "supersedes" | "complements", "supersedes_ids": [ids numéricos de los registros que reemplaza, vacío si verdict no es "supersedes"], "complements_id": id numérico del registro que complementa, o null si verdict no es "complements", "confidence": número entre 0 y 1, "reasoning": "una oración breve en español"}
 
 "supersedes" solo si el registro nuevo describe el mismo asunto en un estado más \
-reciente o corrige al anterior. "distinct" si es temáticamente parecido pero es \
-información genuinamente distinta (otro aspecto, otro momento no contradictorio, \
-otro sujeto). Si no estás seguro, baja la confidence en vez de adivinar.`;
+reciente o corrige al anterior, Y el registro viejo no aporta ningún dato que el \
+nuevo no repita (el viejo queda enteramente obsoleto). "complements" si el \
+registro nuevo agrega información real sobre el mismo asunto de UN candidato \
+concreto, pero ese candidato sigue aportando algo que el nuevo no dice (un dato, \
+un matiz, un detalle) -- en ese caso NO pierdas esa información marcándola como \
+supersedes, usa complements_id con el id de ese candidato. "distinct" si es \
+temáticamente parecido pero es información genuinamente distinta (otro aspecto, \
+otro momento no contradictorio, otro sujeto), sin relación de actualización ni \
+complemento real. Antes de responder "supersedes", pregúntate explícitamente: \
+¿el registro nuevo contiene TODO lo que el viejo decía? Si la respuesta es no, \
+la respuesta correcta es "complements", no "supersedes". Si no estás seguro, baja \
+la confidence en vez de adivinar.`;
 }
 
 /**
  * @param {string} newClaim
  * @param {{id: number, claim: string, similarity: number}[]} candidates
- * @returns {Promise<{verdict: 'distinct'|'supersedes', supersedesIds: number[], confidence: number, reasoning: string} | null>}
+ * @returns {Promise<{verdict: 'distinct'|'supersedes'|'complements', supersedesIds: number[], complementsId: number|null, confidence: number, reasoning: string} | null>}
  *   null si el clasificador está deshabilitado, o si falla por cualquier motivo
  *   (red, timeout, JSON inválido, ids inventados), el llamador debe tratar
  *   null exactamente igual que si nunca se hubiera intentado clasificar.
@@ -109,14 +118,18 @@ export async function classifyDuplicate(newClaim, candidates) {
   const supersedesIds = Array.isArray(parsed.supersedes_ids)
     ? parsed.supersedes_ids.map(Number).filter((id) => validIds.has(id))
     : [];
+  const complementsId = Number.isFinite(Number(parsed.complements_id)) && validIds.has(Number(parsed.complements_id))
+    ? Number(parsed.complements_id)
+    : null;
   const confidence = Number(parsed.confidence);
 
   if (
-    (parsed.verdict !== 'distinct' && parsed.verdict !== 'supersedes') ||
+    (parsed.verdict !== 'distinct' && parsed.verdict !== 'supersedes' && parsed.verdict !== 'complements') ||
     !Number.isFinite(confidence) ||
     confidence < 0 ||
     confidence > 1 ||
-    (parsed.verdict === 'supersedes' && supersedesIds.length === 0)
+    (parsed.verdict === 'supersedes' && supersedesIds.length === 0) ||
+    (parsed.verdict === 'complements' && complementsId === null)
   ) {
     console.error(`  (respuesta del clasificador con forma inesperada: ${JSON.stringify(parsed)}, cae a bloqueo manual)`);
     return null;
@@ -125,6 +138,7 @@ export async function classifyDuplicate(newClaim, candidates) {
   return {
     verdict: parsed.verdict,
     supersedesIds,
+    complementsId,
     confidence,
     reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
   };

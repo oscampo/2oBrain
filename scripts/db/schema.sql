@@ -277,6 +277,19 @@ alter table records add column if not exists embedding vector(1024);
 alter table records add column if not exists valid_until timestamptz;
 alter table records add column if not exists superseded_by bigint references records(id);
 
+-- Complemento estructural (2026-09-16, portado desde D:\MyBrain): un
+-- registro que agrega informacion real sobre el mismo asunto de otro,
+-- pero no repite todo lo que el otro ya decia, no debe reemplazarlo
+-- (perderia lo que el viejo aportaba) ni tampoco mutarlo por texto
+-- (reproduciria, a nivel de registro individual, el mismo problema de
+-- dilucion semantica que ya se documento a nivel de recuerdo). Queda
+-- como fila propia, con su propio embedding, buscable por si misma, y se
+-- ata a lo que complementa via FK para que records_search/
+-- memory_match_records lo anexen siempre al resultado, sin importar
+-- donde caiga en el ranking de similitud.
+alter table records add column if not exists complements bigint references records(id);
+create index if not exists records_complements_idx on records (complements) where complements is not null;
+
 alter table records add column if not exists content_tsv tsvector
   generated always as (to_tsvector('spanish', claim)) stored;
 
@@ -329,6 +342,15 @@ drop function if exists facts_search(vector(1024), text, int, text);
 -- que compara el nombre/alias del recuerdo ligado a cada registro contra
 -- la consulta, para que el nombre del proyecto sea, por si solo, una senal
 -- de busqueda valida.
+-- 2026-09-16 (portado desde D:\MyBrain): se agrega `complements` al tipo
+-- de retorno, y una segunda pasada despues del ranking normal que anexa
+-- cualquier registro que complemente a uno de los ganadores, sin
+-- importar su propio score. Los winners (top match_count por RRF) no
+-- cambian de orden ni de seleccion, esto solo GARANTIZA que un
+-- complemento no se pierda por quedar fuera del top-50 de cada rama o
+-- del top match_count final.
+drop function if exists records_search(vector(1024), text, int, text);
+
 create or replace function records_search(
   query_embedding vector(1024),
   query_text text,
@@ -342,7 +364,8 @@ returns table (
   source text,
   kind text,
   memories text,
-  score float
+  score float,
+  complements bigint
 )
 language sql stable as $$
   with vector_ranked as (
@@ -403,14 +426,34 @@ language sql stable as $$
     from vector_ranked v
     full outer join text_ranked t on v.id = t.id
     full outer join memory_ranked n on coalesce(v.id, t.id) = n.id
+  ),
+  winners as (
+    select r.id, r.claim, r.date, r.source, r.kind,
+           (select string_agg(memory_name, ', ' order by memory_name) from record_memories where record_id = r.id) as memories,
+           fu.score,
+           r.complements
+    from fused fu
+    join records r on r.id = fu.id
+    order by fu.score desc
+    limit match_count
+  ),
+  complement_rows as (
+    select r.id, r.claim, r.date, r.source, r.kind,
+           (select string_agg(memory_name, ', ' order by memory_name) from record_memories where record_id = r.id) as memories,
+           0::float as score,
+           r.complements
+    from records r
+    where r.valid_until is null
+      and r.complements in (select id from winners)
+      and r.id not in (select id from winners)
+      and (exclude_memory is null or not exists (
+        select 1 from record_memories rm where rm.record_id = r.id and rm.memory_name = exclude_memory
+      ))
   )
-  select r.id, r.claim, r.date, r.source, r.kind,
-         (select string_agg(memory_name, ', ' order by memory_name) from record_memories where record_id = r.id) as memories,
-         fu.score
-  from fused fu
-  join records r on r.id = fu.id
-  order by fu.score desc
-  limit match_count;
+  select * from winners
+  union all
+  select * from complement_rows
+  order by score desc;
 $$;
 
 -- Fase 4 del plan (MCP propio, 2026-08-22): remember.mjs hace este chequeo
@@ -552,6 +595,14 @@ $$;
 -- consulta.
 drop function if exists node_match_facts(text[], int);
 
+-- 2026-09-16 (portado desde D:\MyBrain): se agrega `complements` y una
+-- segunda pasada que anexa cualquier registro que complemente a uno de
+-- los ya encontrados por recuerdo, aunque ese complemento no este ligado
+-- el mismo a ninguno de los memory_names consultados. Mismo principio
+-- que records_search: el ranking/seleccion normal no cambia, solo se
+-- garantiza que un complemento no se pierda.
+drop function if exists memory_match_records(text[], int);
+
 create or replace function memory_match_records(
   memory_names text[],
   match_count int default 15
@@ -563,19 +614,33 @@ returns table (
   source text,
   kind text,
   memories text,
-  total_count bigint
+  total_count bigint,
+  complements bigint
 )
 language sql stable as $$
   with matched as (
-    select distinct r.id, r.claim, r.date, r.source, r.kind
+    select distinct r.id, r.claim, r.date, r.source, r.kind, r.complements
     from records r
     join record_memories rm on rm.record_id = r.id
     where rm.memory_name = any(memory_names) and r.valid_until is null
+  ),
+  extra_complements as (
+    select distinct r.id, r.claim, r.date, r.source, r.kind, r.complements
+    from records r
+    where r.valid_until is null
+      and r.complements in (select id from matched)
+      and r.id not in (select id from matched)
+  ),
+  combined as (
+    select * from matched
+    union
+    select * from extra_complements
   )
-  select m.id, m.claim, m.date, m.source, m.kind,
-         (select string_agg(memory_name, ', ' order by memory_name) from record_memories where record_id = m.id) as memories,
-         count(*) over () as total_count
-  from matched m
-  order by m.date desc
+  select c.id, c.claim, c.date, c.source, c.kind,
+         (select string_agg(memory_name, ', ' order by memory_name) from record_memories where record_id = c.id) as memories,
+         count(*) over () as total_count,
+         c.complements
+  from combined c
+  order by c.date desc
   limit match_count;
 $$;

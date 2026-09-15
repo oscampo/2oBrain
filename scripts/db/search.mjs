@@ -112,8 +112,10 @@ for (const n of allNodes) {
 const NODE_MATCH_POOL = 50;
 let nodeMatchFacts = [];
 let nodeMatchTotal = 0;
+let nodeMatchRows = [];
 if (matchedLiveNodes.size > 0) {
   const { rows } = await client.query(`select * from memory_match_records($1, $2)`, [[...matchedLiveNodes], NODE_MATCH_POOL]);
+  nodeMatchRows = rows;
   nodeMatchTotal = rows.length > 0 ? Number(rows[0].total_count) : 0;
   // Solo el claim, sin prefijo [memories]: el recuerdo ya está garantizado
   // por el router, el prefijo solo sesga hacia registros cuyo tag comparte
@@ -149,6 +151,27 @@ const rerankedFacts = await rerankTop(factCandidates, (f) => (f.memories ? `[${f
 const nodeMatchIds = new Set(nodeMatchFacts.map((f) => f.id));
 const records = [...nodeMatchFacts.map((f) => ({ ...f, score: null })), ...rerankedFacts.filter((f) => !nodeMatchIds.has(f.id))];
 
+// 2026-09-16 (portado desde D:\MyBrain): records_search/memory_match_records
+// ya garantizan que un complemento entra al POOL siempre que su registro
+// complementado esté en el pool, pero el rerank de arriba (relevancia
+// semántica a la pregunta, no al registro que complementa) puede igual
+// dejarlo fuera del corte final -- un complemento suele ser poco relevante
+// a la pregunta literal por diseño, esa no es la señal que lo justifica. Se
+// reinserta cualquier complemento de lo que sí sobrevivió al corte,
+// buscándolo en el pool crudo (pre-rerank) de ambas rutas, para que la
+// garantía sea real de punta a punta, no solo hasta el SQL.
+const shownIds = new Set(records.map((r) => r.id));
+const rawPool = [...nodeMatchRows, ...factCandidates];
+for (const r of [...records]) {
+  const missingComplements = rawPool.filter(
+    (c) => c.complements != null && Number(c.complements) === Number(r.id) && !shownIds.has(c.id),
+  );
+  for (const c of missingComplements) {
+    records.push({ ...c, score: null });
+    shownIds.add(c.id);
+  }
+}
+
 console.log('--- Páginas ---');
 if (pages.length === 0) {
   console.log('Sin resultados.');
@@ -173,7 +196,8 @@ if (records.length === 0) {
   for (const r of records) {
     const date = r.date.toISOString().slice(0, 10);
     const scoreLabel = r.score == null ? '[recuerdo]' : `[${r.score.toFixed(4)}]`;
-    console.log(`\n${scoreLabel} #${r.id} [${date}] ${r.claim}`);
+    const complementsLabel = r.complements != null ? ` [complementa a #${r.complements}]` : '';
+    console.log(`\n${scoreLabel} #${r.id} [${date}] ${r.claim}${complementsLabel}`);
     console.log(`  fuente: ${r.source} · tipo: ${r.kind}${r.memories ? ` · recuerdos: ${r.memories}` : ''}`);
   }
 }

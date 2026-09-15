@@ -53,7 +53,7 @@ const client = new pg.Client({
 await client.connect();
 
 const { rows } = await client.query(
-  `select f.id, f.date, f.claim, f.source, f.kind, f.valid_until, f.superseded_by,
+  `select f.id, f.date, f.claim, f.source, f.kind, f.valid_until, f.superseded_by, f.complements,
           (select string_agg(memory_name, ', ' order by memory_name) from record_memories where record_id = f.id) as memories
    from records f
    where f.id = any($1::bigint[])
@@ -74,6 +74,7 @@ if (args.json) {
       kind: r.kind,
       valid_until: r.valid_until,
       superseded_by: r.superseded_by,
+      complements: r.complements,
       memories: r.memories ? r.memories.split(', ') : [],
     })),
     missing,
@@ -84,7 +85,8 @@ if (args.json) {
   for (const r of rows) {
     const date = r.date.toISOString().slice(0, 10);
     const status = r.valid_until ? ` [YA RETRACTADO/REEMPLAZADO${r.superseded_by ? ` por #${r.superseded_by}` : ''}]` : ' [vigente]';
-    console.log(`\n#${r.id} [${date}]${status} ${r.claim}`);
+    const complementsLabel = r.complements != null ? ` [complementa a #${r.complements}]` : '';
+    console.log(`\n#${r.id} [${date}]${status}${complementsLabel} ${r.claim}`);
     console.log(`  fuente: ${r.source} · tipo: ${r.kind}${r.memories ? ` · recuerdos: ${r.memories}` : ''}`);
   }
   if (missing.length > 0) {
