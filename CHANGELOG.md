@@ -5,6 +5,24 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.7.2 (2026-09-15)
+
+Sin cambios en `schema.sql`. Corrige un hueco real de usabilidad para
+usuarios sin conocimientos de programación (caso real: prueba de
+instalación con un usuario no técnico).
+
+- **Fix: el procedimiento de actualización podía exponer un comando
+  técnico al usuario final.** El punto 3 de "Mantenimiento: revisar e
+  instalar actualizaciones" (`CLAUDE.md`) decía que había que parar y
+  pedir confirmación antes de aplicar un cambio de `schema.sql`, pero no
+  decía explícitamente que la IA corre el comando por su cuenta una vez
+  el usuario confirma. Un usuario sin experiencia técnica no sabe qué
+  hacer con `node scripts/db/apply-schema.mjs`. Ahora el punto 3 deja
+  explícito: la confirmación es una pregunta en español corriente, sin
+  jerga, y la ejecución del comando es un detalle interno de la IA que
+  asiste al usuario, nunca algo que el usuario deba ver, entender o
+  escribir él mismo.
+
 ## v0.7.1 (2026-09-15)
 
 **Cambia `schema.sql`** -- corre `node scripts/db/apply-schema.mjs`

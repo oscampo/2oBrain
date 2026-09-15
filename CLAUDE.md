@@ -885,13 +885,20 @@ sola.
    y aplica a mano solo lo que cambió FUERA de esa sección, nunca un
    reemplazo completo del archivo.
 3. Si el diff toca `scripts/db/schema.sql`: **para**. Nunca reapliques el
-   esquema solo contra la base real del usuario -- muéstrale exactamente
-   qué cambió y qué comando correrías, y espera su confirmación explícita
-   antes de tocar su base de datos en producción. El código de `scripts/`,
-   `skills/`, `README.md`, `HEARTBEAT.md` sí lo puedes aplicar sin tanta
-   ceremonia (mismo criterio de "el trabajo lo haces tú" de siempre, pero
-   avísale qué vas a actualizar antes de hacerlo); `CLAUDE.md` siempre a
-   mano, según el punto 2.
+   esquema solo contra la base real del usuario -- muéstrale, en lenguaje
+   simple y sin jerga técnica (el usuario puede no saber programar), qué
+   cambió y para qué sirve, y pregúntale si quiere aplicar esa
+   actualización a su base de datos ahora. Nunca le pidas que corra un
+   comando él mismo, ni le muestres el comando exacto como si tuviera que
+   ejecutarlo: la confirmación es una pregunta en español corriente
+   ("¿aplico esta actualización a tu base de datos ahora?"), la ejecución
+   (`node scripts/db/apply-schema.mjs`) la corres tú, automáticamente, en
+   cuanto el usuario diga que sí -- el comando en sí es un detalle interno
+   tuyo, no algo que el usuario deba ver, entender o escribir. El código
+   de `scripts/`, `skills/`, `README.md`, `HEARTBEAT.md` sí lo puedes
+   aplicar sin tanta ceremonia (mismo criterio de "el trabajo lo haces tú"
+   de siempre, pero avísale qué vas a actualizar antes de hacerlo, también
+   en lenguaje simple); `CLAUDE.md` siempre a mano, según el punto 2.
 4. Aplica los cambios seguros (`git checkout FETCH_HEAD -- <rutas>` o un
    merge si el histórico diverge poco, tu criterio según qué tan limpio
    salga), corre `npm install` de nuevo por si hay dependencias nuevas, y
