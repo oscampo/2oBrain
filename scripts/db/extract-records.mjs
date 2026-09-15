@@ -61,8 +61,9 @@ const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REMEMBER_SCRIPT = join(SCRIPT_DIR, 'remember.mjs');
 const DEFAULT_SYSTEM_PROMPT_FILE = join(SCRIPT_DIR, 'prompts', 'gemini-extractor-system-prompt.md');
 const GEMINI_MODELS_CONFIG_FILE = join(SCRIPT_DIR, 'config', 'gemini-models.json');
+const OPENROUTER_MODELS_CONFIG_FILE = join(SCRIPT_DIR, 'config', 'openrouter-models.json');
 
-const MODELS = { gemini: 'gemini-flash-latest' };
+const MODELS = { gemini: 'gemini-flash-latest', openrouter: 'nvidia/nemotron-3-super-120b-a12b:free' };
 
 // Lista de modelos de Gemini a probar en orden cuando el primero falla de
 // forma recuperable (503 UNAVAILABLE, "modelo sobrecargado": confirmado por
@@ -86,10 +87,19 @@ function loadFallbackOrder(configFile, fallbackDefault) {
   return [fallbackDefault];
 }
 const loadGeminiFallbackOrder = () => loadFallbackOrder(GEMINI_MODELS_CONFIG_FILE, MODELS.gemini);
+// OpenRouter (2026-09-15, portado desde D:\MyBrain): mismo mecanismo de
+// lista de respaldo que Gemini, editable desde el dashboard ("Modelos").
+// Solo los modelos gratuitos van en el default de
+// config/openrouter-models.json -- no todos los usuarios de 2oBrain van a
+// querer una cuenta de pago ahí.
+const loadOpenRouterFallbackOrder = () => loadFallbackOrder(OPENROUTER_MODELS_CONFIG_FILE, MODELS.openrouter);
 // Ventana de contexto: Ollama free tier es angosto (probado y confirmado
 // insuficiente en calidad); Gemini declara ~1M tokens, se deja margen
-// generoso sin acercarse al límite real.
-const MAX_TRANSCRIPT_CHARS = { ollama: 20_000, gemini: 400_000 };
+// generoso sin acercarse al límite real. Nemotron 3 Super/Ultra gratis en
+// OpenRouter declaran 262K/1M tokens de contexto, pero sin comparación de
+// calidad propia todavía -- margen conservador, más grande que Ollama pero
+// menor que Gemini.
+const MAX_TRANSCRIPT_CHARS = { ollama: 20_000, gemini: 400_000, openrouter: 100_000 };
 
 function parseArgs(argv) {
   const out = {};
@@ -113,14 +123,14 @@ const args = parseArgs(process.argv.slice(2));
 if (!args.date || !args.from || !args.to) {
   console.error(
     'Faltan campos. Uso:\n' +
-      '  node extract-records.mjs --date YYYY-MM-DD --from HH:MM --to HH:MM [--review] [--provider gemini|ollama] [--session id] [--tz-offset -5]',
+      '  node extract-records.mjs --date YYYY-MM-DD --from HH:MM --to HH:MM [--review] [--provider gemini|ollama|openrouter] [--session id] [--tz-offset -5]',
   );
   process.exit(1);
 }
 
 const provider = args.provider ?? 'gemini';
-if (provider !== 'gemini' && provider !== 'ollama') {
-  console.error(`--provider inválido: "${provider}". Debe ser "gemini" u "ollama".`);
+if (provider !== 'gemini' && provider !== 'ollama' && provider !== 'openrouter') {
+  console.error(`--provider inválido: "${provider}". Debe ser "gemini", "ollama" u "openrouter".`);
   process.exit(1);
 }
 
@@ -139,7 +149,7 @@ function loadEnv() {
 
 const env = loadEnv();
 
-const apiKeyVar = provider === 'gemini' ? 'GEMINI_API_KEY' : 'OLLAMA_API_KEY';
+const apiKeyVar = provider === 'gemini' ? 'GEMINI_API_KEY' : provider === 'openrouter' ? 'OPENROUTER_API_KEY' : 'OLLAMA_API_KEY';
 if (!env[apiKeyVar] && !args['dump-prompt']) {
   console.error(`Falta ${apiKeyVar} en .env, no se puede llamar a ${provider}.`);
   process.exit(1);
@@ -159,7 +169,8 @@ if (args.review && !process.stdin.isTTY) {
 // config/ollama-models.json según el proveedor.
 const geminiCandidates = args.model ? [args.model] : provider === 'gemini' ? loadGeminiFallbackOrder() : [];
 const ollamaCandidates = args.model ? [args.model] : provider === 'ollama' ? [getTaskModel('extraction')] : [];
-let model = provider === 'gemini' ? geminiCandidates[0] : ollamaCandidates[0];
+const openrouterCandidates = args.model ? [args.model] : provider === 'openrouter' ? loadOpenRouterFallbackOrder() : [];
+let model = provider === 'gemini' ? geminiCandidates[0] : provider === 'openrouter' ? openrouterCandidates[0] : ollamaCandidates[0];
 
 const tzOffset = args['tz-offset'] ? Number(args['tz-offset']) : -5;
 
@@ -191,7 +202,7 @@ if (args.session) {
   sessionFile = sessionFilePath(projectRoot, sessions[0].id);
 }
 
-const candidatesForStatus = provider === 'gemini' ? geminiCandidates : ollamaCandidates;
+const candidatesForStatus = provider === 'gemini' ? geminiCandidates : provider === 'openrouter' ? openrouterCandidates : ollamaCandidates;
 console.error(
   candidatesForStatus.length > 1
     ? `Proveedor: ${provider} (probará en orden: ${candidatesForStatus.join(' -> ')})`
@@ -437,7 +448,85 @@ async function callGeminiWithFallback(candidates) {
   return null;
 }
 
-const rawResponse = provider === 'gemini' ? await callGeminiWithFallback(geminiCandidates) : await callOllamaWithFallback(ollamaCandidates);
+// Mismo criterio que lastOllamaStatus/lastGeminiStatus: 429 (rate limit),
+// 502 y 503 (sobrecarga del proveedor upstream, ver más abajo) valen la
+// pena reintentar con el siguiente modelo de la lista; cualquier otro
+// error (auth, modelo inexistente) no se arregla cambiando de modelo.
+let lastOpenRouterStatus = null;
+
+/** @returns {Promise<string|null>} el texto crudo de respuesta (se espera JSON), o null si falló */
+async function callOpenRouterModel() {
+  lastOpenRouterStatus = null;
+  let res;
+  try {
+    res = await fetchWithTimeout(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${env.OPENROUTER_API_KEY}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          messages: [
+            ...(systemPrompt ? [{ role: 'system', content: systemPrompt }] : []),
+            { role: 'user', content: userPrompt },
+          ],
+          response_format: { type: 'json_object' },
+        }),
+      },
+      120_000,
+    );
+  } catch (err) {
+    console.error(`ERROR DE RED llamando a OpenRouter (modelo "${model}"): ${err.message}`);
+    process.exitCode = 1;
+    return null;
+  }
+  if (!res.ok) {
+    lastOpenRouterStatus = res.status;
+    console.error(`OpenRouter respondió ${res.status} (modelo "${model}"): ${await res.text()}`);
+    process.exitCode = 1;
+    return null;
+  }
+  const body = await res.json();
+  // OpenRouter a veces devuelve el fallo del proveedor upstream (ej. "Nvidia:
+  // Service temporarily overloaded") DENTRO de un body 200, no como error
+  // HTTP real (hallazgo en vivo, 2026-09-15). Sin este chequeo, res.ok pasa,
+  // no hay `choices`, y el fallback nunca se dispara porque
+  // lastOpenRouterStatus se queda en null.
+  if (body?.error) {
+    lastOpenRouterStatus = body.error.code ?? null;
+    console.error(`OpenRouter devolvió un error del proveedor (modelo "${model}", code ${body.error.code}): ${body.error.message}`);
+    process.exitCode = 1;
+    return null;
+  }
+  const text = body?.choices?.[0]?.message?.content;
+  if (!text) {
+    console.error(`OpenRouter no devolvió texto (modelo "${model}"). Respuesta completa:\n${JSON.stringify(body, null, 2)}`);
+    process.exitCode = 1;
+    return null;
+  }
+  return text;
+}
+
+async function callOpenRouterWithFallback(candidates) {
+  for (let i = 0; i < candidates.length; i++) {
+    model = candidates[i];
+    if (i > 0) console.error(`Reintentando con el siguiente modelo de respaldo: ${model}`);
+    const result = await callOpenRouterModel();
+    if (result != null) return result;
+    const isLast = i === candidates.length - 1;
+    const retryable = [429, 502, 503].includes(lastOpenRouterStatus);
+    if (!retryable || isLast) return null;
+    process.exitCode = 0;
+  }
+  return null;
+}
+
+const rawResponse =
+  provider === 'gemini'
+    ? await callGeminiWithFallback(geminiCandidates)
+    : provider === 'openrouter'
+      ? await callOpenRouterWithFallback(openrouterCandidates)
+      : await callOllamaWithFallback(ollamaCandidates);
 
 if (rawResponse == null) {
   // el error ya se imprimió y process.exitCode ya quedó en 1

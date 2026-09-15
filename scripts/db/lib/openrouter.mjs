@@ -77,6 +77,15 @@ export async function callOpenRouter(prompt, model, opts = {}) {
   }
 
   const body = await res.json();
+  // OpenRouter a veces devuelve el fallo del proveedor upstream (ej. "Nvidia:
+  // Service temporarily overloaded") DENTRO de un body 200, no como error
+  // HTTP real (hallazgo en vivo, 2026-09-15, extract-records.mjs con
+  // nemotron-3-super:free). Los llamadores de este archivo (clasificadores)
+  // no reintentan otro modelo de OpenRouter -- solo importa que el mensaje
+  // de error sea claro, no un genérico "no devolvió texto".
+  if (body?.error) {
+    throw new Error(`OpenRouter devolvió un error del proveedor (code ${body.error.code}): ${body.error.message}`);
+  }
   const text = body?.choices?.[0]?.message?.content;
   if (!text) throw new Error('OpenRouter no devolvió texto.');
   return text.trim();

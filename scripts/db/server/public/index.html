@@ -3049,19 +3049,23 @@ function section(id, title, hint, bodyHtml) {
 }
 
 // --- Modelos ---
-// Edita config/gemini-models.json y config/ollama-models.json: las listas
-// de respaldo que usan extract-records.mjs y extract-page-records.mjs cuando el
-// primer modelo responde 503 (sobrecargado). Un modelo por línea, en orden
+// Edita config/gemini-models.json, config/ollama-models.json y
+// config/openrouter-models.json: las listas de respaldo que usan
+// extract-records.mjs y extract-page-records.mjs cuando el primer modelo
+// responde 503/429/502 (sobrecargado). Un modelo por línea, en orden
 // de prioridad. Se recargan en "Extraer de sesión"/"Extraer de página" al
 // volver a abrir esas pestañas.
 {
-  const sec = section('models', 'Modelos', 'Edita las listas de modelos de respaldo para extracción, una por proveedor (Gemini y Ollama Cloud). Escribe un modelo por línea. El primero de la lista es el primero que se prueba.',
+  const sec = section('models', 'Modelos', 'Edita las listas de modelos de respaldo para extracción, una por proveedor (Gemini, Ollama Cloud y OpenRouter). Escribe un modelo por línea. El primero de la lista es el primero que se prueba. OpenRouter: solo se listan por defecto los modelos gratuitos (nvidia/nemotron-3-*:free), útil si prefieres no depender de Ollama/Gemini o no quieres poner tarjeta en ninguna cuenta.',
     `<label>Gemini: config/gemini-models.json</label>
      <textarea id="mc-gemini" placeholder="gemini-flash-latest"></textarea>
      <button class="run" id="mc-gemini-save">Guardar</button>
      <label style="margin-top:24px">Ollama Cloud: config/ollama-models.json</label>
      <textarea id="mc-ollama" placeholder="gpt-oss:120b-cloud"></textarea>
-     <button class="run" id="mc-ollama-save">Guardar</button>`);
+     <button class="run" id="mc-ollama-save">Guardar</button>
+     <label style="margin-top:24px">OpenRouter: config/openrouter-models.json</label>
+     <textarea id="mc-openrouter" placeholder="nvidia/nemotron-3-super-120b-a12b:free"></textarea>
+     <button class="run" id="mc-openrouter-save">Guardar</button>`);
 
   async function loadList(provider, textareaSel) {
     const r = await call('GET', '/api/model-config?provider=' + provider);
@@ -3069,6 +3073,7 @@ function section(id, title, hint, bodyHtml) {
   }
   loadList('gemini', '#mc-gemini');
   loadList('ollama', '#mc-ollama');
+  loadList('openrouter', '#mc-openrouter');
 
   function wireSave(provider, textareaSel, btnSel) {
     sec.querySelector(btnSel).addEventListener('click', async () => {
@@ -3078,6 +3083,7 @@ function section(id, title, hint, bodyHtml) {
   }
   wireSave('gemini', '#mc-gemini', '#mc-gemini-save');
   wireSave('ollama', '#mc-ollama', '#mc-ollama-save');
+  wireSave('openrouter', '#mc-openrouter', '#mc-openrouter-save');
 }
 
 // --- Modelos por tarea ---

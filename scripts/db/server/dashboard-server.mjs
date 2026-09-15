@@ -33,6 +33,7 @@ const VERSION_PATH = join(REPO_DIR, 'VERSION');
 const MODEL_CONFIG_PATHS = {
   gemini: join(DB_DIR, 'config', 'gemini-models.json'),
   ollama: join(DB_DIR, 'config', 'ollama-models.json'),
+  openrouter: join(DB_DIR, 'config', 'openrouter-models.json'),
 };
 const FEEDBACK_CONFIG_PATH = join(DB_DIR, 'config', 'feedback.json');
 const FEEDBACK_CONFIG_EXAMPLE_PATH = join(DB_DIR, 'config', 'feedback.json.example');
@@ -354,7 +355,7 @@ app.get('/api/records', (c) => {
 app.get('/api/model-config', (c) => {
   const provider = c.req.query('provider');
   const path = MODEL_CONFIG_PATHS[provider];
-  if (!path) return c.json({ ok: false, error: 'falta ?provider=gemini|ollama' }, 400);
+  if (!path) return c.json({ ok: false, error: 'falta ?provider=gemini|ollama|openrouter' }, 400);
   try {
     const config = JSON.parse(readFileSync(path, 'utf8'));
     return c.json({ ok: true, fallbackOrder: config.fallbackOrder ?? [] });
@@ -366,7 +367,7 @@ app.get('/api/model-config', (c) => {
 app.post('/api/model-config', async (c) => {
   const body = await c.req.json().catch(() => null);
   const path = MODEL_CONFIG_PATHS[body?.provider];
-  if (!path) return c.json({ ok: false, error: 'falta provider: "gemini"|"ollama"' }, 400);
+  if (!path) return c.json({ ok: false, error: 'falta provider: "gemini"|"ollama"|"openrouter"' }, 400);
   if (!Array.isArray(body.fallbackOrder) || body.fallbackOrder.some((m) => typeof m !== 'string' || !m.trim())) {
     return c.json({ ok: false, error: 'fallbackOrder debe ser un array de strings no vacíos' }, 400);
   }
