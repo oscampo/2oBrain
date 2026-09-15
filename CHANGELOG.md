@@ -5,6 +5,26 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.7.4 (2026-09-15)
+
+Sin cambios en `schema.sql`. Portado desde D:\MyBrain (misma sesión que
+v0.7.3): completa la elección de proveedor extendiéndola también a la
+extracción de registros.
+
+- **OpenRouter como proveedor para extracción**: `extract-records.mjs` y
+  `extract-page-records.mjs` aceptan `--provider openrouter`, con su
+  propia lista de respaldo (`config/openrouter-models.json`, editable
+  desde el dashboard en la sección "Modelos", junto a Gemini y Ollama
+  Cloud). Por defecto solo lista modelos gratuitos
+  (`nvidia/nemotron-3-*:free`).
+- **Fix: OpenRouter puede devolver un error del proveedor upstream (ej.
+  502 "Service temporarily overloaded") dentro de un body HTTP 200**, no
+  como error HTTP real. El fallback automático a otro modelo de la lista
+  no disparaba porque solo se chequeaba `res.ok`. Ahora se detecta
+  `body?.error` explícitamente y se trata `429`/`502`/`503` como
+  reintentable (mismo fix aplicado en `lib/openrouter.mjs`, usado por los
+  clasificadores).
+
 ## v0.7.3 (2026-09-15)
 
 Sin cambios en `schema.sql`. Portado desde D:\MyBrain (misma sesión que
