@@ -339,6 +339,94 @@ Si no estás seguro, baja la confidence en vez de adivinar.`;
   };
 }
 
+// Colisión de alias/nombre contra OTROS recuerdos existentes (2026-09-18,
+// portado desde D:\MyBrain scripts/db/lib/check-alias-collision.mjs) -- un
+// alias solo tiene sentido si identifica a un único recuerdo.
+async function findAliasCollisions(
+  memoryName: string,
+  aliases: string[],
+): Promise<{ alias: string; node: string }[]> {
+  const { data: others } = await supabase
+    .from('memories')
+    .select('name, aliases')
+    .neq('name', memoryName)
+    .is('merged_into', null);
+  const conflicts: { alias: string; node: string }[] = [];
+  for (const alias of aliases) {
+    const aliasLower = alias.toLowerCase();
+    for (const other of (others ?? []) as { name: string; aliases: string[] | null }[]) {
+      const otherStrings = [other.name, ...(other.aliases ?? [])].map((s) => s.toLowerCase());
+      if (otherStrings.includes(aliasLower)) conflicts.push({ alias, node: other.name });
+    }
+  }
+  return conflicts;
+}
+
+// Sugerencia de alias al CREAR un recuerdo (2026-09-18, portado desde
+// D:\MyBrain scripts/db/lib/suggest-aliases.mjs, registro #887): genera
+// variantes plausibles a partir del name/alias dados (nombre completo,
+// sigla, con/sin tilde, título), genérico para cualquier tipo de entidad.
+// Fail-open: cualquier fallo devuelve null, el llamador no agrega nada,
+// nunca bloquea la creación del recuerdo.
+const SUGGESTER_MODEL = 'gpt-oss:20b-cloud';
+
+async function suggestAliases(name: string, existingAliases: string[]): Promise<string[] | null> {
+  if (!OLLAMA_API_KEY) return null;
+
+  const aliasLine = existingAliases.length
+    ? `Alias que ya tiene: ${existingAliases.join(', ')}.`
+    : 'Todavía no tiene ningún alias.';
+  const prompt = `Eres un generador de alias para un recuerdo (entidad de cualquier tipo -- persona, \
+proyecto, curso, colaboración, evento, concepto) dentro de un segundo cerebro personal. Un \
+recuerdo se identifica con un nombre técnico, a veces un slug en kebab-case y a veces ya un \
+nombre legible; la gente lo menciona en texto normal con otras formas: nombre completo, \
+sigla o código, forma abreviada, variante con/sin tilde, traducción, título si es una \
+persona con rol conocido.
+
+Nombre del recuerdo: "${name}"
+${aliasLine}
+
+Tarea: proponer otras formas plausibles con las que este MISMO recuerdo podría aparecer \
+mencionado en un texto. Solo formas derivables razonablemente del nombre y los alias dados \
+-- no inventes información nueva (no supongas un cargo, institución o apellido que no esté \
+ya sugerido por el nombre). Si el nombre no da pie a ninguna variante razonable, responde \
+con lista vacía.
+
+Responde SOLO con JSON, sin texto adicional:
+{"aliases": ["forma alternativa", ...]}`;
+
+  let res: Response;
+  try {
+    res = await fetch('https://ollama.com/api/generate', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${OLLAMA_API_KEY}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: SUGGESTER_MODEL, prompt, format: 'json', stream: false }),
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    return null;
+  }
+
+  if (!res.ok) return null;
+
+  let parsed: any;
+  try {
+    const { response } = await res.json();
+    const cleaned = response.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    parsed = JSON.parse(cleaned);
+  } catch {
+    return null;
+  }
+
+  if (!Array.isArray(parsed.aliases)) return null;
+
+  const existingLower = new Set([name.toLowerCase(), ...existingAliases.map((a) => a.toLowerCase())]);
+  return parsed.aliases
+    .filter((a: unknown): a is string => typeof a === 'string' && a.trim() !== '')
+    .map((a: string) => a.trim())
+    .filter((a: string) => !existingLower.has(a.toLowerCase()));
+}
+
 const mcp = new McpServer({
   name: 'segundo-cerebro-mcp',
   version: '1.0.0',
@@ -456,6 +544,8 @@ mcp.tool('remember', {
     kind: z.enum(['fact', 'event', 'commitment']).default('fact'),
     memory: z.union([z.string(), z.array(z.string())]).optional().describe('recuerdo(s) existente(s) a los que se liga el registro (string separado por comas, o array)'),
     createMemory: z.boolean().optional().describe('Crea el/los recuerdo(s) si no existen todavía, en vez de fallar'),
+    aliases: z.array(z.string()).optional().describe('Alias para el recuerdo nuevo -- solo válido junto con createMemory, y solo si esta llamada crea exactamente UN recuerdo nuevo'),
+    noSuggestAliases: z.boolean().optional().describe('Desactiva la sugerencia automática de alias adicionales al crear un recuerdo (por defecto, se proponen variantes plausibles del nombre/alias dados)'),
     supersedes: z.array(z.number()).optional().describe('IDs de registros vigentes que este reemplaza'),
     distinct: z.boolean().optional().describe('Confirma que es distinto pese al parecido con candidatos'),
     confirmDate: z.boolean().optional().describe(`Obligatorio si date no es la fecha real de hoy (${TIMEZONE}) -- confirma que un registro con fecha distinta es intencional (histórico, backfill), no un error de no verificar la fecha antes de llamar`),
@@ -467,6 +557,8 @@ mcp.tool('remember', {
     kind?: string;
     memory?: string | string[];
     createMemory?: boolean;
+    aliases?: string[];
+    noSuggestAliases?: boolean;
     supersedes?: number[];
     distinct?: boolean;
     confirmDate?: boolean;
@@ -595,11 +687,46 @@ mcp.tool('remember', {
         ` en vez de ${requestedNodes.map((n) => `"${n}"`).join(', ')}, se respeta tu elección explícita.)`;
     }
 
+    // Alias explícitos para el recuerdo nuevo (2026-09-18, portado desde
+    // D:\MyBrain scripts/db/remember.mjs): solo válido junto con createMemory,
+    // y solo si esta llamada crea exactamente UN recuerdo nuevo -- con varios
+    // a la vez, una sola lista de alias sería ambigua (¿de cuál de todos?).
+    let aliasesForNewNode: { name: string; aliases: string[] } | null = null;
+    if (args.aliases && args.aliases.length > 0) {
+      if (!args.createMemory) {
+        return { content: [{ type: 'text', text: 'aliases solo aplica junto con createMemory: true.' }], isError: true };
+      }
+      const { data: existing } = await supabase.from('memories').select('name').in('name', requestedNodes);
+      const existingNames = new Set((existing ?? []).map((r: any) => r.name));
+      const toCreate = requestedNodes.filter((n) => !existingNames.has(n));
+      if (toCreate.length !== 1) {
+        return {
+          content: [{
+            type: 'text',
+            text: `aliases solo aplica si esta llamada crea exactamente un recuerdo nuevo (crearía ${toCreate.length}: ${toCreate.join(', ') || 'ninguno'}). Créalos por separado.`,
+          }],
+          isError: true,
+        };
+      }
+      const conflicts = await findAliasCollisions(toCreate[0], args.aliases);
+      if (conflicts.length > 0) {
+        return {
+          content: [{
+            type: 'text',
+            text: `Colisión -- no se crea el recuerdo. Alias ya usados por otro recuerdo: ${conflicts.map((c) => `"${c.alias}" (${c.node})`).join(', ')}.`,
+          }],
+          isError: true,
+        };
+      }
+      aliasesForNewNode = { name: toCreate[0], aliases: args.aliases };
+    }
+
     // Resuelve node: cada nombre debe existir en `memories` (fail-closed contra
     // typos que crearían un recuerdo fantasma), salvo createNode explícito. Si un
     // recuerdo fue fusionado a otro (merged_into), sigue la cadena al vigente,
     // mismo criterio que remember.mjs/remember-batch.mjs.
     const resolvedNodes: string[] = [];
+    const aliasAdvisories: string[] = [];
     for (const name of requestedNodes) {
       let current = name;
       const seen = new Set<string>();
@@ -618,7 +745,24 @@ mcp.tool('remember', {
       if (row) {
         resolvedNodes.push(row.name);
       } else if (args.createMemory) {
-        await supabase.from('memories').upsert({ name }, { onConflict: 'name', ignoreDuplicates: true });
+        const baseAliases = aliasesForNewNode?.name === name ? aliasesForNewNode.aliases : [];
+        let finalAliases = baseAliases;
+        if (!args.noSuggestAliases) {
+          const suggested = await suggestAliases(name, baseAliases);
+          if (suggested && suggested.length > 0) {
+            const suggestedCollisions = await findAliasCollisions(name, suggested);
+            const collidingLower = new Set(suggestedCollisions.map((c) => c.alias.toLowerCase()));
+            const accepted = suggested.filter((a) => !collidingLower.has(a.toLowerCase()));
+            if (accepted.length > 0) {
+              finalAliases = [...baseAliases, ...accepted];
+              aliasAdvisories.push(`Alias propuesto(s) automáticamente para "${name}" (${SUGGESTER_MODEL}): ${accepted.join(', ')}`);
+            }
+          }
+        }
+        await supabase.from('memories').upsert(
+          finalAliases.length > 0 ? { name, aliases: finalAliases } : { name },
+          { onConflict: 'name', ignoreDuplicates: true },
+        );
         resolvedNodes.push(name);
       } else {
         return {
@@ -660,6 +804,7 @@ mcp.tool('remember', {
     let text = `Registrado #${inserted.id}: [${inserted.date}] ${inserted.claim}`;
     if (resolvedNodes.length > 0) text += `\nrecuerdo(s): ${resolvedNodes.join(', ')}`;
     if (nodeAdvisory) text += `\n${nodeAdvisory}`;
+    for (const advisory of aliasAdvisories) text += `\n${advisory}`;
     if (supersedesIds.length > 0) text += `\nReemplazó a #${supersedesIds.join(', #')}.`;
     else if (similar.length > 0 && distinct) text += `\nConfirmado como distinto pese al parecido.`;
 

@@ -5,6 +5,23 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.7.7 (2026-09-18)
+
+Sin cambios en `schema.sql`. Portado desde D:\MyBrain (registro #891):
+extiende al MCP server (Supabase Edge Function) la sugerencia automática
+de alias que v0.7.6 solo traía para el CLI (`scripts/db/`).
+
+- **`supabase/functions/mcp-server/index.ts`**: agrega `findAliasCollisions`
+  y `suggestAliases`, hasta ahora ausentes en esta implementación TS
+  separada (no importa `remember.mjs`). Al crear un recuerdo con
+  `createMemory: true`, propone variantes plausibles de alias y las
+  muestra en el texto de respuesta.
+- **Fix propio**: `createMemory` en el MCP nunca soportó `aliases`
+  explícitos (solo `upsert({name})`, sin alias posible), a diferencia del
+  CLI (`remember.mjs --aliases`). Ahora acepta `aliases` +
+  `noSuggestAliases`, con la misma validación de "exactamente un recuerdo
+  nuevo" que el CLI.
+
 ## v0.7.6 (2026-09-17)
 
 Sin cambios en `schema.sql`. Portado desde D:\MyBrain (registro #887):
