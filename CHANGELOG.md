@@ -5,6 +5,33 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.7.8 (2026-09-18)
+
+**Incluye migración de schema.** Cierra el drift de `search` acumulado
+entre D:\MyBrain y este scaffold desde el 2026-09-14 (nunca se había
+portado): tres piezas encadenadas, portadas juntas.
+
+- **`schema.sql`**: nueva columna `memories.embedding vector(1024)` y
+  función `memories_match_query`, para matching de recuerdos por
+  identidad semántica (nombre + alias embebidos), no solo por alias
+  literal exacto. **Correr `apply-schema.mjs` (o aplicar el schema a
+  mano) después de actualizar** -- sin esto, `search` fallará al llamar
+  a `memories_match_query`.
+- **`scripts/db/embed-memories.mjs`** (nuevo): backfill del embedding de
+  identidad de cada recuerdo. Ni `create-memory.mjs` ni `remember.mjs`
+  lo generan al crear un recuerdo, es el único camino para poblarlo.
+  **Correr una vez después de aplicar el schema.** `lib/embed.mjs` gana
+  el helper `memoryIdentityText`.
+- **`supabase/functions/mcp-server/index.ts`**:
+  - `nodeIsMatched` pierde el fallback de "segmento del nombre
+    kebab-case" (causaba falsos positivos con palabras genéricas
+    sueltas). Lo reemplaza el matching semántico de arriba.
+  - `search` ahora también busca en `pages` (proyectos/guías
+    narrativas), vía `search_pages` (ya existía en el schema de este
+    scaffold, nunca se había conectado en el MCP). Antes, una pregunta
+    cuya respuesta vivía en la prosa de una página solo tenía hechos
+    sueltos como base.
+
 ## v0.7.7 (2026-09-18)
 
 Sin cambios en `schema.sql`. Portado desde D:\MyBrain (registro #891):

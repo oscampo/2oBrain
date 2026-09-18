@@ -143,4 +143,13 @@ export function toVectorLiteral(embedding) {
   return `[${embedding.join(',')}]`;
 }
 
+// Texto de IDENTIDAD de un recuerdo (nombre + alias), para el embedding que
+// usa memories_match_query (2026-09-18, portado desde D:\MyBrain) -- corto a
+// propósito, nunca el contenido de sus registros (eso es memories_similar,
+// otro propósito). Ver comentario junto a memories_match_query en
+// schema.sql para el porqué de esta distinción.
+export function memoryIdentityText(name, aliases) {
+  return aliases?.length ? `${name}, alias: ${aliases.join(', ')}` : name;
+}
+
 export const BATCH_DELAY_MS = 500; // con tarjeta y Tier 1 (2000 RPM), ya no hace falta el margen de 25s

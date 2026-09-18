@@ -644,3 +644,43 @@ language sql stable as $$
   order by c.date desc
   limit match_count;
 $$;
+
+-- Router de recuerdos por identidad semántica (2026-09-18, portado desde
+-- D:\MyBrain): el router de search (nodeIsMatched, solo alias exacto) falla
+-- cuando la pregunta parafrasea en vez de usar el alias literal (ej.
+-- "preferencias deportivas" nunca matchea el alias "NFL"). Probado en vivo
+-- antes de construir esto: comparar contra el CONTENIDO de los registros de
+-- cada recuerdo (memories_similar, ya existente, pensada para otro
+-- propósito) da ruido real. Comparar contra la IDENTIDAD del recuerdo
+-- (nombre + alias, embebido una sola vez, corto) sí separa bien.
+alter table memories add column if not exists embedding vector(1024);
+
+do $$
+declare
+  current_type text;
+begin
+  select format_type(atttypid, atttypmod) into current_type
+  from pg_attribute
+  where attrelid = 'memories'::regclass and attname = 'embedding' and not attisdropped;
+  if current_type is distinct from 'vector(1024)' then
+    execute 'alter table memories alter column embedding type vector(1024) using null';
+  end if;
+end $$;
+
+create or replace function memories_match_query(
+  query_embedding vector(1024),
+  match_count int default 8,
+  min_similarity float default 0.4
+)
+returns table (
+  memory_name text,
+  similarity float
+)
+language sql stable as $$
+  select m.name as memory_name, 1 - (m.embedding <=> query_embedding) as similarity
+  from memories m
+  where m.merged_into is null and m.embedding is not null
+    and 1 - (m.embedding <=> query_embedding) >= min_similarity
+  order by similarity desc
+  limit match_count;
+$$;

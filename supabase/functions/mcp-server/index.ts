@@ -31,6 +31,7 @@ const SIMILARITY_THRESHOLD = 0.6;
 // preguntas de prueba textuales pueden rankear más alto que contenido real
 // sobre ese tema. Mismo criterio que scripts/db/search.mjs.
 const DASHBOARD_LOG_NODE = 'segundo-cerebro-dashboard-log';
+const DASHBOARD_LOG_SLUG = 'projects/segundo-cerebro-dashboard-log';
 const CLASSIFIER_MODEL = 'gpt-oss:20b-cloud';
 const CLASSIFIER_CONFIDENCE_THRESHOLD = 0.85;
 
@@ -86,10 +87,15 @@ function wordMatch(term: string, queryNorm: string): boolean {
   const esc = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`(^|[^a-z0-9])${esc}([^a-z0-9]|$)`).test(queryNorm);
 }
+// Un recuerdo "matchea" por alias exacto (palabra completa en la pregunta,
+// señal fuerte, sin ambigüedad). El fallback anterior (segmento del nombre
+// kebab-case) se retiró (2026-09-18, portado desde D:\MyBrain): causaba
+// falsos positivos con palabras genéricas sueltas en la pregunta, y de
+// todas formas nunca resolvía un parafraseo. Lo reemplaza el matching por
+// identidad semántica (memories_match_query, ver schema.sql), agregado como
+// candidatos adicionales en el handler de 'search'.
 function nodeIsMatched(n: { name: string; aliases: string[] | null }, queryNorm: string): boolean {
-  if ((n.aliases ?? []).some((a) => wordMatch(a, queryNorm))) return true;
-  const segments = n.name.split(/[-_]/).filter((s) => s.length >= 4 && !/^\d+$/.test(s));
-  return segments.some((s) => wordMatch(s, queryNorm));
+  return (n.aliases ?? []).some((a) => wordMatch(a, queryNorm));
 }
 function resolveLiveMemory(name: string, byName: Map<string, { name: string; merged_into: string | null }>): string | null {
   let current = name;
@@ -435,7 +441,7 @@ const mcp = new McpServer({
 
 mcp.tool('search', {
   description:
-    'Busca registros vigentes en el segundo cerebro por una pregunta en lenguaje natural. Devuelve los registros más relevantes, con su fuente. Si la pregunta nombra dos o más recuerdos (proyectos, personas, temas) a la vez -- ej. "cómo se relaciona X con Y" -- también busca y devuelve el camino que los conecta en el grafo de recuerdos, no hace falta ninguna otra tool para eso.',
+    'Busca en el segundo cerebro por una pregunta en lenguaje natural, tanto en registros atómicos (hechos con fecha) como en páginas narrativas (proyectos, guías), con su contenido completo y su fuente. Si la pregunta nombra dos o más recuerdos (proyectos, personas, temas) a la vez -- ej. "cómo se relaciona X con Y" -- también busca y devuelve el camino que los conecta en el grafo de recuerdos, no hace falta ninguna otra tool para eso.',
   inputSchema: z.object({ query: z.string().describe('La pregunta o tema a buscar') }),
   handler: async ({ query }: { query: string }) => {
     const queryEmbedding = await embed(query, 'query');
@@ -449,12 +455,36 @@ mcp.tool('search', {
       const live = resolveLiveMemory(n.name, byName);
       if (live && live !== DASHBOARD_LOG_NODE) matchedLiveNodes.add(live);
     }
+
+    // Matching por identidad semántica (2026-09-18, portado desde
+    // D:\MyBrain): complementa el alias exacto de arriba, no lo reemplaza.
+    // Umbral RELATIVO al mejor resultado, no absoluto: una pregunta que
+    // mezcla temas diluye cada score individual por debajo de un umbral
+    // fijo que sí funciona para preguntas de un solo tema. 0.25 es solo un
+    // piso para acotar la consulta; el margen de 0.075 respecto al mejor
+    // resultado es el filtro real. Reusa queryEmbedding, ya calculado
+    // arriba, sin llamada extra a Voyage.
+    const MATCH_MARGIN = 0.075;
+    const { data: semanticCandidates } = await supabase.rpc('memories_match_query', {
+      query_embedding: queryEmbedding,
+      match_count: 10,
+      min_similarity: 0.25,
+    });
+    if (semanticCandidates && semanticCandidates.length > 0) {
+      const top = semanticCandidates[0].similarity;
+      for (const m of semanticCandidates) {
+        if (m.similarity < top - MATCH_MARGIN) continue;
+        const live = resolveLiveMemory(m.memory_name, byName);
+        if (live && live !== DASHBOARD_LOG_NODE) matchedLiveNodes.add(live);
+      }
+    }
+
     // Guard de tamaño: 2-4 nodos es una pregunta relacional real; más que eso
     // suele ser una pregunta amplia que solo coincide por palabras sueltas, no
     // vale la pena C(n,2) caminos que nadie pidió.
     const wantsPaths = matchedLiveNodes.size >= 2 && matchedLiveNodes.size <= 4;
 
-    const [{ data: factCandidates }, { data: nodeMatchRows }, { data: linkRows }] = await Promise.all([
+    const [{ data: factCandidates }, { data: nodeMatchRows }, { data: linkRows }, { data: pageCandidates }] = await Promise.all([
       supabase.rpc('records_search', { query_embedding: queryEmbedding, query_text: query, match_count: 10, exclude_memory: DASHBOARD_LOG_NODE }),
       matchedLiveNodes.size > 0
         ? supabase.rpc('memory_match_records', { memory_names: [...matchedLiveNodes], match_count: NODE_MATCH_POOL })
@@ -462,6 +492,11 @@ mcp.tool('search', {
       wantsPaths
         ? supabase.from('memory_links').select('from_memory, to_memory, relation')
         : Promise.resolve({ data: [] as any[] }),
+      // 2026-09-18, portado desde D:\MyBrain: 'search' nunca había buscado
+      // en 'pages' (proyectos/guías narrativas del vault), solo en
+      // 'records' (hechos atómicos). Sin esto, una pregunta cuya respuesta
+      // vive en la prosa de una página solo tenía hechos sueltos como base.
+      supabase.rpc('search_pages', { query_embedding: queryEmbedding, query_text: query, match_count: 10, exclude_slug: DASHBOARD_LOG_SLUG }),
     ]);
 
     let pathLines: string[] = [];
@@ -491,13 +526,18 @@ mcp.tool('search', {
     // mal puntuado frente a una pregunta que sí lo nombra (mismo hallazgo
     // 2026-08-31 que motivó el router de arriba).
     const rerankedFacts = await rerankTop(factCandidates ?? [], (f) => (f.memories ? `[${f.memories}] ${f.claim}` : f.claim), 5);
+    // Contenido COMPLETO, sin recortar (2026-09-18, portado desde
+    // D:\MyBrain): esto va directo al LLM que llamó a la tool, no a una
+    // vista previa humana en terminal, recortar a unos pocos cientos de
+    // caracteres le esconde la respuesta si vive más adelante en la
+    // página. Corpus personal, tamaño acotado en la práctica.
+    const rerankedPages = await rerankTop(pageCandidates ?? [], (p) => `${p.title}\n${p.content}`.slice(0, 4000), 3);
 
     const rawNodeMatches = nodeMatchRows ?? [];
     const nodeMatchTotal = rawNodeMatches.length > 0 ? Number(rawNodeMatches[0].total_count) : 0;
     // Solo el claim, sin prefijo [memories]: el recuerdo ya está garantizado
     // por el router, el prefijo solo sesga hacia registros cuyo tag
-    // comparte vocabulario con la pregunta, no cuyo contenido responde
-    // (hallazgo en vivo en D:\UAObrain, portado acá).
+    // comparte vocabulario con la pregunta, no cuyo contenido responde.
     const nodeMatchFacts = await rerankTop(rawNodeMatches, (f: any) => f.claim, MAX_NODE_MATCH_FACTS);
     const nodeMatchTruncated = nodeMatchTotal > nodeMatchFacts.length;
     const nodeMatchIds = new Set(nodeMatchFacts.map((f: any) => f.id));
@@ -509,7 +549,16 @@ mcp.tool('search', {
       ...rerankedFacts.filter((f: any) => !nodeMatchIds.has(f.id)),
     ];
 
-    let text = '--- registros vigentes ---\n';
+    let text = '';
+    if (rerankedPages.length > 0) {
+      text += '--- páginas ---\n';
+      for (const p of rerankedPages) {
+        text += `\n[${p.score.toFixed(4)}] ${p.slug} (${p.type}) -- ${p.title}\n  fuente: ${p.source_path}\n\n${p.content}\n`;
+      }
+      text += '\n';
+    }
+
+    text += '--- registros vigentes ---\n';
     if (matchedLiveNodes.size > 0) {
       const suffix = nodeMatchTruncated
         ? ` (mostrando ${MAX_NODE_MATCH_FACTS} de ${nodeMatchTotal}, pide "estado del recuerdo X" para el resto)`
