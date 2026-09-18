@@ -23,14 +23,24 @@
 // create-link.mjs), la misma lógica que usa memory-link.mjs -- ningún camino
 // nuevo, solo un atajo para no encadenar dos comandos.
 //
+// Sugerencia de alias al crear (2026-09-17, portado desde D:\MyBrain,
+// registro #887): antes de insertar, se le pide a lib/suggest-aliases.mjs
+// proponer variantes del name/alias dados (nombre completo, sigla, con/sin
+// tilde, título) y se agregan solas al insert, impresas explícitas para que
+// sea auditable -- mismo criterio fail-open que usa el clasificador de
+// menciones para enlaces automáticos. Cualquier propuesta que colisione con
+// otro recuerdo se descarta (nunca se salta el fail-closed de colisión, solo
+// aplica a lo explícito). Desactivar con --no-suggest-aliases.
+//
 // Uso:
-//   node create-memory.mjs --name proyecto-x [--aliases "alias1,alias2"] [--is-meta] [--force] [--parent categoría --date YYYY-MM-DD [--reason "..."]]
+//   node create-memory.mjs --name proyecto-x [--aliases "alias1,alias2"] [--is-meta] [--force] [--no-suggest-aliases] [--parent categoría --date YYYY-MM-DD [--reason "..."]]
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { embed, toVectorLiteral } from './lib/embed.mjs';
 import { classifyNode, CLASSIFIER_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL } from './lib/classify-memory.mjs';
 import { findAliasCollisions } from './lib/check-alias-collision.mjs';
 import { createLink } from './lib/create-link.mjs';
+import { suggestAliases, SUGGESTER_MODEL } from './lib/suggest-aliases.mjs';
 
 function parseArgs(argv) {
   const out = {};
@@ -172,12 +182,29 @@ if (!args.force) {
 }
 
 if (!process.exitCode) {
+  let finalAliases = aliases;
+  if (!args['no-suggest-aliases']) {
+    const suggested = await suggestAliases(name, aliases);
+    if (suggested && suggested.length > 0) {
+      const suggestedCollisions = await findAliasCollisions(client, name, suggested);
+      const collidingLower = new Set(suggestedCollisions.map((c) => c.alias.toLowerCase()));
+      const accepted = suggested.filter((a) => !collidingLower.has(a.toLowerCase()));
+      if (collidingLower.size > 0) {
+        console.log(`  (alias propuesto(s) descartado(s) por colisión con otro recuerdo: ${[...collidingLower].join(', ')})`);
+      }
+      if (accepted.length > 0) {
+        finalAliases = [...aliases, ...accepted];
+        console.log(`  Alias propuesto(s) automáticamente (${SUGGESTER_MODEL}): ${accepted.join(', ')}`);
+      }
+    }
+  }
+
   await client.query(
     `insert into memories (name, aliases, is_meta) values ($1, $2, $3)`,
-    [name, aliases, Boolean(args['is-meta'])],
+    [name, finalAliases, Boolean(args['is-meta'])],
   );
 
-  console.log(`Creado recuerdo "${name}"${aliases.length ? ` (alias: ${aliases.join(', ')})` : ''}${args['is-meta'] ? ' [is_meta]' : ''}.`);
+  console.log(`Creado recuerdo "${name}"${finalAliases.length ? ` (alias: ${finalAliases.join(', ')})` : ''}${args['is-meta'] ? ' [is_meta]' : ''}.`);
 
   if (args.parent) {
     const edgeResult = await createLink(client, name, args.parent, 'pertenece_a', parentReason, args.date);

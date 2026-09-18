@@ -5,6 +5,25 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.7.6 (2026-09-17)
+
+Sin cambios en `schema.sql`. Portado desde D:\MyBrain (registro #887):
+sugerencia automática de alias al crear un recuerdo.
+
+- **Nuevo `lib/suggest-aliases.mjs`**: al crear un recuerdo (`create-
+  memory.mjs`, o `remember.mjs --create-memory`), propone variantes
+  plausibles de alias a partir del name/alias dados (nombre completo,
+  sigla, con/sin tilde, título, forma abreviada), genérico para
+  cualquier tipo de entidad, no solo personas. Fail-open (nunca bloquea
+  la creación), descarta propuestas que colisionan con otro recuerdo,
+  imprime lo agregado para que sea auditable. Desactivable con
+  `--no-suggest-aliases`.
+- **Motivación**: `remember.mjs` y `list-memory-mentions.mjs` hacen
+  matching literal de substring contra la lista de alias de cada
+  recuerdo, no fuzzy. Un recuerdo de persona creado con solo su apodo
+  quedaba ciego a cualquier registro que la mencionara por su nombre
+  real, aunque ese registro ya existiera en la base.
+
 ## v0.7.5 (2026-09-15)
 
 Sin cambios en `schema.sql`. Portado desde D:\MyBrain (misma sesión que

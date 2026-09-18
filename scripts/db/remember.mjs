@@ -25,8 +25,16 @@
 // antemano en la tabla `memories` (fail-closed contra typos) salvo que se pase
 // --create-memory explícitamente. Si un recuerdo fue fusionado a otro
 // (`merged_into`), se resuelve solo al recuerdo vigente.
+//
+// Alias sugeridos al crear (2026-09-17, portado desde D:\MyBrain, registro
+// #887): junto con --create-memory, se le pide a lib/suggest-aliases.mjs
+// proponer variantes del name/--aliases dados (nombre completo, sigla,
+// con/sin tilde, título) y se agregan solas al insert, impresas explícitas
+// -- mismo criterio fail-open que usa el clasificador de menciones para sus
+// enlaces automáticos. Desactivar con --no-suggest-aliases.
+//
 // Uso:
-//   node remember.mjs --claim "texto del registro" --date 2026-08-22 --source "conversación Claude Code" [--kind fact|event|commitment] [--memory recuerdo1,recuerdo2] [--create-memory] [--aliases "alias1,alias2"] [--confidence 0.9] [--supersedes 12,15] [--complements 12] [--distinct] [--confirm-date]
+//   node remember.mjs --claim "texto del registro" --date 2026-08-22 --source "conversación Claude Code" [--kind fact|event|commitment] [--memory recuerdo1,recuerdo2] [--create-memory] [--aliases "alias1,alias2"] [--no-suggest-aliases] [--confidence 0.9] [--supersedes 12,15] [--complements 12] [--distinct] [--confirm-date]
 //
 // --confirm-date: obligatorio si --date no es la fecha real de hoy (America/
 // Bogota): confirma que un registro con fecha distinta es intencional
@@ -44,6 +52,7 @@ import { classifyMentionRelationHybrid, CLASSIFIER_CONFIDENCE_THRESHOLD as MENTI
 import { formatFactsBlock } from './lib/format-records.mjs';
 import { createLink } from './lib/create-link.mjs';
 import { classifyCommitmentResolution, CLASSIFIER_CONFIDENCE_THRESHOLD as COMMITMENT_CONFIDENCE_THRESHOLD } from './lib/classify-commitment-resolution.mjs';
+import { suggestAliases, SUGGESTER_MODEL } from './lib/suggest-aliases.mjs';
 
 const SIMILARITY_THRESHOLD = 0.6;
 
@@ -83,7 +92,7 @@ const args = parseArgs(process.argv.slice(2));
 if (!args.claim || !args.date || !args.source) {
   console.error(
     'Faltan campos obligatorios. Uso:\n' +
-      '  node remember.mjs --claim "..." --date YYYY-MM-DD --source "..." [--kind fact] [--memory recuerdo1,recuerdo2] [--create-memory] [--aliases "a,b"] [--confidence 1.0] [--supersedes id,id] [--complements id] [--distinct] [--confirm-date]',
+      '  node remember.mjs --claim "..." --date YYYY-MM-DD --source "..." [--kind fact] [--memory recuerdo1,recuerdo2] [--create-memory] [--aliases "a,b"] [--no-suggest-aliases] [--confidence 1.0] [--supersedes id,id] [--complements id] [--distinct] [--confirm-date]',
   );
   process.exit(1);
 }
@@ -359,10 +368,24 @@ for (const name of requestedNodes) {
   if (row) {
     resolvedNodes.push(row.name);
   } else if (args['create-memory']) {
-    if (aliasesForNewNode?.name === name) {
+    const baseAliases = aliasesForNewNode?.name === name ? aliasesForNewNode.aliases : [];
+    let finalAliases = baseAliases;
+    if (!args['no-suggest-aliases']) {
+      const suggested = await suggestAliases(name, baseAliases);
+      if (suggested && suggested.length > 0) {
+        const suggestedCollisions = await findAliasCollisions(client, name, suggested);
+        const collidingLower = new Set(suggestedCollisions.map((c) => c.alias.toLowerCase()));
+        const accepted = suggested.filter((a) => !collidingLower.has(a.toLowerCase()));
+        if (accepted.length > 0) {
+          finalAliases = [...baseAliases, ...accepted];
+          console.error(`  Alias propuesto(s) automáticamente para "${name}" (${SUGGESTER_MODEL}): ${accepted.join(', ')}`);
+        }
+      }
+    }
+    if (finalAliases.length > 0) {
       await client.query(
         `insert into memories (name, aliases) values ($1, $2) on conflict (name) do nothing`,
-        [name, aliasesForNewNode.aliases],
+        [name, finalAliases],
       );
     } else {
       await client.query(`insert into memories (name) values ($1) on conflict (name) do nothing`, [name]);
