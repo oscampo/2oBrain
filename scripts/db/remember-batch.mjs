@@ -299,6 +299,40 @@ for (let i = 0; i < records.length; i++) {
     ]);
   }
 
+  // Auto-enlace entre recuerdos co-etiquetados en el mismo registro (portado
+  // desde D:\MyBrain, 2026-09-19 -- mismo fix que remember.mjs, ver comentario
+  // allá para el razonamiento completo). Distinto del bloque de "mentions" de
+  // abajo (eso es sobre menciones incidentales de un recuerdo AJENO a
+  // resolvedNodes dentro del texto): acá los nodos ya están co-etiquetados por
+  // decisión explícita de quien llamó a remember-batch.mjs (createMemory/nodes
+  // del JSON), así que la relación ya está confirmada por construcción --
+  // nunca se filtra por confianza, solo se usa el clasificador para nombrarla.
+  if (resolvedNodes.length > 1) {
+    for (let i = 0; i < resolvedNodes.length; i++) {
+      for (let j = i + 1; j < resolvedNodes.length; j++) {
+        const from = resolvedNodes[i];
+        const to = resolvedNodes[j];
+        const { rows: existingLink } = await client.query(
+          `select 1 from memory_links where (from_memory, to_memory) in (($1, $2), ($2, $1)) limit 1`,
+          [from, to],
+        );
+        if (existingLink.length > 0) continue;
+
+        const { rows: bFactRows } = await client.query(`select * from records_timeline($1, $2, false)`, [to, 1000]);
+        const judged = await classifyMentionRelationHybrid(f.claim, from, to, formatFactsBlock(bFactRows));
+        const relation = judged?.relation || 'co-registrado_en';
+        const reasonTag = judged?.relation
+          ? `[auto-creado por co-etiquetado explícito (${judged.via}), confianza ${judged.confidence.toFixed(2)}]: ${judged.reasoning} (registro #${newId})`
+          : `[auto-creado por co-etiquetado explícito, sin clasificar -- clasificador no disponible o sin relación específica] (registro #${newId})`;
+
+        const edgeResult = await createLink(client, from, to, relation, reasonTag, f.date);
+        if (edgeResult.ok) {
+          console.error(`  (enlace auto-creado: ${edgeResult.fromMemory} -> ${edgeResult.toMemory} (${edgeResult.relation}))`);
+        }
+      }
+    }
+  }
+
   if (supersedesIds.length > 0) {
     await client.query(
       `update records set valid_until = now(), superseded_by = $1 where id = any($2::bigint[])`,

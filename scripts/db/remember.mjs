@@ -427,6 +427,47 @@ if (resolvedNodes.length > 0) {
   console.log(`recuerdo(s): ${resolvedNodes.join(', ')}`);
 }
 
+// Auto-enlace entre recuerdos co-etiquetados (portado desde D:\MyBrain,
+// 2026-09-19, pedido explícito del usuario tras notar que un registro con
+// --memory nodo1,nodo2 no generaba ninguna arista en el grafo). Distinto del
+// bloque de "mentions" de abajo: eso detecta menciones INCIDENTALES de un
+// recuerdo ajeno dentro del texto del claim, y por eso se filtra por
+// confianza (puede ser ruido). Esto es al revés -- el propio llamador ya
+// decidió, vía --memory, que este registro pertenece a más de un recuerdo a
+// la vez, así que la relación entre ellos ya está confirmada por
+// construcción; el único trabajo que falta es ponerle una etiqueta
+// razonable, nunca condicionar si se crea. Por eso NO se filtra por
+// verdict/confidence del clasificador (esa es la diferencia real respecto al
+// bloque de mentions): solo se usa para nombrar la relación, con un fallback
+// genérico si el clasificador no está disponible o no da nada útil. No
+// duplica un enlace ya existente entre el mismo par (en cualquier
+// dirección).
+if (resolvedNodes.length > 1) {
+  for (let i = 0; i < resolvedNodes.length; i++) {
+    for (let j = i + 1; j < resolvedNodes.length; j++) {
+      const from = resolvedNodes[i];
+      const to = resolvedNodes[j];
+      const { rows: existingLink } = await client.query(
+        `select 1 from memory_links where (from_memory, to_memory) in (($1, $2), ($2, $1)) limit 1`,
+        [from, to],
+      );
+      if (existingLink.length > 0) continue;
+
+      const { rows: bFactRows } = await client.query(`select * from records_timeline($1, $2, false)`, [to, 1000]);
+      const judged = await classifyMentionRelationHybrid(args.claim, from, to, formatFactsBlock(bFactRows));
+      const relation = judged?.relation || 'co-registrado_en';
+      const reasonTag = judged?.relation
+        ? `[auto-creado por co-etiquetado explícito (${judged.via}), confianza ${judged.confidence.toFixed(2)}]: ${judged.reasoning} (registro #${newId})`
+        : `[auto-creado por co-etiquetado explícito, sin clasificar -- clasificador no disponible o sin relación específica] (registro #${newId})`;
+
+      const edgeResult = await createLink(client, from, to, relation, reasonTag, args.date);
+      if (edgeResult.ok) {
+        console.log(`(enlace auto-creado: ${edgeResult.fromMemory} -> ${edgeResult.toMemory} (${edgeResult.relation}))`);
+      }
+    }
+  }
+}
+
 if (supersedesIds.length > 0) {
   await client.query(
     `update records set valid_until = now(), superseded_by = $1 where id = any($2::bigint[])`,

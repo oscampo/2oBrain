@@ -5,6 +5,31 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.7.9 (2026-09-19)
+
+Sin cambios en `schema.sql` que requieran migración (solo un comentario
+actualizado, ver abajo). Portado desde D:\MyBrain (commits 7e3c684/e04414d):
+auto-enlace en `memory_links` cuando un registro queda co-etiquetado a 2+
+recuerdos a la vez vía `memory`/`--memory`.
+
+- **`scripts/db/remember.mjs` y `remember-batch.mjs`**: cuando `resolvedNodes`
+  tiene 2+ recuerdos, se crea automáticamente el enlace entre cada par que
+  todavía no lo tenga (no filtra por confianza del clasificador -- la
+  relación ya está confirmada por quien co-etiquetó el registro, el
+  clasificador solo le pone nombre, con fallback genérico
+  `co-registrado_en`). Distinto del mecanismo de menciones incidentales ya
+  existente desde v0.6.x, que sí filtra por confianza porque puede ser ruido.
+- **`supabase/functions/mcp-server/index.ts`**: mismo fix, portado a
+  TypeScript (`suggestRelationLabel`) -- esta Edge Function nunca tuvo
+  ningún mecanismo de auto-enlace hasta ahora, ni siquiera el de menciones.
+  Sin acceso a proyecto Supabase propio en esta copia de mantenedor
+  (solo `.env.example`), verificado con `deno check` y comparación de
+  cuerpo de código contra la versión de D:\MyBrain ya probada en vivo
+  (registro de prueba #970, retractado tras confirmar).
+- **`schema.sql`**: comentario de `memory_links` actualizado -- ya no dice
+  "se crea siempre a mano", refleja los dos mecanismos automáticos que
+  existen hoy (menciones incidentales y co-etiquetado explícito).
+
 ## v0.7.8 (2026-09-18)
 
 **Incluye migración de schema.** Cierra el drift de `search` acumulado

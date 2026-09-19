@@ -254,6 +254,56 @@ otro sujeto). Si no estás seguro, baja la confidence en vez de adivinar.`;
   };
 }
 
+// Auto-enlace entre recuerdos co-etiquetados (2026-09-19, portado desde
+// D:\MyBrain scripts/db/remember.mjs -- ver el comentario de allá para el
+// razonamiento completo). A diferencia de classifyDuplicate/classifyNode de
+// arriba, esta función NUNCA decide si algo se crea, solo le pone un nombre
+// razonable a una relación que YA está confirmada: quien llamó a remember
+// pasó memory: [a, b] a propósito, así que el enlace se crea siempre que no
+// exista uno ya entre ese par (ver el bloque que llama a esto, más abajo, en
+// el handler de 'remember'). Por eso, a diferencia de classifyDuplicate, un
+// fallo de red/JSON/cuota no bloquea nada -- simplemente cae al relation
+// genérico 'co-registrado_en' en vez de a un candidato de revisión manual.
+async function suggestRelationLabel(claim: string, memoryA: string, memoryB: string): Promise<string> {
+  const FALLBACK = 'co-registrado_en';
+  if (!OLLAMA_API_KEY) return FALLBACK;
+
+  const prompt = `Un registro nuevo de un segundo cerebro personal quedó etiquetado a la vez a dos \
+recuerdos (entidad: persona, proyecto, curso o colaboración). Propón una etiqueta breve en \
+snake_case que describa la relación entre ambos, vista desde "${memoryA}" hacia "${memoryB}".
+
+Recuerdo A: "${memoryA}"
+Recuerdo B: "${memoryB}"
+registro que menciona a ambos: "${claim}"
+
+Responde SOLO con JSON, sin texto adicional: {"relation": "tipo_de_relacion_especifica en snake_case"}
+Si el registro no deja ver una relación más específica que "aparecen juntos en este registro", \
+responde {"relation": "${FALLBACK}"}.`;
+
+  let res: Response;
+  try {
+    res = await fetch('https://ollama.com/api/generate', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${OLLAMA_API_KEY}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: CLASSIFIER_MODEL, prompt, format: 'json', stream: false }),
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    return FALLBACK;
+  }
+  if (!res.ok) return FALLBACK;
+
+  try {
+    const { response } = await res.json();
+    const cleaned = response.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    const parsed = JSON.parse(cleaned);
+    const relation = typeof parsed.relation === 'string' ? parsed.relation.trim() : '';
+    return relation || FALLBACK;
+  } catch {
+    return FALLBACK;
+  }
+}
+
 // Etapa 2 (PLAN-recuerdos.md, 2026-08-29): desambiguación de recuerdos. Mismo patrón
 // que classifyDuplicate: Ollama Cloud, gpt-oss:20b-cloud, fail-closed en
 // cualquier fallo (red, cuota, JSON inválido, recuerdo "existing" inventado que
@@ -843,6 +893,46 @@ mcp.tool('remember', {
         .upsert(resolvedNodes.map((memory_name) => ({ record_id: inserted.id, memory_name })), { onConflict: 'record_id,memory_name', ignoreDuplicates: true });
     }
 
+    // Auto-enlace entre recuerdos co-etiquetados (2026-09-19, portado desde
+    // D:\MyBrain scripts/db/remember.mjs -- ver el comentario de
+    // suggestRelationLabel más arriba). No duplica un enlace ya existente
+    // entre el mismo par en ninguna dirección.
+    const linkAdvisories: string[] = [];
+    if (resolvedNodes.length > 1) {
+      const { data: existingLinks } = await supabase
+        .from('memory_links')
+        .select('from_memory, to_memory')
+        .in('from_memory', resolvedNodes)
+        .in('to_memory', resolvedNodes);
+      const linkedPairs = new Set(
+        (existingLinks ?? []).map((l: any) => [l.from_memory, l.to_memory].sort().join('\u0001')),
+      );
+      for (let i = 0; i < resolvedNodes.length; i++) {
+        for (let j = i + 1; j < resolvedNodes.length; j++) {
+          const from = resolvedNodes[i];
+          const to = resolvedNodes[j];
+          const pairKey = [from, to].sort().join('\u0001');
+          if (linkedPairs.has(pairKey)) continue;
+
+          const relation = await suggestRelationLabel(args.claim, from, to);
+          const { error: linkError } = await supabase.from('memory_links').upsert(
+            {
+              from_memory: from,
+              to_memory: to,
+              relation,
+              source: `[auto-creado por co-etiquetado explícito] (registro #${inserted.id})`,
+              date: args.date,
+            },
+            { onConflict: 'from_memory,to_memory,relation' },
+          );
+          if (!linkError) {
+            linkedPairs.add(pairKey);
+            linkAdvisories.push(`(enlace auto-creado: ${from} -> ${to} (${relation}))`);
+          }
+        }
+      }
+    }
+
     if (supersedesIds.length > 0) {
       await supabase
         .from('records')
@@ -852,6 +942,7 @@ mcp.tool('remember', {
 
     let text = `Registrado #${inserted.id}: [${inserted.date}] ${inserted.claim}`;
     if (resolvedNodes.length > 0) text += `\nrecuerdo(s): ${resolvedNodes.join(', ')}`;
+    for (const advisory of linkAdvisories) text += `\n${advisory}`;
     if (nodeAdvisory) text += `\n${nodeAdvisory}`;
     for (const advisory of aliasAdvisories) text += `\n${advisory}`;
     if (supersedesIds.length > 0) text += `\nReemplazó a #${supersedesIds.join(', #')}.`;

@@ -191,10 +191,17 @@ create index if not exists record_memories_memory_idx on record_memories (memory
 -- relaciones humanas reales (colabora_con, parte_de, reportado_en,
 -- contacto_de, pertenece_a...) no cabe bien en una lista cerrada, y fijarla
 -- de antemano solo generaria el mismo problema que un `kind` demasiado
--- rigido. Se crea siempre a mano (memory-link.mjs), nunca inferida
--- automaticamente, mismo criterio fail-closed que fusionar recuerdos: una
--- relacion equivocada contamina cualquier futura consulta de "que se
--- conecta con X".
+-- rigido. Se crea a mano (memory-link.mjs) o automaticamente en dos casos
+-- puntuales, ambos con revision humana disponible despues, no antes: una
+-- mencion incidental de otro recuerdo dentro de un claim nuevo (2026-09-02,
+-- filtrado por confianza del clasificador, puede descartarse como ruido), y
+-- un registro co-etiquetado explicitamente a 2+ recuerdos a la vez via
+-- memory/--memory (2026-09-19, la relacion ya esta confirmada por quien
+-- llamo a remember, el clasificador solo le pone nombre, nunca decide si se
+-- crea). Fusionar recuerdos (merge-memories.mjs) sigue siendo manual sin
+-- excepcion -- mismo criterio fail-closed: una relacion equivocada solo
+-- contamina la consulta de "que se conecta con X", pero un merge equivocado
+-- es mucho mas dificil de deshacer.
 create table if not exists memory_links (
   from_memory text not null references memories(name),
   to_memory text not null references memories(name),
