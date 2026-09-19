@@ -5,6 +5,26 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.7.11 (2026-09-19)
+
+Sin migración de `schema.sql`. Portado desde D:\MyBrain (commit `0106cf0`):
+dos ajustes chicos al Grafo, motivados por una pregunta real de la persona
+que usa esto ("el timeline muestra el registro #984 pero el grafo dice que
+hay 919 registros, por qué") -- la respuesta era que el `id` de `records`
+es una secuencia que nunca se reutiliza, así que un registro borrado de
+verdad (no solo supersedido) deja un hueco permanente.
+
+- **Grafo -> stat "registros borrados"** (ambas vistas): `id más alto que
+  existe hoy − total de filas que existen` es exactamente ese número de
+  huecos, sin necesitar guardar tumbstones ni tocar `graph.mjs` (se
+  calcula en el cliente con los datos que ya trae `/api/graph`).
+- **Grafo -> vista por registros -> checkbox "Ocultar registros
+  supersedidos/retractados"**: solo visible en esa vista (en la vista por
+  recuerdos no hay noción de "supersedido" a nivel de nodo); filtra el
+  conjunto que se dibuja/simula, pero los stats de "supersedidos" y
+  "registros borrados" siguen contando sobre el universo completo --son
+  informativos, no dependen de si están visibles ahora mismo.
+
 ## v0.7.10 (2026-09-19)
 
 Sin migración de `schema.sql`. Portado desde D:\MyBrain (commits

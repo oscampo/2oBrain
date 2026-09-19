@@ -1751,6 +1751,7 @@ function section(id, title, hint, bodyHtml) {
        <button type="button" class="tl-view-btn" data-view="records">Por registros</button>
      </div>
      <div class="checkline" style="margin-top:10px"><input type="checkbox" id="graph-show-labels"><label for="graph-show-labels">Mostrar nombres de relaciones</label></div>
+     <div class="checkline" id="graph-hide-superseded-line" style="margin-top:6px; display:none"><input type="checkbox" id="graph-hide-superseded"><label for="graph-hide-superseded">Ocultar registros supersedidos/retractados</label></div>
      <div class="gph-stats" id="graph-stats" style="margin-top:14px"></div>
      <div id="graph-canvas"></div>
      <div class="gph-legend" id="graph-legend" style="margin-top:10px">
@@ -1763,9 +1764,14 @@ function section(id, title, hint, bodyHtml) {
   const legendEl = sec.querySelector('#graph-legend');
   const searchLabelEl = sec.querySelector('#graph-search-label');
   const searchInputEl = sec.querySelector('#graph-search');
+  const hideSupersededLineEl = sec.querySelector('#graph-hide-superseded-line');
   let simulation = null;
   let graph = null;
   let cachedGraphData = null;
+  // Ocultar supersedidos/retractados (2026-09-19, pedido del usuario): solo
+  // aplica y solo se muestra el control en la vista por registros -- en la
+  // vista por recuerdos no hay noción de "supersedido" a nivel de nodo.
+  let hideSuperseded = false;
   // Vista por recuerdos (agregado, la de siempre) vs. por registros
   // (2026-09-19, pedido del usuario: cada registro individual como punto, para
   // auditar/sintetizar a partir de lo que arroja una búsqueda puntual, no
@@ -1819,6 +1825,22 @@ function section(id, title, hint, bodyHtml) {
 
   function edgeEndpointName(x) { return typeof x === 'object' ? x.name : x; }
 
+  // "registros borrados" (2026-09-19, pedido del usuario tras notar que el
+  // timeline mostraba un id último de registro más alto que lo que el
+  // grafo reportaba como total de registros): el id de `records` es una
+  // secuencia que nunca se reutiliza, así que un registro borrado de
+  // verdad (no solo supersedido -- ese sigue existiendo como fila) dejó un
+  // hueco permanente. No hay forma de contar bajas directamente sin
+  // guardar tumbstones, pero la diferencia entre el id más alto que sí
+  // existe hoy y el total de filas que sí existen (supersedidas o no) ES
+  // exactamente ese número de huecos.
+  function deletedRecordsCount() {
+    const all = cachedGraphData?.records ?? [];
+    if (all.length === 0) return 0;
+    const maxId = Math.max(...all.map((r) => r.id));
+    return Math.max(0, maxId - all.length);
+  }
+
   function renderMemoryGraph(rawNodes, rawEdges) {
     if (simulation) { simulation.stop(); simulation = null; }
     canvasEl.innerHTML = '';
@@ -1842,6 +1864,7 @@ function section(id, title, hint, bodyHtml) {
     statsEl.innerHTML = [
       [rawNodes.length, 'recuerdos'], [rawEdges.length, 'conexiones'], [touched.size, 'conectados'],
       [isolatedCount, 'sin conexión'], [metaCount, 'meta'], [totalRecords, 'registros'],
+      [deletedRecordsCount(), 'registros borrados'],
     ].map(([n, label]) => `<div class="gph-stat"><b>${n}</b><span>${label}</span></div>`).join('');
 
     const memories = rawNodes.map((n) => ({ ...n }));
@@ -1981,7 +2004,7 @@ function section(id, title, hint, bodyHtml) {
   // renderMemoryGraph a propósito (mismo svg/zoom/drag/tooltip/tick), pero
   // sin el resaltado por clic de vecinos -- acá el resaltado lo dispara una
   // búsqueda (applyRecordHighlight), no un clic sobre un nodo.
-  function renderRecordGraph(rawRecords, rawEdges) {
+  function renderRecordGraph(rawRecordsAll, rawEdgesAll) {
     if (simulation) { simulation.stop(); simulation = null; }
     canvasEl.innerHTML = '';
     let hasAutoFitted = false;
@@ -1990,13 +2013,24 @@ function section(id, title, hint, bodyHtml) {
     const W = rect.width || 1200;
     const H = rect.height || 650;
 
+    // Ocultar supersedidos/retractados (2026-09-19): filtra el conjunto que
+    // realmente se dibuja/simula, pero los stats de "supersedidos" y
+    // "borrados" siguen contando sobre el universo completo (rawRecordsAll)
+    // -- son informativos ("cuántos existen"), no dependen de si están
+    // visibles ahora mismo.
+    const supersededIds = new Set(rawRecordsAll.filter((r) => !r.valid).map((r) => r.id));
+    const rawRecords = hideSuperseded ? rawRecordsAll.filter((r) => r.valid) : rawRecordsAll;
+    const rawEdges = hideSuperseded
+      ? rawEdgesAll.filter((e) => !supersededIds.has(e.from) && !supersededIds.has(e.to))
+      : rawEdgesAll;
+
     const touched = new Set();
     for (const e of rawEdges) { touched.add(e.from); touched.add(e.to); }
     const isolatedCount = rawRecords.filter((r) => !touched.has(r.id)).length;
-    const supersededCount = rawRecords.filter((r) => !r.valid).length;
     statsEl.innerHTML = [
       [rawRecords.length, 'registros'], [rawEdges.length, 'conexiones'], [touched.size, 'conectados'],
-      [isolatedCount, 'sin conexión'], [supersededCount, 'supersedidos'],
+      [isolatedCount, 'sin conexión'], [supersededIds.size, 'supersedidos'],
+      [deletedRecordsCount(), 'registros borrados'],
     ].map(([n, label]) => `<div class="gph-stat"><b>${n}</b><span>${label}</span></div>`).join('');
 
     const records = rawRecords.map((r) => ({ ...r, id: String(r.id) }));
@@ -2402,6 +2436,7 @@ function section(id, title, hint, bodyHtml) {
   }
 
   function updateSearchUIForView() {
+    hideSupersededLineEl.style.display = viewMode === 'records' ? 'flex' : 'none';
     if (viewMode === 'memories') {
       searchLabelEl.textContent = 'Buscar recuerdo';
       searchInputEl.setAttribute('list', 'graph-memories-list');
@@ -2436,6 +2471,10 @@ function section(id, title, hint, bodyHtml) {
   sec.querySelector('#graph-fit').addEventListener('click', () => fitToView(true));
   sec.querySelector('#graph-show-labels').addEventListener('change', (e) => {
     graph?.linkLabelSel.style('display', e.target.checked ? null : 'none');
+  });
+  sec.querySelector('#graph-hide-superseded').addEventListener('change', (e) => {
+    hideSuperseded = e.target.checked;
+    if (viewMode === 'records') renderCurrentView();
   });
   sec.querySelector('#graph-search-go').addEventListener('click', () => {
     const q = searchInputEl.value.trim();
