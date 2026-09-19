@@ -5,6 +5,28 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.7.12 (2026-09-19)
+
+Sin migración de `schema.sql`. Cambio solo en `CLAUDE.md` (guion de la
+entrevista de instalación, Fase 6), no en scripts. Motivado por un uso real
+distinto al de Oscar: evaluar 2oBrain como backend de memoria para un
+agente/personaje (Cora, oscampo/KR) en vez de para una persona -- ninguna
+de las 4 ramas fijas del checklist (Trabajo/Personal/Estudio/Comunidad)
+aplica a ese caso, y la única vía existente para categorías fuera de esas 4
+("Otro") solo permitía una raíz sin hijos.
+
+- **Nueva rama "Personalizado"** en la pregunta `¿Para qué vas a usar
+  2oBrain?`: generaliza "Otro" de una sola categoría sin subcategorías a un
+  árbol completo definido por quien instala -- pregunta las categorías
+  raíz que necesita y, para cada una, si quiere subcategorías fijas ya
+  mismo o las deja para crear después. Mismo comando (`create-memory.mjs`)
+  y mismo esquema de sufijo `<subcategoría>-<categoría>` que ya usan las
+  demás ramas, para evitar colisión de nombres entre categorías (los
+  nombres de recuerdo son únicos globales, no por rama).
+- Sin implementación para Cora todavía (queda para después del cierre de
+  exámenes/calificaciones del semestre) -- este cambio solo deja la
+  entrevista lista para ese caso y para cualquier otro uso atípico futuro.
+
 ## v0.7.11 (2026-09-19)
 
 Sin migración de `schema.sql`. Portado desde D:\MyBrain (commit `0106cf0`):

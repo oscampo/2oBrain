@@ -432,6 +432,8 @@ y reemplaza cada `YYYY-MM-DD` de abajo por ese valor.
 [ ] Comunidad (junta/consejo, iglesia, asociación -- cualquier rol
     organizativo no remunerado con reuniones y pendientes propios)
 [ ] Otro: ____
+[ ] Personalizado (sin plantilla -- tú defines cada categoría raíz y sus
+    subcategorías desde cero)
 ```
 (puede marcar varias, una sola, o ninguna)
 
@@ -440,7 +442,7 @@ es un requisito, el usuario puede pedir esta estructura después.
 
 Con la respuesta, crea tú las categorías con `create-memory.mjs`: un recuerdo raíz
 por cada opción marcada, y debajo un conjunto fijo de subcategorías (salvo
-"Otro", ver abajo). Van fijos a propósito, no se ofrecen como checklist
+"Otro" y "Personalizado", ver abajo). Van fijos a propósito, no se ofrecen como checklist
 aparte -- alargaría la entrevista sin necesidad real, y el usuario siempre
 puede crear otros después con el mismo comando:
 
@@ -461,6 +463,19 @@ resolverla caso por caso cuando el usuario marca más de una rama:
   forma de una categoría que el propio checklist no supo nombrar. Pregunta
   el nombre ("¿cómo la llamarías?") y crea solo el recuerdo raíz con ese
   nombre; el usuario arma los hijos después si los necesita.
+- **Personalizado**: para cuando ninguna de las 4 ramas fijas aplica al uso
+  real que le va a dar (ej. 2oBrain como backend de memoria de un agente/
+  personaje con su propio dominio, no la vida de una persona) -- generaliza
+  "Otro" de una sola categoría sin hijos a un árbol completo definido por el
+  usuario. Pregunta primero qué categorías raíz necesita ("¿qué categorías
+  raíz querés? dame los nombres, una por línea o separadas por coma"), y
+  para cada una, si quiere subcategorías fijas ya mismo o prefiere dejarla
+  vacía y crearlas más adelante (mismo criterio que el resto de esta fase:
+  no fuerces estructura que el usuario no pidió). Si pide subcategorías,
+  usa el mismo sufijo `<subcategoría>-<categoría>` que las demás ramas, por
+  la misma razón (nombres de recuerdo únicos globales, no por rama). No
+  asumas un dominio ni un número de categorías -- el usuario puede pedir
+  una sola raíz o diez, esta rama no tiene forma fija a propósito.
 
 ```bash
 node scripts/db/create-memory.mjs --name trabajo
@@ -485,6 +500,12 @@ node scripts/db/create-memory.mjs --name pendientes-comunidad --parent comunidad
 node scripts/db/create-memory.mjs --name contactos-comunidad --parent comunidad --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
 
 node scripts/db/create-memory.mjs --name <nombre-que-dio-el-usuario>
+
+# Personalizado (repite este par de líneas por cada categoría raíz que
+# pida, y la segunda línea por cada subcategoría que pida para esa raíz --
+# omite la segunda si la quiere vacía):
+node scripts/db/create-memory.mjs --name <categoria-raiz>
+node scripts/db/create-memory.mjs --name <subcategoria>-<categoria-raiz> --parent <categoria-raiz> --date YYYY-MM-DD --reason "estructura inicial de la entrevista de instalación"
 ```
 
 (Solo crea los de la rama que el usuario marcó -- si marcó únicamente
