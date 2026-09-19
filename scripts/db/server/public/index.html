@@ -1735,46 +1735,54 @@ function section(id, title, hint, bodyHtml) {
   sec.querySelector('#doctor-fix').addEventListener('click', () => run(true));
 }
 
-// --- Grafo ---
-// Grafo interactivo dirigido por fuerzas (d3-force, vendorizado localmente
-// en vendor/d3.v7.min.js -- nada de CDN externo, "solo localhost" aplica
-// también a dependencias del frontend). Reemplaza el layout jerárquico
-// estático anterior (2026-09-03): el usuario lo pidió parecido a LightRAG/
-// Obsidian tras ver que un layout fijo por niveles no aguanta un grafo con
-// ciclos reales (ver PLAN-nodos.md) -- acá la física corre en el navegador
-// y decide las posiciones sola, arrastrar/zoom/clic funcionan de verdad.
-// El servidor (graph.mjs) solo entrega memories/edges en JSON, sin caché --
-// cada refresco trae el estado vigente.
+// --- Grafo (Dinámico y Pantalla Completa) ---
 {
   const sec = section('graph', 'Grafo', 'Mapa interactivo de tus recuerdos y las conexiones declaradas entre ellos, tal como existen ahora mismo en la base. Arrastra un recuerdo para reacomodarlo, usa la rueda del mouse para hacer zoom, y haz clic en un recuerdo para resaltar sus vecinos directos (clic de nuevo, o en un espacio vacío, para quitar el resaltado).',
     `<div class="row" style="align-items:flex-end; gap:10px">
        <div style="flex:0 0 auto"><button class="run" id="graph-run" style="margin-top:0">Refrescar</button></div>
        <div style="flex:0 0 auto"><button class="run secondary" id="graph-fit" style="margin-top:0">Encuadre</button></div>
-       <div style="flex:1"><label style="margin:0 0 4px">Buscar recuerdo</label>
+       <div style="flex:1"><label id="graph-search-label" style="margin:0 0 4px">Buscar recuerdo</label>
          <input type="text" id="graph-search" list="graph-memories-list" placeholder="empieza a escribir…"></div>
        <div style="flex:0 0 auto"><button class="run secondary" id="graph-search-go" style="margin-top:0">Ir</button></div>
      </div>
      <datalist id="graph-memories-list"></datalist>
-     <div class="checkline"><input type="checkbox" id="graph-show-labels" checked><label for="graph-show-labels">Mostrar nombres de relaciones</label></div>
+     <div class="tl-view-toggle" style="margin-top:10px">
+       <button type="button" class="tl-view-btn active" data-view="memories">Por recuerdos</button>
+       <button type="button" class="tl-view-btn" data-view="records">Por registros</button>
+     </div>
+     <div class="checkline" style="margin-top:10px"><input type="checkbox" id="graph-show-labels"><label for="graph-show-labels">Mostrar nombres de relaciones</label></div>
      <div class="gph-stats" id="graph-stats" style="margin-top:14px"></div>
      <div id="graph-canvas"></div>
-     <div class="gph-legend" style="margin-top:10px">
+     <div class="gph-legend" id="graph-legend" style="margin-top:10px">
        <div class="gph-legend-item"><span class="gph-dot"></span>recuerdo de dominio</div>
        <div class="gph-legend-item"><span class="gph-dot gph-meta"></span>recuerdo meta (sobre el propio sistema)</div>
      </div>`);
 
   const statsEl = sec.querySelector('#graph-stats');
   const canvasEl = sec.querySelector('#graph-canvas');
+  const legendEl = sec.querySelector('#graph-legend');
+  const searchLabelEl = sec.querySelector('#graph-search-label');
+  const searchInputEl = sec.querySelector('#graph-search');
   let simulation = null;
-  let graph = null; // estado del render vigente (recuerdos, selección d3, zoom) para los controles de fuera: encuadre, buscador, checkbox
+  let graph = null;
   let cachedGraphData = null;
+  // Vista por recuerdos (agregado, la de siempre) vs. por registros
+  // (2026-09-19, pedido del usuario: cada registro individual como punto, para
+  // auditar/sintetizar a partir de lo que arroja una búsqueda puntual, no
+  // solo navegar la agrupación temática). searchHighlightIds/
+  // lastRecordSearchQuery solo aplican en la vista por registros -- "Ir" ahí
+  // no navega (goToNode, vista por recuerdos) sino que resalta en rojo los
+  // registros relacionados con la búsqueda corrida.
+  let viewMode = 'memories';
+  let searchHighlightIds = new Set();
+  let lastRecordSearchQuery = '';
+  const RECORD_RADIUS = 5;
+  const FACT_ID_PATTERN = /^#?\d+(\s*,\s*#?\d+)*$/;
 
   function radius(factCount) {
     return Math.max(16, Math.min(50, 16 + Math.sqrt(factCount) * 2.8));
   }
 
-  // Mismo truco que el layout anterior: sin wrap nativo en SVG, se parte el
-  // nombre por guiones en varias líneas (tspans) para que no se salga del recuerdo.
   function wrapLabel(name, maxCharsPerLine = 14) {
     const parts = name.split('-');
     const lines = [];
@@ -1800,20 +1808,20 @@ function section(id, title, hint, bodyHtml) {
       return;
     }
     cachedGraphData = r;
-    renderGraph(r.memories, r.edges);
+    renderCurrentView();
+  }
+
+  function renderCurrentView() {
+    if (!cachedGraphData) return;
+    if (viewMode === 'memories') renderMemoryGraph(cachedGraphData.memories, cachedGraphData.edges);
+    else renderRecordGraph(cachedGraphData.records ?? [], cachedGraphData.recordEdges ?? []);
   }
 
   function edgeEndpointName(x) { return typeof x === 'object' ? x.name : x; }
 
-  function renderGraph(rawNodes, rawEdges) {
+  function renderMemoryGraph(rawNodes, rawEdges) {
     if (simulation) { simulation.stop(); simulation = null; }
     canvasEl.innerHTML = '';
-    // El auto-encuadre solo debe disparar UNA vez, cuando la simulación
-    // inicial se asienta -- no cada vez que "end" vuelve a dispararse tras
-    // reactivarse (arrastrar un recuerdo hace simulation.alphaTarget(0.3).restart(),
-    // que eventualmente vuelve a emitir "end" al enfriarse). Sin este freno,
-    // la vista se resetea sola después de cada arrastre, o de un zoom registro
-    // mientras la simulación inicial todavía no terminaba de asentarse.
     let hasAutoFitted = false;
 
     // Dimensiones reales de la ventana/canvas
@@ -1825,9 +1833,15 @@ function section(id, title, hint, bodyHtml) {
     for (const e of rawEdges) { touched.add(e.from); touched.add(e.to); }
     const isolatedCount = rawNodes.filter((n) => !touched.has(n.name)).length;
     const metaCount = rawNodes.filter((n) => n.isMeta).length;
+    // "registros" (2026-09-19, pedido del usuario): total de registros atómicos
+    // que agrupan todos estos recuerdos -- no es un stat de ESTE grafo (el
+    // grafo es de recuerdos, no de registros), es contexto de escala ("estos
+    // N recuerdos organizan M registros"), por eso sale de cachedGraphData.records
+    // en vez de derivarse de rawNodes/rawEdges como los otros cuatro.
+    const totalRecords = cachedGraphData?.records?.length ?? 0;
     statsEl.innerHTML = [
       [rawNodes.length, 'recuerdos'], [rawEdges.length, 'conexiones'], [touched.size, 'conectados'],
-      [isolatedCount, 'sin conexión'], [metaCount, 'meta'],
+      [isolatedCount, 'sin conexión'], [metaCount, 'meta'], [totalRecords, 'registros'],
     ].map(([n, label]) => `<div class="gph-stat"><b>${n}</b><span>${label}</span></div>`).join('');
 
     const memories = rawNodes.map((n) => ({ ...n }));
@@ -1883,10 +1897,6 @@ function section(id, title, hint, bodyHtml) {
         if (s === highlighted) neighbors.add(t);
         if (t === highlighted) neighbors.add(s);
       }
-      // El resto del grafo baja a 0.6 (no 0.15) -- lo suficientemente
-      // atenuado para que el resaltado destaque, pero sin volverse casi
-      // invisible sobre fondo oscuro. Los recuerdos resaltados, además, cambian
-      // a rojo (var(--err)) para que destaquen por color, no solo por opacidad.
       nodeSel.style('opacity', (d) => (neighbors.has(d.name) ? 1 : 0.6));
       nodeSel.select('circle').classed('gph-circle-highlight', (d) => neighbors.has(d.name));
       const edgeTouches = (l) => edgeEndpointName(l.source) === highlighted || edgeEndpointName(l.target) === highlighted;
@@ -1904,16 +1914,9 @@ function section(id, title, hint, bodyHtml) {
     nodeSel.on('contextmenu', (event, d) => {
       event.preventDefault();
       event.stopPropagation();
-      showCtxMenu(event.clientX, event.clientY, d.name);
+      showMemoryCtxMenu(event.clientX, event.clientY, d.name);
     });
 
-    // Los nombres son ilegibles a este tamaño con varias docenas de recuerdos --
-    // al pasar el mouse se muestra un tooltip HTML normal (no un <text> SVG
-    // dentro de "g", que se agranda/encoge con el zoom igual que todo lo
-    // demás -- un font-size fijo en SVG no queda fijo en pantalla si el
-    // ancestro tiene una transformación de escala). El tooltip vive fuera
-    // del <g> con zoom, así que su tamaño de fuente es el mismo sin importar
-    // qué tan alejada esté la vista.
     const tooltip = d3.select(canvasEl).append('div')
       .attr('class', 'gph-tooltip').style('display', 'none');
     nodeSel.on('mouseenter', function (event, d) {
@@ -1943,16 +1946,6 @@ function section(id, title, hint, bodyHtml) {
       nodeSel.attr('transform', (d) => `translate(${d.x},${d.y})`);
     }
 
-    // alphaDecay SIEMPRE normal: es lo que hace que el layout converja bien
-    // separado (probado: alphaDecay alto no solo quita la animación, apaga
-    // la física antes de que el charge/collide tengan tiempo de separar los
-    //recuerdos, quedan amontonados; y el arrastre pierde la inercia porque
-    // decae casi instantáneo incluso durante el drag, hallazgo real de
-    // el usuario). "Reducir movimiento" adelanta la simulación entera de un
-    // jalón (tick() manual en loop, sin pintar) antes del primer render, en
-    // vez de tocar la física en sí: layout final idéntico, solo sin
-    // animación visible de asentamiento. simulation.restart() al final deja
-    // el arrastre con inercia normal después.
     simulation = d3.forceSimulation(memories)
       .force('link', d3.forceLink(links).id((d) => d.name).distance(105).strength(0.45))
       .force('charge', d3.forceManyBody().strength(-280))
@@ -1981,10 +1974,266 @@ function section(id, title, hint, bodyHtml) {
     sec.querySelector('#graph-show-labels').dispatchEvent(new Event('change'));
   }
 
-  // Encuadra la vista al bounding box actual de los recuerdos -- se llama sola
-  // cuando la simulación se asienta (evento "end" de d3-force) y también a
-  // mano con el botón "Encuadre", para volver a ver todo tras hacer zoom o
-  // arrastrar recuerdos fuera de vista.
+  // Vista por registros (2026-09-19): cada registro es un punto de diámetro
+  // fijo (RECORD_RADIUS, no escala con nada -- a diferencia de los recuerdos,
+  // que escalan con factCount), con sus conexiones reales
+  // (reemplazado_por/complementa, ver graph.mjs). Estructura paralela a
+  // renderMemoryGraph a propósito (mismo svg/zoom/drag/tooltip/tick), pero
+  // sin el resaltado por clic de vecinos -- acá el resaltado lo dispara una
+  // búsqueda (applyRecordHighlight), no un clic sobre un nodo.
+  function renderRecordGraph(rawRecords, rawEdges) {
+    if (simulation) { simulation.stop(); simulation = null; }
+    canvasEl.innerHTML = '';
+    let hasAutoFitted = false;
+
+    const rect = canvasEl.getBoundingClientRect();
+    const W = rect.width || 1200;
+    const H = rect.height || 650;
+
+    const touched = new Set();
+    for (const e of rawEdges) { touched.add(e.from); touched.add(e.to); }
+    const isolatedCount = rawRecords.filter((r) => !touched.has(r.id)).length;
+    const supersededCount = rawRecords.filter((r) => !r.valid).length;
+    statsEl.innerHTML = [
+      [rawRecords.length, 'registros'], [rawEdges.length, 'conexiones'], [touched.size, 'conectados'],
+      [isolatedCount, 'sin conexión'], [supersededCount, 'supersedidos'],
+    ].map(([n, label]) => `<div class="gph-stat"><b>${n}</b><span>${label}</span></div>`).join('');
+
+    const records = rawRecords.map((r) => ({ ...r, id: String(r.id) }));
+    const links = rawEdges.map((e) => ({ source: String(e.from), target: String(e.to), relation: e.relation }));
+
+    // Clusters por recuerdo (2026-09-19, pedido del usuario: la vista por
+    // registros debe agruparse por defecto por el/los recuerdo(s) de cada
+    // registro, no caer donde las fuerzas físicas los dejen sin relación
+    // con record_memories). Cada recuerdo distinto presente en este
+    // conjunto recibe un punto de anclaje repartido en círculo; un
+    // registro con varios recuerdos (record_memories many-to-many, ~12
+    // casos reales) se ancla al PROMEDIO de los anclajes de todos los
+    // suyos -- queda visible entre ambos clusters, que es la lectura
+    // correcta (no pertenece más a uno que al otro). "(sin recuerdo)" es
+    // un bucket defensivo (record_memories siempre trae al menos uno hoy,
+    // pero si algún día no fuera así, cae agrupado igual, no flotando
+    // suelto).
+    const memoryNames = [...new Set(records.flatMap((r) => (r.memories.length ? r.memories : ['(sin recuerdo)'])))].sort();
+    const clusterRadius = Math.max(220, memoryNames.length * 7);
+    const anchors = new Map(memoryNames.map((name, i) => {
+      const angle = (2 * Math.PI * i) / memoryNames.length;
+      return [name, { x: W / 2 + clusterRadius * Math.cos(angle), y: H / 2 + clusterRadius * Math.sin(angle) }];
+    }));
+    // Posición inicial ya cerca del anclaje (+jitter chico), en vez de dejar
+    // que d3 arranque todos los nodos cerca del centro por defecto -- sin
+    // esto el layout se ve agrupado recién después de varios segundos de
+    // simulación; con la posición inicial casi correcta, se ve agrupado
+    // desde el primer frame.
+    for (const r of records) {
+      const names = r.memories.length ? r.memories : ['(sin recuerdo)'];
+      const pts = names.map((n) => anchors.get(n)).filter(Boolean);
+      const a = pts.length
+        ? { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length }
+        : { x: W / 2, y: H / 2 };
+      r._anchorX = a.x;
+      r._anchorY = a.y;
+      r.x = a.x + (Math.random() - 0.5) * 30;
+      r.y = a.y + (Math.random() - 0.5) * 30;
+    }
+    function memoryClusterForce(alpha) {
+      const strength = 0.12;
+      for (const r of records) {
+        r.vx -= (r.x - r._anchorX) * strength * alpha;
+        r.vy -= (r.y - r._anchorY) * strength * alpha;
+      }
+    }
+
+    const svg = d3.select(canvasEl).append('svg')
+      .attr('viewBox', [0, 0, W, H])
+      .attr('width', '100%')
+      .attr('height', '100%')
+      .style('display', 'block');
+
+    svg.append('defs').html(`
+      <marker id="gph-arrow-rec" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="var(--border)" />
+      </marker>`);
+
+    const g = svg.append('g');
+    const zoomBehavior = d3.zoom().scaleExtent([0.15, 8]).on('zoom', (event) => g.attr('transform', event.transform));
+    svg.call(zoomBehavior);
+
+    const linkSel = g.append('g').selectAll('line').data(links).join('line')
+      .attr('class', 'gph-edge').attr('marker-end', 'url(#gph-arrow-rec)');
+    const linkLabelSel = g.append('g').selectAll('text').data(links).join('text')
+      .attr('class', 'gph-edge-label').attr('text-anchor', 'middle')
+      .text((d) => (d.relation === 'reemplazado_por' ? 'reemplazado por' : 'complementa'));
+
+    const nodeSel = g.append('g').selectAll('g').data(records, (d) => d.id).join('g')
+      .attr('class', (d) => 'gph-node' + (!d.valid ? ' gph-meta' : ''))
+      .style('cursor', 'default');
+
+    nodeSel.append('circle')
+      .attr('class', (d) => 'gph-circle' + (!d.valid ? ' gph-meta' : ''))
+      .attr('r', RECORD_RADIUS);
+    nodeSel.append('text').attr('class', 'gph-label').attr('text-anchor', 'middle').attr('y', RECORD_RADIUS + 12)
+      .text((d) => `#${d.id}`);
+
+    function applyRecordHighlight() {
+      if (searchHighlightIds.size === 0) {
+        nodeSel.style('opacity', 1);
+        nodeSel.select('circle').classed('gph-circle-highlight', false);
+        linkSel.style('opacity', 1);
+        linkLabelSel.style('opacity', 1);
+        return;
+      }
+      nodeSel.style('opacity', (d) => (searchHighlightIds.has(d.id) ? 1 : 0.35));
+      nodeSel.select('circle').classed('gph-circle-highlight', (d) => searchHighlightIds.has(d.id));
+      linkSel.style('opacity', 0.35);
+      linkLabelSel.style('opacity', 0.35);
+    }
+
+    nodeSel.on('contextmenu', (event, d) => {
+      event.preventDefault();
+      event.stopPropagation();
+      showRecordCtxMenu(event.clientX, event.clientY, d.id);
+    });
+
+    const tooltip = d3.select(canvasEl).append('div')
+      .attr('class', 'gph-tooltip').style('display', 'none');
+    nodeSel.on('mouseenter', function (event, d) {
+      d3.select(this).raise();
+      const svgRect = svg.node().getBoundingClientRect();
+      const canvasRect = canvasEl.getBoundingClientRect();
+      const t = d3.zoomTransform(svg.node());
+      const scaleX = svgRect.width / W, scaleY = svgRect.height / H;
+      const screenX = (svgRect.left - canvasRect.left) + (t.x + d.x * t.k) * scaleX;
+      const screenY = (svgRect.top - canvasRect.top) + (t.y + d.y * t.k) * scaleY;
+      const screenR = RECORD_RADIUS * t.k * scaleY;
+      const preview = (d.claim || '').slice(0, 100);
+      const memLabel = d.memories && d.memories.length ? ` [${d.memories.join(', ')}]` : '';
+      tooltip.style('left', screenX + 'px').style('top', (screenY - screenR - 8) + 'px')
+        .style('display', 'block').text(`#${d.id}${memLabel} — ${preview}${(d.claim || '').length > 100 ? '…' : ''}`);
+    }).on('mouseleave', function () {
+      tooltip.style('display', 'none');
+    });
+
+    nodeSel.call(d3.drag()
+      .on('start', (event, d) => { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+      .on('end', (event, d) => { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+    // Seguimiento de cámara (2026-09-19, corrige un bug real encontrado
+    // probando esto mismo en vivo): un salto de cámara de una sola vez
+    // (calculado una vez, animado 500ms) apuntaba a donde estaba el nodo EN
+    // ESE INSTANTE, pero con 919 puntos casi todos aislados la simulación
+    // tarda varios segundos en enfriarse del todo -- el nodo seguía
+    // moviéndose después del salto y la cámara quedaba apuntando a un lugar
+    // que el nodo ya había abandonado (confirmado con el inspector: el
+    // transform aplicado no coincidía con la posición real del nodo #900 al
+    // momento de revisar). La solución robusta es seguir, no saltar:
+    // followIds fija qué registros perseguir, applyFollow() se llama en
+    // CADA tick mientras dure (barato: un early-return si followIds es
+    // null). Deja de seguir cuando la simulación se enfría de verdad
+    // (alpha bajo -- primer intento con un timeout fijo de 2.6s resultó
+    // corto: un reheat de alpha 0.7 tarda ~4-5s en enfriarse del todo con
+    // el alphaDecay por defecto, así que la cámara dejaba de seguir a medio
+    // agrupar, mostrando una caja ya vieja en vez del cluster final ya
+    // compacto), con un tope de seguridad (FOLLOW_MAX_MS) por si el alpha
+    // nunca termina de bajar solo (ej. el usuario arrastra un nodo).
+    const FOLLOW_MAX_MS = 7000;
+    let followIds = null;
+    let followTimer = null;
+
+    function applyFollow() {
+      if (!followIds) return;
+      const matched = records.filter((n) => followIds.has(n.id));
+      if (matched.length === 0) return;
+      const pad = 80;
+      const xs = matched.map((n) => n.x), ys = matched.map((n) => n.y);
+      const minX = Math.min(...xs) - pad, maxX = Math.max(...xs) + pad;
+      const minY = Math.min(...ys) - pad, maxY = Math.max(...ys) + pad;
+      const w = Math.max(1, maxX - minX), h = Math.max(1, maxY - minY);
+      const scale = Math.max(0.15, Math.min(4, Math.min(W / w, H / h)));
+      const tx = W / 2 - scale * (minX + maxX) / 2;
+      const ty = H / 2 - scale * (minY + maxY) / 2;
+      svg.call(zoomBehavior.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+      if (simulation.alpha() < simulation.alphaMin() * 3) followIds = null; // ya asentado, deja de seguir
+    }
+
+    function followRecordIds(ids, { reheat = false } = {}) {
+      followIds = new Set(ids.map(String));
+      if (followTimer) clearTimeout(followTimer);
+      if (reheat) simulation.alpha(0.7).restart();
+      applyFollow(); // encuadre inmediato, sin esperar el próximo tick
+      followTimer = setTimeout(() => { followIds = null; }, FOLLOW_MAX_MS);
+    }
+
+    function renderTick() {
+      linkSel.attr('x1', (d) => d.source.x).attr('y1', (d) => d.source.y)
+        .attr('x2', (d) => d.target.x).attr('y2', (d) => d.target.y);
+      linkLabelSel.attr('x', (d) => (d.source.x + d.target.x) / 2).attr('y', (d) => (d.source.y + d.target.y) / 2 - 6);
+      nodeSel.attr('transform', (d) => `translate(${d.x},${d.y})`);
+      applyFollow();
+    }
+
+    // Fuerza de clustering (2026-09-19, pedido del usuario tras notar que con
+    // 916 puntos un resultado de búsqueda resaltado en rojo era casi
+    // imposible de ubicar a simple vista): atrae los registros actualmente
+    // resaltados (searchHighlightIds) hacia SU PROPIO centroide, dejando
+    // intactos los demás -- no es un force() genérico de d3 (no usa
+    // .initialize()), cierra directamente sobre `records`/searchHighlightIds
+    // porque es más simple y evita depender de simulation.nodes() quedando
+    // desincronizado entre renders. No hace nada si hay <2 resaltados (un
+    // solo punto no tiene "centroide" que valga la pena, ver runRecordSearch
+    // -- la búsqueda por #id exacto solo sigue/navega, no agrupa).
+    function clusterForce(alpha) {
+      if (searchHighlightIds.size < 2) return;
+      const matched = records.filter((n) => searchHighlightIds.has(n.id));
+      if (matched.length < 2) return;
+      const cx = matched.reduce((s, n) => s + n.x, 0) / matched.length;
+      const cy = matched.reduce((s, n) => s + n.y, 0) / matched.length;
+      const strength = 0.25;
+      for (const n of matched) {
+        n.vx -= (n.x - cx) * strength * alpha;
+        n.vy -= (n.y - cy) * strength * alpha;
+      }
+    }
+
+    // Cargas/distancias mucho más chicas que en la vista por recuerdos: 900+
+    // puntos casi todos aislados (sin conexión) necesitan poca repulsión para
+    // no dispersarse fuera de la pantalla -- la vista por recuerdos tiene
+    // decenas de nodos con peso visual real (radio variable), acá todos
+    // pesan igual (RECORD_RADIUS fijo).
+    simulation = d3.forceSimulation(records)
+      .force('link', d3.forceLink(links).id((d) => d.id).distance(36).strength(0.5))
+      .force('charge', d3.forceManyBody().strength(-16))
+      .force('center', d3.forceCenter(W / 2, H / 2))
+      .force('collide', d3.forceCollide(RECORD_RADIUS + 3))
+      .force('memoryCluster', memoryClusterForce)
+      .force('cluster', clusterForce)
+      .on('tick', renderTick)
+      .on('end', () => {
+        if (hasAutoFitted) return;
+        hasAutoFitted = true;
+        fitToView(false);
+      });
+
+    if (prefersReducedMotion()) {
+      simulation.stop();
+      for (let i = 0; i < 300 && simulation.alpha() > simulation.alphaMin(); i++) simulation.tick();
+      renderTick();
+      hasAutoFitted = true;
+      fitToView(false);
+      simulation.restart();
+    }
+
+    graph = {
+      memories: records, svg, zoomBehavior, linkLabelSel, W, H,
+      setHighlight: () => {}, // el resaltado por clic de vecinos no aplica en esta vista
+      applyRecordHighlight,
+      followRecordIds,
+    };
+    sec.querySelector('#graph-show-labels').dispatchEvent(new Event('change'));
+    applyRecordHighlight();
+  }
+
   function fitToView(animate = true) {
     if (!graph || graph.memories.length === 0) return;
     const pad = 60;
@@ -2011,44 +2260,175 @@ function section(id, title, hint, bodyHtml) {
     graph.setHighlight(name);
   }
 
-  // Menú contextual (clic derecho en un recuerdo): "Ver timeline" / "Ver estado
-  // del recuerdo" -- en vez de duplicar la lógica de esas dos secciones acá,
-  // cambia de pestaña con show(), precarga el campo de recuerdo, y dispara el
-  // mismo botón "Ver"/"Ver estado" que ya existe ahí. Una sola instancia
-  // del menú en el DOM (no una por renderGraph), colgada de document.body
-  // para que su position:fixed no dependa del contenedor del grafo.
+  // Menú contextual: contenido distinto según la vista (recuerdo vs.
+  // registro), por eso se reconstruye el innerHTML y se re-enlazan los
+  // botones cada vez que se abre, en vez de enlazar una sola vez con
+  // ctxMenu.dataset.node como antes (ese patrón asumía un solo tipo de
+  // acción posible).
   const ctxMenu = document.createElement('div');
   ctxMenu.className = 'gph-ctx-menu';
-  ctxMenu.innerHTML = `
-    <button type="button" data-action="timeline">Ver timeline</button>
-    <button type="button" data-action="memory-status">Ver estado del recuerdo</button>`;
   document.body.appendChild(ctxMenu);
 
   function hideCtxMenu() { ctxMenu.style.display = 'none'; }
-  function showCtxMenu(x, y, memoryName) {
-    ctxMenu.dataset.node = memoryName;
+  function positionCtxMenu(x, y) {
     ctxMenu.style.display = 'block';
-    // clamp para que no se salga del viewport si el clic fue cerca del borde
-    const menuW = 180, menuH = 76;
+    const menuW = 200, menuH = 76;
     ctxMenu.style.left = Math.min(x, window.innerWidth - menuW - 8) + 'px';
     ctxMenu.style.top = Math.min(y, window.innerHeight - menuH - 8) + 'px';
   }
   document.addEventListener('click', hideCtxMenu);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideCtxMenu(); });
-  ctxMenu.querySelectorAll('button').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const memoryName = ctxMenu.dataset.node;
-      hideCtxMenu();
-      if (btn.dataset.action === 'timeline') {
-        show('timeline');
-        document.querySelector('#tl-memory').value = memoryName;
-        document.querySelector('#tl-run').click();
-      } else {
-        show('memory-status');
-        document.querySelector('#ns-memory').value = memoryName;
-        document.querySelector('#ns-run').click();
-      }
+
+  function showMemoryCtxMenu(x, y, memoryName) {
+    ctxMenu.innerHTML = `
+      <button type="button" data-action="timeline">Ver timeline</button>
+      <button type="button" data-action="memory-status">Ver estado del recuerdo</button>`;
+    positionCtxMenu(x, y);
+    ctxMenu.querySelectorAll('button').forEach((btn) => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        hideCtxMenu();
+        if (btn.dataset.action === 'timeline') {
+          show('timeline');
+          document.querySelector('#tl-memory').value = memoryName;
+          document.querySelector('#tl-run').click();
+        } else {
+          show('memory-status');
+          document.querySelector('#ns-memory').value = memoryName;
+          document.querySelector('#ns-run').click();
+        }
+      };
+    });
+  }
+
+  // "Ver estado del registro" / "Sintetizar respuesta" (2026-09-19): llevan
+  // a la sección "Buscar" y reproducen ahí mismo lo que esa sección ya sabe
+  // hacer (lookup por #id, síntesis vía /api/synthesize) -- duplica un poco
+  // de su lógica de render en vez de exportarla, mismo criterio que ya usa
+  // el resto del dashboard (cada sección arma su propio HTML de salida,
+  // ver p.ej. statTile en Timeline pese a que gph-stat ya existe acá).
+  function gotoSearchWithIdLookup(id) {
+    show('search');
+    const qInput = document.querySelector('#search-q');
+    qInput.value = `#${id}`;
+    document.querySelector('#search-run').click();
+  }
+
+  async function gotoSearchWithSynthesis(ids, queryText) {
+    show('search');
+    const qInput = document.querySelector('#search-q');
+    const answerEl = document.querySelector('#search-answer');
+    const rawBox = document.querySelector('#search-raw-box');
+    const rawCheckbox = document.querySelector('#search-raw');
+    qInput.value = queryText || ids.map((id) => `#${id}`).join(', ');
+
+    const byId = new Map((cachedGraphData?.records ?? []).map((r) => [String(r.id), r]));
+    const raw = ids
+      .map((id) => byId.get(String(id)))
+      .filter(Boolean)
+      .map((r) => `#${r.id} [${(r.date || '').slice(0, 10)}] ${r.claim}`)
+      .join('\n\n');
+
+    rawBox.innerHTML = '';
+    const pre = document.createElement('pre');
+    pre.className = 'out ok';
+    pre.textContent = raw || '(sin registros resaltados -- corre una búsqueda en la vista por registros primero)';
+    rawBox.appendChild(pre);
+    rawBox.style.display = rawCheckbox.checked ? 'block' : 'none';
+
+    if (!raw) {
+      answerEl.innerHTML = '<p class="hint">No hay registros resaltados para sintetizar -- corre una búsqueda en la vista por registros del grafo primero.</p>';
+      return;
+    }
+    answerEl.innerHTML = '<p class="hint">Sintetizando…</p>';
+    const provider = settings.searchSynthProvider;
+    const model = settings.searchSynthModel || undefined;
+    const synth = await call('POST', '/api/synthesize', { query: qInput.value, rawResults: raw, provider, model });
+    const box = document.createElement('div');
+    box.className = 'out out-md ' + (synth.ok ? 'ok' : 'err');
+    box.innerHTML = synth.ok ? renderMarkdown(synth.answer) : escapeHtml(`Error al sintetizar: ${synth.error}. Activa "Ver datos crudos" para ver los fragmentos sin redactar, o cambia el proveedor en Configuración.`);
+    answerEl.innerHTML = '';
+    answerEl.appendChild(box);
+  }
+
+  function showRecordCtxMenu(x, y, recordId) {
+    ctxMenu.innerHTML = `
+      <button type="button" data-action="record-status">Ver estado del registro</button>
+      <button type="button" data-action="synthesize">Sintetizar respuesta</button>`;
+    positionCtxMenu(x, y);
+    ctxMenu.querySelectorAll('button').forEach((btn) => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        hideCtxMenu();
+        if (btn.dataset.action === 'record-status') {
+          gotoSearchWithIdLookup(recordId);
+        } else {
+          const ids = searchHighlightIds.size > 0 ? [...searchHighlightIds] : [recordId];
+          gotoSearchWithSynthesis(ids, lastRecordSearchQuery);
+        }
+      };
+    });
+  }
+
+  // Búsqueda en la vista por registros (2026-09-19, ajustado el mismo día
+  // tras feedback del usuario: con 916 puntos, resaltar en rojo sin navegar no
+  // alcanzaba para ubicar el resultado a simple vista). "Ir" siempre
+  // resalta en rojo (gph-circle-highlight) los registros relacionados --
+  // por id exacto si el texto matchea "#123"/"#94, #95" (mismo patrón que
+  // la sección "Buscar"), o por contenido vía /api/search si no,
+  // extrayendo los "#id" que trae el resultado crudo. Después, en ambos
+  // casos, la cámara SIGUE a esos registros (graph.followRecordIds, ver
+  // renderRecordGraph) en vez de saltar una sola vez -- con la búsqueda por
+  // texto libre además se recalienta la simulación para que clusterForce
+  // los agrupe visiblemente mientras la cámara los sigue hasta que se
+  // asientan; la búsqueda por id exacto no agrupa nada (ya son los puntos
+  // exactos pedidos), solo sigue por si la simulación general seguía
+  // moviéndose.
+  async function runRecordSearch(q) {
+    lastRecordSearchQuery = q;
+    const isIdSearch = FACT_ID_PATTERN.test(q);
+    let ids;
+    if (isIdSearch) {
+      ids = q.split(',').map((s) => s.trim().replace(/^#/, ''));
+    } else {
+      const r = await call('GET', '/api/search?q=' + encodeURIComponent(q));
+      const raw = r.ok ? (r.stdout || '') : '';
+      ids = [...raw.matchAll(/#(\d+)/g)].map((m) => m[1]);
+    }
+    searchHighlightIds = new Set(ids);
+    graph?.applyRecordHighlight?.();
+    if (ids.length === 0) return;
+    graph?.followRecordIds?.(ids, { reheat: !isIdSearch });
+  }
+
+  function updateSearchUIForView() {
+    if (viewMode === 'memories') {
+      searchLabelEl.textContent = 'Buscar recuerdo';
+      searchInputEl.setAttribute('list', 'graph-memories-list');
+      searchInputEl.placeholder = 'empieza a escribir…';
+      legendEl.innerHTML = `
+        <div class="gph-legend-item"><span class="gph-dot"></span>recuerdo de dominio</div>
+        <div class="gph-legend-item"><span class="gph-dot gph-meta"></span>recuerdo meta (sobre el propio sistema)</div>`;
+    } else {
+      searchLabelEl.textContent = 'Buscar registro (texto libre, o #123 / #94, #95)';
+      searchInputEl.removeAttribute('list');
+      searchInputEl.placeholder = 'ej. presupuesto del proyecto Atlas, o #123';
+      legendEl.innerHTML = `
+        <div class="gph-legend-item"><span class="gph-dot"></span>registro</div>
+        <div class="gph-legend-item"><span class="gph-dot gph-meta"></span>registro supersedido/retractado</div>
+        <div class="gph-legend-item"><span class="gph-dot" style="border-color:var(--graph-highlight, var(--err)); background:color-mix(in srgb, var(--graph-highlight, var(--err)) 30%, transparent)"></span>resaltado por la última búsqueda</div>`;
+    }
+  }
+
+  sec.querySelectorAll('.tl-view-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      if (btn.dataset.view === viewMode) return;
+      viewMode = btn.dataset.view;
+      sec.querySelectorAll('.tl-view-btn').forEach((b) => b.classList.toggle('active', b === btn));
+      searchInputEl.value = '';
+      searchHighlightIds = new Set();
+      updateSearchUIForView();
+      renderCurrentView();
     });
   });
 
@@ -2058,8 +2438,10 @@ function section(id, title, hint, bodyHtml) {
     graph?.linkLabelSel.style('display', e.target.checked ? null : 'none');
   });
   sec.querySelector('#graph-search-go').addEventListener('click', () => {
-    const name = sec.querySelector('#graph-search').value.trim();
-    if (name) goToNode(name);
+    const q = searchInputEl.value.trim();
+    if (!q) return;
+    if (viewMode === 'memories') goToNode(q);
+    else runRecordSearch(q);
   });
   sec.querySelector('#graph-search').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); sec.querySelector('#graph-search-go').click(); }
@@ -2073,13 +2455,15 @@ function section(id, title, hint, bodyHtml) {
     }
   });
 
+  updateSearchUIForView();
+
   // Reajuste responsivo del grafo si la ventana cambia de tamaño
   let resizeTimer = null;
   window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       if (sec.classList.contains('active') && cachedGraphData) {
-        renderGraph(cachedGraphData.memories, cachedGraphData.edges);
+        renderCurrentView();
       }
     }, 250);
   });

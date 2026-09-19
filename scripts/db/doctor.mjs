@@ -45,6 +45,8 @@
 // Uso: node doctor.mjs [--fix] [--json]
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
+import { classifyMentionRelationHybrid } from './lib/classify-mention-relation.mjs';
+import { formatFactsBlock } from './lib/format-records.mjs';
 
 const envPath = new URL('../../.env', import.meta.url);
 const env = Object.fromEntries(
@@ -250,6 +252,86 @@ async function resolveLiveMemoryMap() {
     rows,
     describe: (r) => `#${r.id} ${r.claim.slice(0, 80)}`,
     caseOf: (r) => ({ id: r.id, claim: r.claim }),
+  });
+}
+
+// Registros co-etiquetados a 2+ recuerdos sin ningún enlace entre ellos
+// (portado desde D:\MyBrain, 2026-09-19, hallazgo real revisando la vista
+// "por registros" del grafo: un registro etiquetado a la vez a dos
+// recuerdos podía aparecer "huérfano" -- sin ninguna arista conectando
+// esos dos recuerdos). Causa raíz: el auto-enlace por co-etiquetado
+// (remember.mjs/remember-batch.mjs/MCP) solo corre HACIA ADELANTE, para
+// registros nuevos -- nunca hace backfill de los registros multi-recuerdo
+// que ya existían antes de que ese mecanismo se agregara. Mecánico:
+// exactamente el mismo criterio que ya aplica remember.mjs al escribir
+// (createLink + clasificador de relación, mismo fallback genérico
+// 'co-registrado_en'), no hay una segunda respuesta válida -- esto solo
+// reproduce en lote lo que habría pasado solo si el mecanismo hubiera
+// existido desde el principio.
+{
+  const { rows: rm } = await client.query(`select record_id, memory_name from record_memories`);
+  const byRecord = new Map();
+  for (const r of rm) {
+    if (!byRecord.has(r.record_id)) byRecord.set(r.record_id, new Set());
+    byRecord.get(r.record_id).add(r.memory_name);
+  }
+  const resolveLive = await resolveLiveMemoryMap();
+  const { rows: linkRows } = await client.query(`select from_memory, to_memory from memory_links`);
+  const linkedPairs = new Set();
+  for (const l of linkRows) {
+    const a = resolveLive(l.from_memory), b = resolveLive(l.to_memory);
+    linkedPairs.add([a, b].sort().join('\u0001'));
+  }
+  const { rows: claimRows } = await client.query(`select id, claim, date from records where valid_until is null`);
+  const claimById = new Map(claimRows.map((r) => [r.id, r]));
+
+  const rows = [];
+  for (const [recordId, memSet] of byRecord) {
+    if (memSet.size < 2 || !claimById.has(recordId)) continue; // solo vigentes, solo multi-recuerdo
+    const mems = [...memSet];
+    let anyLinked = false;
+    for (let i = 0; i < mems.length && !anyLinked; i++) {
+      for (let j = i + 1; j < mems.length && !anyLinked; j++) {
+        if (linkedPairs.has([mems[i], mems[j]].sort().join('\u0001'))) anyLinked = true;
+      }
+    }
+    if (!anyLinked) {
+      const rec = claimById.get(recordId);
+      rows.push({ id: recordId, claim: rec.claim, date: rec.date, memories: mems });
+    }
+  }
+  rows.sort((a, b) => a.id - b.id);
+
+  await check({
+    id: 'records-multi-memory-unlinked',
+    label: 'registros multi-recuerdo con enlace entre sus recuerdos',
+    rows,
+    describe: (r) => `#${r.id} [${r.memories.join(', ')}] ${r.claim.slice(0, 70)}`,
+    caseOf: (r) => ({ id: r.id, claim: r.claim, memories: r.memories }),
+    mechanical: true,
+    applyFix: async (client, rows) => {
+      for (const r of rows) {
+        for (let i = 0; i < r.memories.length; i++) {
+          for (let j = i + 1; j < r.memories.length; j++) {
+            const from = r.memories[i], to = r.memories[j];
+            const { rows: existing } = await client.query(
+              `select 1 from memory_links where (from_memory, to_memory) in (($1,$2),($2,$1)) limit 1`,
+              [from, to],
+            );
+            if (existing.length > 0) continue;
+            const { rows: bFactRows } = await client.query(`select * from records_timeline($1, $2, false)`, [to, 1000]);
+            const judged = await classifyMentionRelationHybrid(r.claim, from, to, formatFactsBlock(bFactRows));
+            const relation = judged?.relation || 'co-registrado_en';
+            await client.query(
+              `insert into memory_links (from_memory, to_memory, relation, source, date)
+               values ($1, $2, $3, $4, $5)
+               on conflict (from_memory, to_memory, relation) do nothing`,
+              [from, to, relation, `[backfill doctor.mjs --fix, registro #${r.id}]`, r.date.toISOString().slice(0, 10)],
+            );
+          }
+        }
+      }
+    },
   });
 }
 

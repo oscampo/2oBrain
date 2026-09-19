@@ -5,6 +5,47 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.7.10 (2026-09-19)
+
+Sin migración de `schema.sql`. Portado desde D:\MyBrain (commits
+6294d2e/acc72b3/0f3ba56/b8e8290): grafo con vista por registros, y un
+chequeo nuevo de `doctor.mjs` que corrige el mismo tipo de hueco que
+resolvió v0.7.9 pero para registros que ya existían antes de ese fix.
+
+- **`scripts/db/graph.mjs`**: agrega `records`/`recordEdges` a la salida
+  (además de `memories`/`edges` de siempre). Cada registro trae su(s)
+  recuerdo(s) (`memories`, desde `record_memories`) y sus conexiones reales
+  registro-a-registro (`reemplazado_por`/`complementa`, desde
+  `superseded_by`/`complements` -- las únicas que existen de verdad en el
+  schema, no derivadas de compartir recuerdo).
+- **`server/public/index.html` (sección "Grafo")**: toggle "Por
+  recuerdos"/"Por registros". La vista por registros muestra cada registro
+  como un punto de diámetro fijo etiquetado `#N`, agrupado POR DEFECTO en
+  clusters por recuerdo (cada recuerdo distinto recibe un punto de anclaje
+  en círculo; un registro con varios recuerdos se ancla al promedio de
+  todos los suyos). El buscador cambia de modo en esa vista: "Ir" resalta
+  en rojo los registros relacionados (por `#id` exacto o texto libre) y
+  la cámara los SIGUE (no salta una vez, sigue en cada tick hasta que la
+  simulación se enfría de verdad -- un salto de una sola vez quedaba
+  apuntando a donde el nodo YA NO estaba, con cientos de puntos casi
+  todos aislados tardando varios segundos en asentarse). Con texto libre,
+  además agrupa visualmente (recalienta la simulación) antes de centrar la
+  cámara en ese cluster. Clic derecho en un registro: "Ver estado del
+  registro" / "Sintetizar respuesta" (ambos llevan a "Buscar"). Checkbox
+  "Mostrar nombres de relaciones" ahora desactivado por defecto, y el stat
+  "registros" (total) se agregó a la vista por recuerdos.
+- **`scripts/db/doctor.mjs`**: nuevo chequeo mecánico
+  `records-multi-memory-unlinked` -- registros vigentes con 2+ recuerdos
+  donde ningún par tiene `memory_links` entre sí (el mismo hueco que
+  resolvió v0.7.9 hacia adelante, pero para los que ya existían antes de
+  ese fix). Auto-corregible con el mismo criterio que `remember.mjs` usa al
+  escribir (`createLink` + clasificador de relación, fallback genérico
+  `co-registrado_en`).
+
+Verificado con `node --check` sobre los tres archivos (sin proyecto
+Supabase propio en esta copia de mantenedor para probarlo en vivo, mismo
+límite que v0.7.9).
+
 ## v0.7.9 (2026-09-19)
 
 Sin cambios en `schema.sql` que requieran migración (solo un comentario
