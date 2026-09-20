@@ -147,9 +147,20 @@ const rerankedFacts = await rerankTop(factCandidates, (f) => (f.memories ? `[${f
 
 // Los registros del router de recuerdos van primero (garantizados completos para
 // el/los recuerdo(s) nombrados), seguidos de los de la búsqueda híbrida
-// general que no se repitan.
+// general que no se repitan. "Garantizado" (score null) significaba antes
+// "no se sabe qué tan relevante es, pero entra igual" -- eso se imprimía
+// literal como "[recuerdo]", que el grafo terminaba pintando como 100% de
+// relevancia (2026-09-19, hallazgo real de Oscar en D:\MyBrain: preguntas
+// sin match verdadero, ej. "quién es Cora?"/"cuál es el uso principal que
+// le doy a GitHub?", disparaban el router semántico sobre 2-3 nodos apenas
+// por encima del piso, y sus registros salían todos pintados igual de
+// "seguro" en el grafo pese a ser matches débiles). El fix real: rerankTop
+// (línea arriba) YA calcula un score de relevancia real para cada registro
+// del router, solo se usaba para decidir cuáles 15 mostrar cuando hay más
+// de 15 -- nunca se imprimía. Se deja de nulear acá, así que ahora sale el
+// número real en vez de "[recuerdo]".
 const nodeMatchIds = new Set(nodeMatchFacts.map((f) => f.id));
-const records = [...nodeMatchFacts.map((f) => ({ ...f, score: null })), ...rerankedFacts.filter((f) => !nodeMatchIds.has(f.id))];
+const records = [...nodeMatchFacts, ...rerankedFacts.filter((f) => !nodeMatchIds.has(f.id))];
 
 // 2026-09-15 (portado desde D:\MyBrain): records_search/memory_match_records
 // ya garantizan que un complemento entra al POOL siempre que su registro
@@ -160,6 +171,16 @@ const records = [...nodeMatchFacts.map((f) => ({ ...f, score: null })), ...reran
 // reinserta cualquier complemento de lo que sí sobrevivió al corte,
 // buscándolo en el pool crudo (pre-rerank) de ambas rutas, para que la
 // garantía sea real de punta a punta, no solo hasta el SQL.
+//
+// Score heredado del registro que complementa, no null (2026-09-19,
+// segundo hallazgo de Oscar sobre "garantizado" mostrando 100%: los
+// nodeMatchFacts ya se arreglaron arriba, pero estos complementos seguían
+// en null). Un complemento no tiene relevancia textual propia a la
+// pregunta por diseño (ver arriba), pero SÍ hereda honestamente la de lo
+// que complementa -- es la misma información continuada, no un hallazgo
+// independiente. `r` siempre trae un score real a esta altura (todo lo que
+// llega a `records` ya pasó por rerankTop), así que no hace falta null de
+// respaldo.
 const shownIds = new Set(records.map((r) => r.id));
 const rawPool = [...nodeMatchRows, ...factCandidates];
 for (const r of [...records]) {
@@ -167,7 +188,7 @@ for (const r of [...records]) {
     (c) => c.complements != null && Number(c.complements) === Number(r.id) && !shownIds.has(c.id),
   );
   for (const c of missingComplements) {
-    records.push({ ...c, score: null });
+    records.push({ ...c, score: r.score });
     shownIds.add(c.id);
   }
 }

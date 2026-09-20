@@ -132,6 +132,8 @@
     padding: 14px; font-size: calc(12.5px * var(--ui-scale)); max-height: 65vh; overflow-y: auto; width: 100%;
   }
   pre.out { white-space: pre-wrap; word-break: break-word; }
+  .out-lines { white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, monospace; }
+  .out-lines .relevance-line { border-left: 3px solid; padding-left: 8px; margin-top: 12px; }
   .out.err { border-color: var(--err); }
   .out.ok { border-color: var(--ok); }
   .out-md { font-size: 13.5px; line-height: 1.6; max-width: 1400px; }
@@ -232,10 +234,15 @@
   .gph-stat b { font-size: 16px; color: var(--accent); font-variant-numeric: tabular-nums; }
   .gph-stat span { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 
+  /* Envoltorio del Grafo (2026-09-20, portado desde D:\MyBrain): separado de
+     #graph-canvas porque el render del grafo hace canvasEl.innerHTML = ''
+     en cada refresco, lo cual borraría la leyenda si viviera dentro -- el
+     wrapper es el ancla position: relative para la leyenda flotante,
+     #graph-canvas nunca se toca desde afuera. */
+  #graph-canvas-wrap { position: relative; margin-top: 12px; }
   /* Contenedor del Grafo: altura fluida adaptada al alto de pantalla */
   #graph-canvas {
     position: relative;
-    margin-top: 12px;
     border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden;
@@ -273,7 +280,24 @@
   .gph-ctx-menu button:hover { background: color-mix(in srgb, var(--accent) 22%, var(--panel)); }
   .gph-edge { stroke: var(--border); stroke-width: 1.6; }
   .gph-edge-label { font-size: 10px; fill: var(--muted); }
-  .gph-legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 11px; color: var(--muted); }
+  .gph-legend {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 200px;
+    font-size: 11px;
+    color: var(--muted);
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    box-shadow: 0 4px 14px rgba(0,0,0,.2);
+    pointer-events: none;
+  }
   .gph-legend-item { display: flex; align-items: center; gap: 6px; }
   .gph-dot { width: 12px; height: 12px; border-radius: 50%; background: color-mix(in srgb, var(--graph-normal, var(--accent)) 60%, transparent); border: 2px solid var(--graph-normal, var(--accent)); }
   .gph-dot.gph-meta { background: color-mix(in srgb, var(--graph-meta, var(--warn)) 60%, transparent); border: 2px dashed var(--graph-meta, var(--warn)); }
@@ -617,6 +641,7 @@ const DEFAULT_SETTINGS = {
   theme: 'system', // 'system' | 'dark' | 'light' | 'hc-dark' | 'hc-light'
   accent: '', // '' = usa el default del tema; ignorado en hc-dark/hc-light (protege el contraste garantizado)
   graphNormal: '', graphMeta: '', graphHighlight: '', // '' = heredan de --accent/--warn/--err
+  graphRelevanceScale: 'rojo-verde', // escala de color del resaltado por relevancia (vista por registros del grafo)
   density: 'comfortable', // 'compact' | 'comfortable' | 'large'
   reduceMotion: 'system', // 'system' | 'on' | 'off'
   searchSynthProvider: 'ollama', // proveedor por defecto para la respuesta sintetizada de "Buscar"
@@ -671,6 +696,72 @@ function prefersReducedMotion() {
   if (settings.reduceMotion === 'on') return true;
   if (settings.reduceMotion === 'off') return false;
   try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+}
+
+// Escala de color por relevancia en la vista por registros del grafo
+// (2026-09-19, portado desde D:\MyBrain, pedido de Oscar): t en [0,1], 1 =
+// más relevante/cercano al resultado de la búsqueda. Tres presets en vez de
+// un solo color-picker libre -- rojo-verde es la combinación clásica pero es
+// justo la peor posible para daltonismo rojo-verde (deuteranopía/
+// protanopía, la forma más común), así que se ofrecen dos alternativas de
+// una sola confusión de color (tonos de un solo tono, azul-amarillo) para
+// quien la necesite, en vez de forzar un único esquema a todos los usuarios
+// de 2oBrain.
+function relevanceColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  const scale = settings.graphRelevanceScale || 'rojo-verde';
+  if (scale === 'tonos-rojo') {
+    const l = 88 - t * 46; // 88% (lejano, pálido) -> 42% (cercano, saturado)
+    return `hsl(0, 70%, ${l}%)`;
+  }
+  if (scale === 'azul-amarillo') {
+    const h = 215 - t * (215 - 42); // 215 (azul, lejano) -> 42 (ámbar, cercano)
+    return `hsl(${h}, 70%, 48%)`;
+  }
+  const h = 120 - t * 120; // rojo-verde: 120 (verde, lejano) -> 0 (rojo, cercano)
+  return `hsl(${h}, 65%, 45%)`;
+}
+
+// Mismo criterio de color que usa el grafo, aplicado a los "datos crudos"
+// de la sección Buscar (2026-09-19, portado desde D:\MyBrain, pedido de
+// Oscar: la síntesis ya distingue bien qué es relevante, pero el bloque de
+// datos crudos mostraba todos los fragmentos igual de planos, sin ninguna
+// pista visual de cuáles pesaron más en la respuesta). Parsea línea por
+// línea en vez de por bloque: search.mjs mezcla páginas y registros con
+// contenido de largo variable (--full incluye markdown completo, con sus
+// propios saltos de línea), así que delimitar "dónde termina un resultado"
+// de forma robusta es más frágil que simplemente colorear la línea de
+// encabezado "[score] ..."/"[recuerdo] ..." donde aparezca y dejar el resto
+// de cada entrada (fuente, contenido) como texto plano justo debajo. Reusa
+// el mismo texto que ya imprime search.mjs, no reformatea nada del lado del
+// servidor -- si ese formato cambia, esto deja de colorear pero sigue
+// mostrando el texto completo sin romperse (el regex simplemente no
+// matchea nada).
+function renderRawColored(container, text) {
+  container.innerHTML = '';
+  const wrap = document.createElement('div');
+  wrap.className = 'out ok out-lines';
+  const headerRe = /^\[(recuerdo|[\d.]+)\]\s/;
+  const lines = text.split('\n');
+  const nums = lines
+    .map((l) => l.match(headerRe))
+    .filter((m) => m && m[1] !== 'recuerdo')
+    .map((m) => parseFloat(m[1]));
+  const min = nums.length ? Math.min(...nums) : 0;
+  const max = nums.length ? Math.max(...nums) : 1;
+  const span = max - min || 1;
+  for (const line of lines) {
+    const div = document.createElement('div');
+    const m = line.match(headerRe);
+    if (m) {
+      const t = m[1] === 'recuerdo' ? 1 : (parseFloat(m[1]) - min) / span;
+      div.className = 'relevance-line';
+      div.style.borderLeftColor = relevanceColor(t);
+    }
+    div.textContent = line;
+    wrap.appendChild(div);
+  }
+  container.appendChild(wrap);
 }
 
 function applySettings() {
@@ -824,11 +915,15 @@ function section(id, title, hint, bodyHtml) {
   }
 
   function renderRaw(text, isError) {
-    rawBox.innerHTML = '';
-    const pre = document.createElement('pre');
-    pre.className = 'out ' + (isError ? 'err' : 'ok');
-    pre.textContent = text;
-    rawBox.appendChild(pre);
+    if (isError) {
+      rawBox.innerHTML = '';
+      const pre = document.createElement('pre');
+      pre.className = 'out err';
+      pre.textContent = text;
+      rawBox.appendChild(pre);
+      return;
+    }
+    renderRawColored(rawBox, text);
   }
 
   rawCheckbox.addEventListener('change', () => {
@@ -1753,10 +1848,12 @@ function section(id, title, hint, bodyHtml) {
      <div class="checkline" style="margin-top:10px"><input type="checkbox" id="graph-show-labels"><label for="graph-show-labels">Mostrar nombres de relaciones</label></div>
      <div class="checkline" id="graph-hide-superseded-line" style="margin-top:6px; display:none"><input type="checkbox" id="graph-hide-superseded"><label for="graph-hide-superseded">Ocultar registros supersedidos/retractados</label></div>
      <div class="gph-stats" id="graph-stats" style="margin-top:14px"></div>
-     <div id="graph-canvas"></div>
-     <div class="gph-legend" id="graph-legend" style="margin-top:10px">
-       <div class="gph-legend-item"><span class="gph-dot"></span>recuerdo de dominio</div>
-       <div class="gph-legend-item"><span class="gph-dot gph-meta"></span>recuerdo meta (sobre el propio sistema)</div>
+     <div id="graph-canvas-wrap">
+       <div id="graph-canvas"></div>
+       <div class="gph-legend" id="graph-legend">
+         <div class="gph-legend-item"><span class="gph-dot"></span>recuerdo de dominio</div>
+         <div class="gph-legend-item"><span class="gph-dot gph-meta"></span>recuerdo meta (sobre el propio sistema)</div>
+       </div>
      </div>`);
 
   const statsEl = sec.querySelector('#graph-stats');
@@ -1780,7 +1877,17 @@ function section(id, title, hint, bodyHtml) {
   // no navega (goToNode, vista por recuerdos) sino que resalta en rojo los
   // registros relacionados con la búsqueda corrida.
   let viewMode = 'memories';
-  let searchHighlightIds = new Set();
+  // Map en vez de Set (2026-09-19, portado desde D:\MyBrain, pedido del
+  // usuario tras notar que el resaltado no distinguía qué tan relevante era
+  // cada registro dentro del resultado): id -> score de relevancia real
+  // (relevance_score del reranker de Voyage, extraído del texto crudo de
+  // /api/search), o null para los registros que entran garantizados sin
+  // ranking contra la pregunta (match por nombre de recuerdo, o un
+  // "complementa a" reinyectado -- ver runRecordSearch/renderCurrentColor).
+  // null se pinta siempre al extremo de mayor relevancia de la escala, no
+  // participa del min-max de normalización (no hay con qué compararlo, no
+  // es un score real).
+  let searchHighlightIds = new Map();
   let lastRecordSearchQuery = '';
   const RECORD_RADIUS = 5;
   const FACT_ID_PATTERN = /^#?\d+(\s*,\s*#?\d+)*$/;
@@ -2109,19 +2216,55 @@ function section(id, title, hint, bodyHtml) {
     nodeSel.append('text').attr('class', 'gph-label').attr('text-anchor', 'middle').attr('y', RECORD_RADIUS + 12)
       .text((d) => `#${d.id}`);
 
+    // Normaliza al mínimo/máximo del resultado ACTUAL, no a un rango fijo
+    // 0-1 (2026-09-19, portado desde D:\MyBrain, pedido del usuario): los
+    // scores de un solo rerank suelen clusterizarse (ej. todos entre 0.3 y
+    // 0.6), con un rango fijo el degradado se vería plano. Los null (matches
+    // garantizados, sin score real) quedan siempre en t=1, fuera de ese
+    // cálculo. Expone el t crudo (no solo el color) porque el radio del
+    // círculo también depende de él.
+    function relevanceTOf() {
+      const nums = [...searchHighlightIds.values()].filter((v) => v != null);
+      const min = nums.length ? Math.min(...nums) : 0;
+      const max = nums.length ? Math.max(...nums) : 1;
+      const span = max - min || 1;
+      return (id) => {
+        const v = searchHighlightIds.get(id);
+        return v == null ? 1 : (v - min) / span;
+      };
+    }
+
     function applyRecordHighlight() {
       if (searchHighlightIds.size === 0) {
         nodeSel.style('opacity', 1);
-        nodeSel.select('circle').classed('gph-circle-highlight', false);
+        nodeSel.select('circle').classed('gph-circle-highlight', false).style('fill', null).style('stroke', null).attr('r', RECORD_RADIUS);
         linkSel.style('opacity', 1);
         linkLabelSel.style('opacity', 1);
         return;
       }
+      const tOf = relevanceTOf();
       nodeSel.style('opacity', (d) => (searchHighlightIds.has(d.id) ? 1 : 0.35));
-      nodeSel.select('circle').classed('gph-circle-highlight', (d) => searchHighlightIds.has(d.id));
+      nodeSel.select('circle')
+        .classed('gph-circle-highlight', (d) => searchHighlightIds.has(d.id))
+        // Color sólido (2026-09-19, portado desde D:\MyBrain, corrección del
+        // usuario: el fill mezclado al 30% con transparente diluía hasta el
+        // rojo más puro contra el fondo oscuro, viéndose como un tono
+        // intermedio de la escala en vez del extremo real -- ahora fill y
+        // stroke son el mismo color sólido devuelto por relevanceColor.
+        .style('fill', (d) => (searchHighlightIds.has(d.id) ? relevanceColor(tOf(d.id)) : null))
+        .style('stroke', (d) => (searchHighlightIds.has(d.id) ? relevanceColor(tOf(d.id)) : null))
+        // Diámetro = 10·√t (2026-09-19, portado desde D:\MyBrain, pedido del
+        // usuario: score=1/100% -> diámetro=10, igual al tamaño normal de un
+        // punto -- por debajo de 100% de relevancia RELATIVA al resultado
+        // actual, se ve más chico en proporción a la raíz cuadrada del
+        // score, no linealmente), con piso de diámetro 1 (t=0 exacto daba
+        // diámetro 0, un punto invisible e imposible de clickear). Radio =
+        // diámetro/2. Los no resaltados vuelven a RECORD_RADIUS.
+        .attr('r', (d) => (searchHighlightIds.has(d.id) ? Math.max(0.5, 5 * Math.sqrt(tOf(d.id))) : RECORD_RADIUS));
       linkSel.style('opacity', 0.35);
       linkLabelSel.style('opacity', 0.35);
     }
+    window.__reapplyGraphRelevance = applyRecordHighlight;
 
     nodeSel.on('contextmenu', (event, d) => {
       event.preventDefault();
@@ -2139,11 +2282,20 @@ function section(id, title, hint, bodyHtml) {
       const scaleX = svgRect.width / W, scaleY = svgRect.height / H;
       const screenX = (svgRect.left - canvasRect.left) + (t.x + d.x * t.k) * scaleX;
       const screenY = (svgRect.top - canvasRect.top) + (t.y + d.y * t.k) * scaleY;
-      const screenR = RECORD_RADIUS * t.k * scaleY;
+      const actualR = parseFloat(d3.select(this).select('circle').attr('r')) || RECORD_RADIUS;
+      const screenR = actualR * t.k * scaleY;
       const preview = (d.claim || '').slice(0, 100);
       const memLabel = d.memories && d.memories.length ? ` [${d.memories.join(', ')}]` : '';
+      // Score exacto además del color (2026-09-19, portado desde D:\MyBrain):
+      // el color solo da una lectura relativa/aproximada, para el número
+      // real hay que pasar el mouse -- "garantizado" cubre tanto match por
+      // nombre de recuerdo como un "complementa a" reinyectado, ninguno
+      // tiene score real.
+      const scoreLabel = searchHighlightIds.has(d.id)
+        ? (searchHighlightIds.get(d.id) == null ? ' (relevancia: garantizado)' : ` (relevancia: ${searchHighlightIds.get(d.id).toFixed(4)})`)
+        : '';
       tooltip.style('left', screenX + 'px').style('top', (screenY - screenR - 8) + 'px')
-        .style('display', 'block').text(`#${d.id}${memLabel} — ${preview}${(d.claim || '').length > 100 ? '…' : ''}`);
+        .style('display', 'block').text(`#${d.id}${memLabel}${scoreLabel} — ${preview}${(d.claim || '').length > 100 ? '…' : ''}`);
     }).on('mouseleave', function () {
       tooltip.style('display', 'none');
     });
@@ -2210,23 +2362,46 @@ function section(id, title, hint, bodyHtml) {
     // Fuerza de clustering (2026-09-19, pedido del usuario tras notar que con
     // 916 puntos un resultado de búsqueda resaltado en rojo era casi
     // imposible de ubicar a simple vista): atrae los registros actualmente
-    // resaltados (searchHighlightIds) hacia SU PROPIO centroide, dejando
-    // intactos los demás -- no es un force() genérico de d3 (no usa
-    // .initialize()), cierra directamente sobre `records`/searchHighlightIds
-    // porque es más simple y evita depender de simulation.nodes() quedando
-    // desincronizado entre renders. No hace nada si hay <2 resaltados (un
-    // solo punto no tiene "centroide" que valga la pena, ver runRecordSearch
-    // -- la búsqueda por #id exacto solo sigue/navega, no agrupa).
+    // resaltados (searchHighlightIds) hacia el registro MÁS RELEVANTE del
+    // grupo, no hacia un centroide promedio (2026-09-19, portado desde
+    // D:\MyBrain, ajustado a pedido del usuario: el "centro" del cluster
+    // debe ser el registro más opcionado, no un punto vacío en el medio) --
+    // ese registro ancla ya que no se atrae a sí mismo, y todos los demás
+    // orbitan hacia su posición real. "Más relevante" usa el mismo t que el
+    // color (relevanceTOf), pero ver mostRelevantHighlightedId abajo para el
+    // criterio real de desempate (el score real gana siempre sobre un
+    // "garantizado", no es un empate simple en t=1). No es un force()
+    // genérico de d3 (no usa .initialize()), cierra directamente sobre
+    // `records`/searchHighlightIds porque es más simple y evita depender de
+    // simulation.nodes() quedando desincronizado entre renders. No hace
+    // nada si hay <2 resaltados (un solo punto no tiene grupo que valga la
+    // pena, ver runRecordSearch -- la búsqueda por #id exacto solo
+    // sigue/navega, no agrupa).
+    function mostRelevantHighlightedId() {
+      // Prioriza el score REAL más alto -- probado en vivo, no en teoría: un
+      // "garantizado" (match por nombre de recuerdo, empata en t=1 con el
+      // color) NO debería ganarle al ganador de verdad del ranking solo por
+      // haberse insertado primero. Solo cae a un "garantizado" (el primero
+      // insertado) si NO hay ningún score real en el grupo.
+      let bestId = null, best = -Infinity;
+      let firstGuaranteedId = null;
+      for (const [id, v] of searchHighlightIds) {
+        if (v == null) { if (firstGuaranteedId == null) firstGuaranteedId = id; continue; }
+        if (v > best) { best = v; bestId = id; }
+      }
+      return bestId ?? firstGuaranteedId;
+    }
     function clusterForce(alpha) {
       if (searchHighlightIds.size < 2) return;
       const matched = records.filter((n) => searchHighlightIds.has(n.id));
       if (matched.length < 2) return;
-      const cx = matched.reduce((s, n) => s + n.x, 0) / matched.length;
-      const cy = matched.reduce((s, n) => s + n.y, 0) / matched.length;
+      const anchorId = mostRelevantHighlightedId();
+      const anchor = matched.find((n) => n.id === anchorId) ?? matched[0];
       const strength = 0.25;
       for (const n of matched) {
-        n.vx -= (n.x - cx) * strength * alpha;
-        n.vy -= (n.y - cy) * strength * alpha;
+        if (n.id === anchor.id) continue;
+        n.vx -= (n.x - anchor.x) * strength * alpha;
+        n.vy -= (n.y - anchor.y) * strength * alpha;
       }
     }
 
@@ -2357,17 +2532,31 @@ function section(id, title, hint, bodyHtml) {
     qInput.value = queryText || ids.map((id) => `#${id}`).join(', ');
 
     const byId = new Map((cachedGraphData?.records ?? []).map((r) => [String(r.id), r]));
+    // Mismo prefijo "[score]"/"[recuerdo]" que imprime search.mjs (usando el
+    // score real que ya trae searchHighlightIds de la búsqueda del grafo,
+    // 2026-09-19, portado desde D:\MyBrain), para que renderRawColored
+    // coloree esto igual que el camino normal de "Buscar" -- si un id no
+    // está en searchHighlightIds (ej. se abrió desde un solo registro sin
+    // búsqueda previa), se trata como garantizado, no hay score que perder
+    // ahí.
     const raw = ids
       .map((id) => byId.get(String(id)))
       .filter(Boolean)
-      .map((r) => `#${r.id} [${(r.date || '').slice(0, 10)}] ${r.claim}`)
+      .map((r) => {
+        const score = searchHighlightIds.get(String(r.id));
+        const label = score == null ? '[recuerdo]' : `[${score.toFixed(4)}]`;
+        return `${label} #${r.id} [${(r.date || '').slice(0, 10)}] ${r.claim}`;
+      })
       .join('\n\n');
 
-    rawBox.innerHTML = '';
-    const pre = document.createElement('pre');
-    pre.className = 'out ok';
-    pre.textContent = raw || '(sin registros resaltados -- corre una búsqueda en la vista por registros primero)';
-    rawBox.appendChild(pre);
+    if (raw) renderRawColored(rawBox, raw);
+    else {
+      rawBox.innerHTML = '';
+      const pre = document.createElement('pre');
+      pre.className = 'out ok';
+      pre.textContent = '(sin registros resaltados -- corre una búsqueda en la vista por registros primero)';
+      rawBox.appendChild(pre);
+    }
     rawBox.style.display = rawCheckbox.checked ? 'block' : 'none';
 
     if (!raw) {
@@ -2397,7 +2586,7 @@ function section(id, title, hint, bodyHtml) {
         if (btn.dataset.action === 'record-status') {
           gotoSearchWithIdLookup(recordId);
         } else {
-          const ids = searchHighlightIds.size > 0 ? [...searchHighlightIds] : [recordId];
+          const ids = searchHighlightIds.size > 0 ? [...searchHighlightIds.keys()] : [recordId];
           gotoSearchWithSynthesis(ids, lastRecordSearchQuery);
         }
       };
@@ -2421,18 +2610,28 @@ function section(id, title, hint, bodyHtml) {
   async function runRecordSearch(q) {
     lastRecordSearchQuery = q;
     const isIdSearch = FACT_ID_PATTERN.test(q);
-    let ids;
+    const scoreById = new Map();
     if (isIdSearch) {
-      ids = q.split(',').map((s) => s.trim().replace(/^#/, ''));
+      // Búsqueda por id exacto: no hay score que rankear (ya son los puntos
+      // exactos pedidos), todos quedan al extremo de mayor relevancia.
+      for (const s of q.split(',').map((s) => s.trim().replace(/^#/, ''))) scoreById.set(s, null);
     } else {
+      // search.mjs imprime "[0.8534] #123 ..." (score real del reranker) o
+      // "[recuerdo] #123 ..." (match garantizado por nombre de recuerdo/
+      // complemento reinyectado, sin score comparable) por cada resultado --
+      // se captura ambos casos en vez de solo extraer el #id como antes
+      // (2026-09-19, portado desde D:\MyBrain).
       const r = await call('GET', '/api/search?q=' + encodeURIComponent(q));
       const raw = r.ok ? (r.stdout || '') : '';
-      ids = [...raw.matchAll(/#(\d+)/g)].map((m) => m[1]);
+      for (const m of raw.matchAll(/\[(recuerdo|[\d.]+)\]\s*#(\d+)/g)) {
+        const [, label, id] = m;
+        scoreById.set(id, label === 'recuerdo' ? null : parseFloat(label));
+      }
     }
-    searchHighlightIds = new Set(ids);
+    searchHighlightIds = scoreById;
     graph?.applyRecordHighlight?.();
-    if (ids.length === 0) return;
-    graph?.followRecordIds?.(ids, { reheat: !isIdSearch });
+    if (scoreById.size === 0) return;
+    graph?.followRecordIds?.([...scoreById.keys()], { reheat: !isIdSearch });
   }
 
   function updateSearchUIForView() {
@@ -2448,10 +2647,19 @@ function section(id, title, hint, bodyHtml) {
       searchLabelEl.textContent = 'Buscar registro (texto libre, o #123 / #94, #95)';
       searchInputEl.removeAttribute('list');
       searchInputEl.placeholder = 'ej. presupuesto del proyecto Atlas, o #123';
+      // Barra de gradiente (2026-09-19, portado desde D:\MyBrain): 5
+      // muestras de relevanceColor en vez de un solo punto -- la leyenda
+      // debe mostrar la misma escala que applyRecordHighlight usa de
+      // verdad, así que sale de la misma función en vez de un color fijo
+      // hardcodeado acá.
+      const gradientStops = [0, 0.25, 0.5, 0.75, 1].map((t) => relevanceColor(t)).join(', ');
       legendEl.innerHTML = `
         <div class="gph-legend-item"><span class="gph-dot"></span>registro</div>
         <div class="gph-legend-item"><span class="gph-dot gph-meta"></span>registro supersedido/retractado</div>
-        <div class="gph-legend-item"><span class="gph-dot" style="border-color:var(--graph-highlight, var(--err)); background:color-mix(in srgb, var(--graph-highlight, var(--err)) 30%, transparent)"></span>resaltado por la última búsqueda</div>`;
+        <div class="gph-legend-item" style="gap:8px">
+          <span style="display:inline-block; width:60px; height:10px; border-radius:5px; background:linear-gradient(to right, ${gradientStops})"></span>
+          resaltado por la última búsqueda (menos relevante → más relevante)
+        </div>`;
     }
   }
 
@@ -2461,7 +2669,7 @@ function section(id, title, hint, bodyHtml) {
       viewMode = btn.dataset.view;
       sec.querySelectorAll('.tl-view-btn').forEach((b) => b.classList.toggle('active', b === btn));
       searchInputEl.value = '';
-      searchHighlightIds = new Set();
+      searchHighlightIds = new Map();
       updateSearchUIForView();
       renderCurrentView();
     });
@@ -3952,6 +4160,13 @@ function section(id, title, hint, bodyHtml) {
      </div>
      <button class="run secondary" id="cfg-graph-reset">Restablecer colores del grafo</button>
 
+     <label style="margin-top:18px">Escala de relevancia (vista por registros, búsqueda por texto libre)</label>
+     <select id="cfg-graph-relevance-scale">
+       <option value="rojo-verde">Rojo-verde (rojo = más cercano)</option>
+       <option value="tonos-rojo">Tonos de rojo (saturado = más cercano)</option>
+       <option value="azul-amarillo">Azul-ámbar (ámbar = más cercano)</option>
+     </select>
+
      <div style="margin-top:26px"><button class="run" id="cfg-reset-all">Restablecer todo</button></div>`);
 
   const themeSel = sec.querySelector('#cfg-theme');
@@ -3964,6 +4179,7 @@ function section(id, title, hint, bodyHtml) {
   const graphNormalInput = sec.querySelector('#cfg-graph-normal');
   const graphMetaInput = sec.querySelector('#cfg-graph-meta');
   const graphHighlightInput = sec.querySelector('#cfg-graph-highlight');
+  const graphRelevanceScaleSel = sec.querySelector('#cfg-graph-relevance-scale');
 
   function computedVar(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#000000';
@@ -3993,6 +4209,7 @@ function section(id, title, hint, bodyHtml) {
     graphNormalInput.value = settings.graphNormal || computedVar('--accent');
     graphMetaInput.value = settings.graphMeta || computedVar('--warn');
     graphHighlightInput.value = settings.graphHighlight || computedVar('--err');
+    graphRelevanceScaleSel.value = settings.graphRelevanceScale || 'rojo-verde';
   }
 
   function update(patch) {
@@ -4014,6 +4231,10 @@ function section(id, title, hint, bodyHtml) {
   graphNormalInput.addEventListener('input', () => update({ graphNormal: graphNormalInput.value }));
   graphMetaInput.addEventListener('input', () => update({ graphMeta: graphMetaInput.value }));
   graphHighlightInput.addEventListener('input', () => update({ graphHighlight: graphHighlightInput.value }));
+  graphRelevanceScaleSel.addEventListener('change', () => {
+    update({ graphRelevanceScale: graphRelevanceScaleSel.value });
+    window.__reapplyGraphRelevance?.();
+  });
   sec.querySelector('#cfg-accent-reset').addEventListener('click', () => update({ accent: '' }));
   sec.querySelector('#cfg-graph-reset').addEventListener('click', () => update({ graphNormal: '', graphMeta: '', graphHighlight: '' }));
   sec.querySelector('#cfg-reset-all').addEventListener('click', async () => {

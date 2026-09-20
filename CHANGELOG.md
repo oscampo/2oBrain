@@ -5,6 +5,46 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.8.0 (2026-09-20)
+
+Sin migración de `schema.sql`. Grafo (vista por registros) y `search.mjs`
+terminan de convertirse en una sola herramienta de auditoría real de qué
+tan bien respondió una búsqueda, no solo un mapa de "qué está conectado" --
+salto de versión menor por ser un cambio de comportamiento visible en la UI
+para cualquier instalación existente, no solo un fix interno.
+
+- **Resaltado por relevancia en escala de calor**, no binario: cada registro
+  resaltado por una búsqueda en la vista por registros ahora se colorea y
+  dimensiona según su score real (relevance_score del reranker de Voyage),
+  normalizado al min/max del resultado actual -- color sólido (rojo-verde
+  por defecto, más tonos de rojo/azul-ámbar seleccionables en Configuración
+  para daltonismo rojo-verde), diámetro = 10·√score (con piso de diámetro 1
+  para que un score muy bajo siga siendo clickeable). Antes todo lo
+  resaltado se veía igual de "rojo", sin distinguir un match fuerte de uno
+  débil.
+- **Los "datos crudos" de Buscar usan el mismo criterio de color**
+  (`renderRawColored`): cada fragmento se colorea según su relevancia real
+  en vez de mostrarse todo plano, para auditar de un vistazo qué pesó más
+  en la síntesis.
+- **El cluster de resultados se ancla al registro más relevante real**, no a
+  un centroide promedio del grupo -- ese registro no se atrae a sí mismo, el
+  resto orbita hacia su posición.
+- **`search.mjs` deja de imprimir "[recuerdo]" (100% de relevancia
+  garantizada) para matches del router de recuerdos y complementos
+  reinyectados** cuando sí existe un score real que mostrar: el router ya
+  calculaba un score de relevancia real internamente (solo se usaba para
+  decidir cuáles 15 mostrar, nunca se imprimía) y ahora sale; los
+  complementos reinyectados heredan el score de lo que complementan (misma
+  información continuada, no un hallazgo independiente). Corrige un caso
+  real: preguntas sin match verdadero disparaban el router sobre nodos
+  apenas por encima del piso, y sus registros se pintaban todos como
+  "100% seguro" en el grafo pese a ser matches débiles.
+- **Leyenda de colores del grafo** ahora vive como recuadro flotante en la
+  esquina superior derecha del propio lienzo del grafo, en vez de debajo --
+  visible sin necesidad de hacer scroll pasado el grafo, sobrevive a cada
+  refresco del grafo (envoltorio `#graph-canvas-wrap` separado de
+  `#graph-canvas`, que se limpia por completo en cada render).
+
 ## v0.7.12 (2026-09-19)
 
 Sin migración de `schema.sql`. Cambio solo en `CLAUDE.md` (guion de la
