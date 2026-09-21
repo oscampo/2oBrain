@@ -255,6 +255,19 @@
   .gph-circle { fill: color-mix(in srgb, var(--graph-normal, var(--accent)) 60%, transparent); stroke: var(--graph-normal, var(--accent)); stroke-width: 2; }
   .gph-circle.gph-meta { fill: color-mix(in srgb, var(--graph-meta, var(--warn)) 60%, transparent); stroke: var(--graph-meta, var(--warn)); stroke-width: 2; stroke-dasharray: 4 3; }
   .gph-circle.gph-circle-highlight { fill: color-mix(in srgb, var(--graph-highlight, var(--err)) 30%, transparent); stroke: var(--graph-highlight, var(--err)); stroke-width: 2.5; }
+  /* Glow pulsante del registro más relevante (portado desde D:\MyBrain):
+     solo se aplica al "romper" el cluster aislado con Encuadre -- ahí todos
+     los registros resaltados vuelven a su diámetro estándar (RECORD_RADIUS),
+     así que el más relevante pierde la señal de tamaño que tenía dentro del
+     cluster; el glow pulsante es lo que lo sigue distinguiendo del resto sin
+     depender del tamaño. --gph-glow lo fija applyRecordHighlight() por nodo
+     (el color de relevancia real de ESE registro, no un color fijo).
+     Respeta prefers-reduced-motion (ver aplicación condicional en JS). */
+  @keyframes gph-pulse-glow {
+    0%, 100% { filter: drop-shadow(0 0 2px var(--gph-glow, currentColor)); stroke-width: 2px; }
+    50% { filter: drop-shadow(0 0 6px var(--gph-glow, currentColor)) drop-shadow(0 0 12px var(--gph-glow, currentColor)); stroke-width: 3.5px; }
+  }
+  .gph-circle-glow { animation: gph-pulse-glow 1.6s ease-in-out infinite; }
   .gph-count { font-size: 12px; font-weight: 600; fill: var(--graph-normal, black); text-anchor: middle; }
   .gph-node.gph-meta .gph-count { fill: var(--graph-meta, var(--warn)); }
   /* Alto contraste (hallazgo del usuario): el relleno semitransparente de abajo
@@ -279,7 +292,15 @@
   .gph-ctx-menu button { display: block; width: 100%; text-align: left; padding: 7px 14px; background: none; border: none; color: var(--text); font-size: 13px; cursor: pointer; border-radius: 5px; white-space: nowrap; }
   .gph-ctx-menu button:hover { background: color-mix(in srgb, var(--accent) 22%, var(--panel)); }
   .gph-edge { stroke: var(--border); stroke-width: 1.6; }
+  .gph-edge-complementa { stroke-width: 1; opacity: 0.6; }
   .gph-edge-label { font-size: 10px; fill: var(--muted); }
+  .gph-complementa-hull {
+    fill: color-mix(in srgb, var(--accent) 10%, transparent);
+    stroke: color-mix(in srgb, var(--accent) 35%, transparent);
+    stroke-width: 1;
+    stroke-dasharray: 3 3;
+    pointer-events: none;
+  }
   .gph-legend {
     position: absolute;
     top: 10px;
@@ -2143,7 +2164,50 @@ function section(id, title, hint, bodyHtml) {
     const records = rawRecords.map((r) => ({ ...r, id: String(r.id) }));
     const links = rawEdges.map((e) => ({ source: String(e.from), target: String(e.to), relation: e.relation }));
 
-    // Clusters por recuerdo (2026-09-19, pedido del usuario: la vista por
+    // Clusters "complementa" (2026-09-21, pedido de Oscar): un grupo de
+    // registros unidos por 'complementa' es la MISMA información repartida
+    // entre sí, no un salto temático como cualquier otra arista -- debería
+    // leerse como un solo bloque. Componentes conexas calculadas SOLO sobre
+    // aristas 'complementa' (no 'reemplazado_por', que es una cadena
+    // temporal de sustitución, se sigue leyendo como flecha). Calculado acá
+    // (antes del anclaje por recuerdo, más abajo) porque el anclaje
+    // necesita saber qué registros comparten grupo para compartir un solo
+    // punto de anclaje entre todos -- si no, un miembro con un recuerdo
+    // adicional que el resto no tiene queda tirado hacia otro lado por
+    // memoryClusterForce pese al link force reforzado, y el cluster nunca
+    // converge visualmente (medido en vivo: líneas "complementa" de hasta
+    // 440px pese a un link force fuerte, ver commit de este cambio).
+    const recordById = new Map(records.map((r) => [r.id, r]));
+    const complementaAdj = new Map();
+    for (const l of links) {
+      if (l.relation === 'reemplazado_por') continue;
+      if (!complementaAdj.has(l.source)) complementaAdj.set(l.source, []);
+      if (!complementaAdj.has(l.target)) complementaAdj.set(l.target, []);
+      complementaAdj.get(l.source).push(l.target);
+      complementaAdj.get(l.target).push(l.source);
+    }
+    const seenComp = new Set();
+    const complementaGroups = [];
+    const groupOfRecordId = new Map();
+    for (const id of complementaAdj.keys()) {
+      if (seenComp.has(id)) continue;
+      const stack = [id], comp = [];
+      seenComp.add(id);
+      while (stack.length) {
+        const cur = stack.pop();
+        comp.push(cur);
+        for (const nb of complementaAdj.get(cur) ?? []) {
+          if (!seenComp.has(nb)) { seenComp.add(nb); stack.push(nb); }
+        }
+      }
+      if (comp.length > 1) {
+        const nodesArr = comp.map((cid) => recordById.get(cid)).filter(Boolean);
+        complementaGroups.push(nodesArr);
+        for (const n of nodesArr) groupOfRecordId.set(n.id, nodesArr);
+      }
+    }
+
+    // Clusters por recuerdo (2026-09-19, pedido de Oscar: la vista por
     // registros debe agruparse por defecto por el/los recuerdo(s) de cada
     // registro, no caer donde las fuerzas físicas los dejen sin relación
     // con record_memories). Cada recuerdo distinto presente en este
@@ -2166,12 +2230,28 @@ function section(id, title, hint, bodyHtml) {
     // esto el layout se ve agrupado recién después de varios segundos de
     // simulación; con la posición inicial casi correcta, se ve agrupado
     // desde el primer frame.
-    for (const r of records) {
-      const names = r.memories.length ? r.memories : ['(sin recuerdo)'];
+    function anchorFor(names) {
       const pts = names.map((n) => anchors.get(n)).filter(Boolean);
-      const a = pts.length
+      return pts.length
         ? { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length }
         : { x: W / 2, y: H / 2 };
+    }
+    const groupAnchorCache = new Map();
+    for (const r of records) {
+      // Miembros de un grupo "complementa" comparten un solo anclaje (unión
+      // de los recuerdos de TODOS los miembros), no el propio de cada uno --
+      // ver el comentario de complementaGroups más arriba.
+      const group = groupOfRecordId.get(r.id);
+      let a;
+      if (group) {
+        if (!groupAnchorCache.has(group)) {
+          const unionNames = [...new Set(group.flatMap((n) => (n.memories.length ? n.memories : ['(sin recuerdo)'])))];
+          groupAnchorCache.set(group, anchorFor(unionNames));
+        }
+        a = groupAnchorCache.get(group);
+      } else {
+        a = anchorFor(r.memories.length ? r.memories : ['(sin recuerdo)']);
+      }
       r._anchorX = a.x;
       r._anchorY = a.y;
       r.x = a.x + (Math.random() - 0.5) * 30;
@@ -2180,8 +2260,46 @@ function section(id, title, hint, bodyHtml) {
     function memoryClusterForce(alpha) {
       const strength = 0.12;
       for (const r of records) {
+        // En modo aislado (2026-09-20), los registros resaltados por la
+        // búsqueda quedan exentos de esta ancla por tema/recuerdo -- si no,
+        // compite directamente contra clusterForce (radial por relevancia,
+        // ver abajo) tirando de cada uno hacia un ancla de tema que además
+        // ya ni se ve (todo lo demás está oculto), y el cluster tarda mucho
+        // más en asentarse limpio o nunca converge del todo si dos
+        // registros resaltados pertenecen a temas muy separados.
+        if (isolated && searchHighlightIds.has(r.id)) continue;
         r.vx -= (r.x - r._anchorX) * strength * alpha;
         r.vy -= (r.y - r._anchorY) * strength * alpha;
+      }
+    }
+
+    // Tope duro de cohesión "complementa" (2026-09-21, pedido de Oscar tras
+    // ver que la línea seguía viéndose grande pese al link force más
+    // corto): la distancia de d3.forceLink es solo un OBJETIVO que compite
+    // contra la repulsión de `charge` (forceManyBody) -- con esa sola
+    // fuerza, el equilibrio real quedaba más lejos del objetivo que lo que
+    // parece razonable, sobre todo con varios miembros en el mismo grupo.
+    // Esto no es un objetivo blando, es un tope: cada miembro no puede
+    // alejarse del ancla COMPARTIDA del grupo (misma para todos, ver
+    // anchorFor/groupAnchorCache más arriba) más de LINK_DIAMETER_FACTOR
+    // veces el radio actual del miembro más grande -- si ya está dentro,
+    // no hace nada (deja que charge/collide decidan el acomodo interno
+    // libremente); si se pasa, lo empuja de vuelta, sin importar qué tan
+    // fuerte empuje charge en sentido contrario.
+    function complementaCohesionForce(alpha) {
+      const strength = 0.9;
+      for (const group of complementaGroups) {
+        if (group.length < 2) continue;
+        const maxR = Math.max(...group.map((n) => currentNodeRadius(n.id)));
+        const desiredR = LINK_DIAMETER_FACTOR * maxR;
+        for (const n of group) {
+          const dx = n.x - n._anchorX, dy = n.y - n._anchorY;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+          if (dist <= desiredR) continue;
+          const diff = (dist - desiredR) / dist;
+          n.vx -= dx * diff * strength * alpha;
+          n.vy -= dy * diff * strength * alpha;
+        }
       }
     }
 
@@ -2200,11 +2318,25 @@ function section(id, title, hint, bodyHtml) {
     const zoomBehavior = d3.zoom().scaleExtent([0.15, 8]).on('zoom', (event) => g.attr('transform', event.transform));
     svg.call(zoomBehavior);
 
+    // complementaGroups ya se calculó más arriba, junto con el anclaje por
+    // recuerdo (necesitaba saberlo antes de fijar anclas). Un círculo de
+    // fondo por grupo de 2+ miembros, recalculado cada tick en renderTick
+    // para encerrar sus posiciones reales.
+    // Ocultos por defecto (2026-09-21, pedido de Oscar): el círculo solo
+    // vale la pena en modo aislado tras "Ir" sobre una búsqueda de texto
+    // libre, donde de verdad ayuda a leer un grupo "complementa" dentro del
+    // cluster de resultados -- en Encuadre (grafo completo) sería puro
+    // ruido visual sobre 1000+ puntos, ver applyRecordHighlight/hullSel más
+    // abajo para el toggle real.
+    const hullSel = g.append('g').selectAll('circle').data(complementaGroups).join('circle')
+      .attr('class', 'gph-complementa-hull').style('display', 'none');
+
     const linkSel = g.append('g').selectAll('line').data(links).join('line')
-      .attr('class', 'gph-edge').attr('marker-end', 'url(#gph-arrow-rec)');
+      .attr('class', (d) => 'gph-edge' + (d.relation !== 'reemplazado_por' ? ' gph-edge-complementa' : ''))
+      .attr('marker-end', (d) => (d.relation === 'reemplazado_por' ? 'url(#gph-arrow-rec)' : null));
     const linkLabelSel = g.append('g').selectAll('text').data(links).join('text')
       .attr('class', 'gph-edge-label').attr('text-anchor', 'middle')
-      .text((d) => (d.relation === 'reemplazado_por' ? 'reemplazado por' : 'complementa'));
+      .text((d) => (d.relation === 'reemplazado_por' ? 'reemplazado por' : ''));
 
     const nodeSel = g.append('g').selectAll('g').data(records, (d) => d.id).join('g')
       .attr('class', (d) => 'gph-node' + (!d.valid ? ' gph-meta' : ''))
@@ -2217,12 +2349,11 @@ function section(id, title, hint, bodyHtml) {
       .text((d) => `#${d.id}`);
 
     // Normaliza al mínimo/máximo del resultado ACTUAL, no a un rango fijo
-    // 0-1 (2026-09-19, portado desde D:\MyBrain, pedido del usuario): los
-    // scores de un solo rerank suelen clusterizarse (ej. todos entre 0.3 y
-    // 0.6), con un rango fijo el degradado se vería plano. Los null (matches
-    // garantizados, sin score real) quedan siempre en t=1, fuera de ese
-    // cálculo. Expone el t crudo (no solo el color) porque el radio del
-    // círculo también depende de él.
+    // 0-1 (2026-09-19, pedido de Oscar): los scores de un solo rerank suelen
+    // clusterizarse (ej. todos entre 0.3 y 0.6), con un rango fijo el
+    // degradado se vería plano. Los null (matches garantizados, sin score
+    // real) quedan siempre en t=1, fuera de ese cálculo. Expone el t crudo
+    // (no solo el color) porque el radio del círculo también depende de él.
     function relevanceTOf() {
       const nums = [...searchHighlightIds.values()].filter((v) => v != null);
       const min = nums.length ? Math.min(...nums) : 0;
@@ -2234,35 +2365,129 @@ function section(id, title, hint, bodyHtml) {
       };
     }
 
+    // Modo aislado (2026-09-20, pedido de Oscar): "Ir" sobre una búsqueda de
+    // texto libre ya no solo atenúa el resto (opacity 0.35), lo OCULTA por
+    // completo -- solo queda visible el cluster de registros involucrados en
+    // la búsqueda, coloreado/dimensionado por relevancia (el cluster del que
+    // ya veníamos hablando). "Encuadre" (#graph-fit) rompe ese aislamiento:
+    // vuelve a mostrar el grafo completo, y los registros resaltados
+    // conservan su color de relevancia pero pierden el tamaño variable
+    // (vuelven a RECORD_RADIUS) -- salvo el más relevante, que en vez de
+    // tamaño usa un glow pulsante (gph-circle-glow) para seguir
+    // distinguiéndose sin depender de ser más grande que el resto. Solo
+    // aplica a búsqueda por texto libre (runRecordSearch decide cuándo
+    // activarlo vía setIsolated) -- la búsqueda por #id exacto sigue con el
+    // dim clásico, no hay "cluster de relevancia" real que aislar ahí.
+    let isolated = false;
+    // Radio ACTUAL de un registro tal como queda dibujado ahora mismo --
+    // mismo cálculo que el .attr('r', ...) de más abajo, centralizado acá
+    // porque tanto la distancia de la arista 'complementa' como el círculo
+    // de fondo necesitan saberlo (2026-09-21, pedido de Oscar).
+    function currentNodeRadius(id) {
+      return isolated && searchHighlightIds.has(id) ? Math.max(0.5, 5 * Math.sqrt(relevanceTOf()(id))) : RECORD_RADIUS;
+    }
+    // Distancia objetivo de 'complementa' = 2.5x el DIÁMETRO del miembro más
+    // grande de ese cluster (2026-09-21, pedido de Oscar: "entre 2 y 3 veces
+    // el diámetro del registro más grande de ese cluster") -- antes era un
+    // valor fijo (16px), que en modo aislado (donde el registro más
+    // relevante puede crecer varias veces RECORD_RADIUS) volvía a verse
+    // desproporcionadamente largo relativo al tamaño real de los puntos.
+    const LINK_DIAMETER_FACTOR = 2.5;
+    function complementaLinkDistance(d) {
+      if (d.relation === 'reemplazado_por') return 36;
+      const group = groupOfRecordId.get(d.source.id) ?? groupOfRecordId.get(d.target.id);
+      const maxR = group ? Math.max(...group.map((n) => currentNodeRadius(n.id))) : RECORD_RADIUS;
+      return LINK_DIAMETER_FACTOR * 2 * maxR;
+    }
+    // La fuerza 'link' (aristas reales complementa/reemplazado_por) compite
+    // directamente contra el layout radial por relevancia de clusterForce
+    // cuando dos registros resaltados además están conectados entre sí --
+    // sin esto, un par conectado queda pegado a su distancia fija sin
+    // importar cuál de los dos es más relevante, rompiendo la lectura "más
+    // cerca = más relevante". d3 recalcula la fuerza/distancia de cada
+    // arista en cuanto se le pasa un nuevo accessor, así que aflojar la
+    // fuerza (y recalcular la distancia, que depende del radio actual) para
+    // los pares resaltados-y-aislados es más limpio que competir subiendo la
+    // fuerza de clusterForce hasta desestabilizar la simulación.
+    function updateLinkForces() {
+      simulation?.force('link')
+        ?.strength((d) =>
+          (isolated && searchHighlightIds.has(d.source.id) && searchHighlightIds.has(d.target.id))
+            ? 0.02
+            : (d.relation === 'reemplazado_por' ? 0.5 : 0.9))
+        .distance(complementaLinkDistance);
+    }
+    function setIsolated(v) { isolated = v; updateLinkForces(); }
+    // Miembros de un grupo "complementa" que de verdad importan ahora mismo:
+    // en modo aislado, solo los que quedaron dentro del cluster resaltado
+    // (2026-09-21, corrige que no todos los clusters se encerraban en su
+    // círculo -- si el grupo tenía 3 miembros y solo 2 matchearon la
+    // búsqueda, antes exigía que los 3 estuvieran resaltados para dibujar
+    // algo; ahora encierra el subconjunto visible, que es lo que de verdad
+    // se ve conectado en pantalla). Fuera de modo aislado el círculo no se
+    // muestra igual, así que no importa qué devuelva.
+    function hullVisibleMembers(nodesArr) {
+      if (!isolated) return nodesArr;
+      const visible = nodesArr.filter((n) => searchHighlightIds.has(n.id));
+      return visible.length >= 2 ? visible : [];
+    }
+
     function applyRecordHighlight() {
       if (searchHighlightIds.size === 0) {
-        nodeSel.style('opacity', 1);
-        nodeSel.select('circle').classed('gph-circle-highlight', false).style('fill', null).style('stroke', null).attr('r', RECORD_RADIUS);
-        linkSel.style('opacity', 1);
-        linkLabelSel.style('opacity', 1);
+        isolated = false;
+        updateLinkForces();
+        nodeSel.style('display', null).style('opacity', 1);
+        nodeSel.select('circle')
+          .classed('gph-circle-highlight', false).classed('gph-circle-glow', false)
+          .style('fill', null).style('stroke', null).style('--gph-glow', null)
+          .attr('r', RECORD_RADIUS);
+        linkSel.style('display', null).style('opacity', 1);
+        linkLabelSel.style('display', null).style('opacity', 1);
+        hullSel.style('display', 'none');
         return;
       }
       const tOf = relevanceTOf();
-      nodeSel.style('opacity', (d) => (searchHighlightIds.has(d.id) ? 1 : 0.35));
-      nodeSel.select('circle')
-        .classed('gph-circle-highlight', (d) => searchHighlightIds.has(d.id))
-        // Color sólido (2026-09-19, portado desde D:\MyBrain, corrección del
-        // usuario: el fill mezclado al 30% con transparente diluía hasta el
-        // rojo más puro contra el fondo oscuro, viéndose como un tono
-        // intermedio de la escala en vez del extremo real -- ahora fill y
-        // stroke son el mismo color sólido devuelto por relevanceColor.
-        .style('fill', (d) => (searchHighlightIds.has(d.id) ? relevanceColor(tOf(d.id)) : null))
-        .style('stroke', (d) => (searchHighlightIds.has(d.id) ? relevanceColor(tOf(d.id)) : null))
-        // Diámetro = 10·√t (2026-09-19, portado desde D:\MyBrain, pedido del
-        // usuario: score=1/100% -> diámetro=10, igual al tamaño normal de un
-        // punto -- por debajo de 100% de relevancia RELATIVA al resultado
-        // actual, se ve más chico en proporción a la raíz cuadrada del
-        // score, no linealmente), con piso de diámetro 1 (t=0 exacto daba
-        // diámetro 0, un punto invisible e imposible de clickear). Radio =
-        // diámetro/2. Los no resaltados vuelven a RECORD_RADIUS.
-        .attr('r', (d) => (searchHighlightIds.has(d.id) ? Math.max(0.5, 5 * Math.sqrt(tOf(d.id))) : RECORD_RADIUS));
-      linkSel.style('opacity', 0.35);
-      linkLabelSel.style('opacity', 0.35);
+      const anchorId = mostRelevantHighlightedId();
+      updateLinkForces();
+      if (isolated) {
+        // Cluster aislado: todo lo no resaltado se oculta (no solo atenúa),
+        // igual que las aristas que no conectan dos registros resaltados
+        // entre sí -- lo único visible es el cluster de la búsqueda.
+        nodeSel.style('display', (d) => (searchHighlightIds.has(d.id) ? null : 'none')).style('opacity', 1);
+        nodeSel.select('circle')
+          .classed('gph-circle-highlight', (d) => searchHighlightIds.has(d.id))
+          .classed('gph-circle-glow', false)
+          .style('fill', (d) => (searchHighlightIds.has(d.id) ? relevanceColor(tOf(d.id)) : null))
+          .style('stroke', (d) => (searchHighlightIds.has(d.id) ? relevanceColor(tOf(d.id)) : null))
+          .style('--gph-glow', null)
+          // Diámetro = 10·√t, piso de diámetro 1 (ver commit previo: t=0
+          // exacto daba diámetro 0, invisible e imposible de clickear).
+          .attr('r', (d) => (searchHighlightIds.has(d.id) ? Math.max(0.5, 5 * Math.sqrt(tOf(d.id))) : RECORD_RADIUS));
+        const bothMatched = (d) => searchHighlightIds.has(d.source.id) && searchHighlightIds.has(d.target.id);
+        linkSel.style('display', (d) => (bothMatched(d) ? null : 'none')).style('opacity', 1);
+        linkLabelSel.style('display', (d) => (bothMatched(d) ? null : 'none')).style('opacity', 1);
+        // Solo el círculo de un grupo "complementa" con TODOS sus miembros
+        // dentro del resultado -- si solo uno de dos quedó en el cluster
+        // resaltado, encerrar igual dibujaría el círculo estirado hacia un
+        // nodo oculto, más confuso que útil.
+        hullSel.style('display', (nodesArr) => (hullVisibleMembers(nodesArr).length >= 2 ? null : 'none'));
+      } else {
+        // Roto (grafo completo visible de nuevo): color de relevancia se
+        // conserva, pero el tamaño vuelve a ser el estándar para todos los
+        // resaltados -- el más relevante gana el glow pulsante en su lugar
+        // (no reduce_motion: ver gph-pulse-glow, respeta prefers-reduced-motion).
+        nodeSel.style('display', null).style('opacity', (d) => (searchHighlightIds.has(d.id) ? 1 : 0.35));
+        nodeSel.select('circle')
+          .classed('gph-circle-highlight', (d) => searchHighlightIds.has(d.id))
+          .classed('gph-circle-glow', (d) => d.id === anchorId && !prefersReducedMotion())
+          .style('fill', (d) => (searchHighlightIds.has(d.id) ? relevanceColor(tOf(d.id)) : null))
+          .style('stroke', (d) => (searchHighlightIds.has(d.id) ? relevanceColor(tOf(d.id)) : null))
+          .style('--gph-glow', (d) => (d.id === anchorId ? relevanceColor(tOf(d.id)) : null))
+          .attr('r', RECORD_RADIUS);
+        linkSel.style('display', null).style('opacity', 0.35);
+        linkLabelSel.style('display', null).style('opacity', 0.35);
+        hullSel.style('display', 'none');
+      }
     }
     window.__reapplyGraphRelevance = applyRecordHighlight;
 
@@ -2286,11 +2511,10 @@ function section(id, title, hint, bodyHtml) {
       const screenR = actualR * t.k * scaleY;
       const preview = (d.claim || '').slice(0, 100);
       const memLabel = d.memories && d.memories.length ? ` [${d.memories.join(', ')}]` : '';
-      // Score exacto además del color (2026-09-19, portado desde D:\MyBrain):
-      // el color solo da una lectura relativa/aproximada, para el número
-      // real hay que pasar el mouse -- "garantizado" cubre tanto match por
-      // nombre de recuerdo como un "complementa a" reinyectado, ninguno
-      // tiene score real.
+      // Score exacto además del color (2026-09-19): el color solo da una
+      // lectura relativa/aproximada, para el número real hay que pasar el
+      // mouse -- "garantizado" cubre tanto match por nombre de recuerdo
+      // como un "complementa a" reinyectado, ninguno tiene score real.
       const scoreLabel = searchHighlightIds.has(d.id)
         ? (searchHighlightIds.get(d.id) == null ? ' (relevancia: garantizado)' : ` (relevancia: ${searchHighlightIds.get(d.id).toFixed(4)})`)
         : '';
@@ -2356,22 +2580,28 @@ function section(id, title, hint, bodyHtml) {
         .attr('x2', (d) => d.target.x).attr('y2', (d) => d.target.y);
       linkLabelSel.attr('x', (d) => (d.source.x + d.target.x) / 2).attr('y', (d) => (d.source.y + d.target.y) / 2 - 6);
       nodeSel.attr('transform', (d) => `translate(${d.x},${d.y})`);
+      hullSel.each(function (nodesArr) {
+        const members = hullVisibleMembers(nodesArr);
+        if (members.length < 2) return; // oculto por style() de todos modos, no hace falta posicionarlo
+        const cx = members.reduce((s, n) => s + n.x, 0) / members.length;
+        const cy = members.reduce((s, n) => s + n.y, 0) / members.length;
+        const r = Math.max(...members.map((n) => Math.hypot(n.x - cx, n.y - cy) + currentNodeRadius(n.id))) + 10;
+        d3.select(this).attr('cx', cx).attr('cy', cy).attr('r', r);
+      });
       applyFollow();
     }
 
-    // Fuerza de clustering (2026-09-19, pedido del usuario tras notar que con
+    // Fuerza de clustering (2026-09-19, pedido de Oscar tras notar que con
     // 916 puntos un resultado de búsqueda resaltado en rojo era casi
-    // imposible de ubicar a simple vista): atrae los registros actualmente
-    // resaltados (searchHighlightIds) hacia el registro MÁS RELEVANTE del
-    // grupo, no hacia un centroide promedio (2026-09-19, portado desde
-    // D:\MyBrain, ajustado a pedido del usuario: el "centro" del cluster
-    // debe ser el registro más opcionado, no un punto vacío en el medio) --
-    // ese registro ancla ya que no se atrae a sí mismo, y todos los demás
-    // orbitan hacia su posición real. "Más relevante" usa el mismo t que el
-    // color (relevanceTOf), pero ver mostRelevantHighlightedId abajo para el
-    // criterio real de desempate (el score real gana siempre sobre un
-    // "garantizado", no es un empate simple en t=1). No es un force()
-    // genérico de d3 (no usa .initialize()), cierra directamente sobre
+    // imposible de ubicar a simple vista): agrupa los registros actualmente
+    // resaltados (searchHighlightIds) alrededor del registro MÁS RELEVANTE
+    // del grupo, no de un centroide promedio (2026-09-19, ajustado a pedido
+    // de Oscar: el "centro" del cluster debe ser el registro más opcionado).
+    // "Más relevante" usa el mismo t que el color (relevanceTOf), pero ver
+    // mostRelevantHighlightedId abajo para el criterio real de desempate
+    // (el score real gana siempre sobre un "garantizado", no es un empate
+    // simple en t=1). No es un force() genérico de d3 (no usa
+    // .initialize()), cierra directamente sobre
     // `records`/searchHighlightIds porque es más simple y evita depender de
     // simulation.nodes() quedando desincronizado entre renders. No hace
     // nada si hay <2 resaltados (un solo punto no tiene grupo que valga la
@@ -2380,9 +2610,10 @@ function section(id, title, hint, bodyHtml) {
     function mostRelevantHighlightedId() {
       // Prioriza el score REAL más alto -- probado en vivo, no en teoría: un
       // "garantizado" (match por nombre de recuerdo, empata en t=1 con el
-      // color) NO debería ganarle al ganador de verdad del ranking solo por
-      // haberse insertado primero. Solo cae a un "garantizado" (el primero
-      // insertado) si NO hay ningún score real en el grupo.
+      // color) NO debería ganarle al ganador de verdad del ranking (ej.
+      // #314 con 0.9180, el que de hecho cita la respuesta sintetizada)
+      // solo por haberse insertado primero. Solo cae a un "garantizado"
+      // (el primero insertado) si NO hay ningún score real en el grupo.
       let bestId = null, best = -Infinity;
       let firstGuaranteedId = null;
       for (const [id, v] of searchHighlightIds) {
@@ -2391,18 +2622,47 @@ function section(id, title, hint, bodyHtml) {
       }
       return bestId ?? firstGuaranteedId;
     }
+    // Radial por relevancia (2026-09-20, pedido de Oscar: el registro más
+    // opcionado debe quedar en el CENTRO del cluster, y la cercanía de cada
+    // uno de los demás a ese centro debe depender de su propio nivel de
+    // relevancia, no solo agruparse todos parejo alrededor). Antes era una
+    // atracción uniforme hacia el ancla (misma fuerza para todos, sin
+    // importar qué tan relevante era cada uno) -- ahora cada registro no-
+    // ancla persigue una distancia OBJETIVO al ancla según su t (1 = más
+    // relevante -> CLUSTER_MIN_R, 0 = menos relevante -> CLUSTER_MAX_R), el
+    // mismo patrón que d3.forceRadial pero centrado en el ancla (que se
+    // mueve) en vez de en un punto fijo. El ancla en sí no persigue una
+    // distancia (es el centro por definición), en cambio se recentra
+    // suavemente hacia el centroide de los demás -- sin esto quedaría
+    // desplazada hacia un borde del grupo en vez de en el medio, porque
+    // ninguna otra fuerza la empuja a quedar rodeada por parejo.
+    const CLUSTER_MIN_R = 3 * RECORD_RADIUS, CLUSTER_MAX_R = CLUSTER_MIN_R + 140;
     function clusterForce(alpha) {
+      // Solo aplica en modo aislado (2026-09-20): es el layout de "la vista
+      // de cluster" -- tras romperla con Encuadre, los nodos ya volvieron a
+      // su tamaño estándar/posiciones libres, seguir forzando el radial acá
+      // solo estorbaría contra el resto del grafo ya visible de nuevo.
+      if (!isolated) return;
       if (searchHighlightIds.size < 2) return;
       const matched = records.filter((n) => searchHighlightIds.has(n.id));
       if (matched.length < 2) return;
       const anchorId = mostRelevantHighlightedId();
       const anchor = matched.find((n) => n.id === anchorId) ?? matched[0];
+      const others = matched.filter((n) => n.id !== anchor.id);
+      const tOf = relevanceTOf();
       const strength = 0.25;
-      for (const n of matched) {
-        if (n.id === anchor.id) continue;
-        n.vx -= (n.x - anchor.x) * strength * alpha;
-        n.vy -= (n.y - anchor.y) * strength * alpha;
+      for (const n of others) {
+        const desiredDist = CLUSTER_MAX_R - tOf(n.id) * (CLUSTER_MAX_R - CLUSTER_MIN_R);
+        const dx = n.x - anchor.x, dy = n.y - anchor.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+        const diff = (dist - desiredDist) / dist;
+        n.vx -= dx * diff * strength * alpha;
+        n.vy -= dy * diff * strength * alpha;
       }
+      const cx = others.reduce((s, n) => s + n.x, 0) / others.length;
+      const cy = others.reduce((s, n) => s + n.y, 0) / others.length;
+      anchor.vx -= (anchor.x - cx) * strength * alpha;
+      anchor.vy -= (anchor.y - cy) * strength * alpha;
     }
 
     // Cargas/distancias mucho más chicas que en la vista por recuerdos: 900+
@@ -2411,11 +2671,14 @@ function section(id, title, hint, bodyHtml) {
     // decenas de nodos con peso visual real (radio variable), acá todos
     // pesan igual (RECORD_RADIUS fijo).
     simulation = d3.forceSimulation(records)
-      .force('link', d3.forceLink(links).id((d) => d.id).distance(36).strength(0.5))
+      .force('link', d3.forceLink(links).id((d) => d.id)
+        .distance(complementaLinkDistance)
+        .strength((d) => (d.relation === 'reemplazado_por' ? 0.5 : 0.9)))
       .force('charge', d3.forceManyBody().strength(-16))
       .force('center', d3.forceCenter(W / 2, H / 2))
       .force('collide', d3.forceCollide(RECORD_RADIUS + 3))
       .force('memoryCluster', memoryClusterForce)
+      .force('complementaCohesion', complementaCohesionForce)
       .force('cluster', clusterForce)
       .on('tick', renderTick)
       .on('end', () => {
@@ -2438,6 +2701,7 @@ function section(id, title, hint, bodyHtml) {
       setHighlight: () => {}, // el resaltado por clic de vecinos no aplica en esta vista
       applyRecordHighlight,
       followRecordIds,
+      setIsolated,
     };
     sec.querySelector('#graph-show-labels').dispatchEvent(new Event('change'));
     applyRecordHighlight();
@@ -2629,6 +2893,11 @@ function section(id, title, hint, bodyHtml) {
       }
     }
     searchHighlightIds = scoreById;
+    // Aislar en cluster (portado desde D:\MyBrain) solo para búsqueda de
+    // texto libre con resultados -- la búsqueda por #id exacto sigue con el
+    // dim clásico (no hay relevancia real que aislar en un puñado de ids
+    // pedidos a mano).
+    graph?.setIsolated?.(!isIdSearch && scoreById.size > 0);
     graph?.applyRecordHighlight?.();
     if (scoreById.size === 0) return;
     graph?.followRecordIds?.([...scoreById.keys()], { reheat: !isIdSearch });
@@ -2676,7 +2945,19 @@ function section(id, title, hint, bodyHtml) {
   });
 
   sec.querySelector('#graph-run').addEventListener('click', loadGraph);
-  sec.querySelector('#graph-fit').addEventListener('click', () => fitToView(true));
+  sec.querySelector('#graph-fit').addEventListener('click', () => {
+    // Rompe el aislamiento del cluster de búsqueda (portado desde
+    // D:\MyBrain): si "Ir" dejó el grafo aislado en el cluster de
+    // resultados, "Encuadre" es la señal de "ya vi el cluster, ahora
+    // vuelve a mostrarme todo" -- vuelve a mostrar el grafo completo antes
+    // de encuadrar (si no había aislamiento activo, esto es un no-op
+    // inocuo).
+    if (viewMode === 'records' && searchHighlightIds.size > 0) {
+      graph?.setIsolated?.(false);
+      graph?.applyRecordHighlight?.();
+    }
+    fitToView(true);
+  });
   sec.querySelector('#graph-show-labels').addEventListener('change', (e) => {
     graph?.linkLabelSel.style('display', e.target.checked ? null : 'none');
   });

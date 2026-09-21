@@ -5,6 +5,45 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.9.1 (2026-09-21)
+
+Sin migración de `schema.sql`. Cierra el hueco de recuerdos adicionales que
+v0.9.0 había dejado a medias (solo `remember.mjs`/`remember-batch.mjs`, no
+los servidores MCP), y trae varios ajustes de grafo que se habían quedado
+sin portar de sesiones anteriores.
+
+- **Grafo (vista por registros): aislar cluster de búsqueda.** "Ir" sobre
+  una búsqueda de texto libre ahora oculta por completo lo que no coincide
+  (antes solo atenuaba), dejando visible solo el cluster de resultados,
+  coloreado y dimensionado por relevancia real (layout radial: el registro
+  más relevante en el centro, los demás a distancia proporcional a su
+  score). "Encuadre" rompe ese aislamiento y vuelve a mostrar el grafo
+  completo; el registro más relevante conserva su color pero pasa a un
+  glow pulsante en vez de tamaño variable, para seguir distinguiéndose sin
+  destacar por tamaño entre 1000+ puntos (respeta `prefers-reduced-motion`).
+- **Grafo: clusters visuales para relaciones "complementa".** Un grupo de
+  registros que se complementan entre sí ahora queda encerrado en un
+  círculo de fondo compacto (2.5x el diámetro del miembro más grande del
+  grupo, con un tope duro de cohesión, no solo un objetivo blando de
+  fuerza) en vez de mostrarse como líneas sueltas de longitud arbitraria
+  sin relación con el tamaño real de los puntos. Los círculos solo
+  aparecen en modo aislado (tras "Ir"), nunca en Encuadre; el texto
+  "complementa" se quitó de la línea (el círculo ya lo comunica).
+- **Recuerdos adicionales en los servidores MCP** (`deno-deploy/mcp-server/`
+  y `supabase/functions/mcp-server/`): `classifyAdditionalMemories` y
+  `literalMentionCandidates`/`detectNodeMentions` portados desde
+  `remember.mjs`, cerrando el hueco de v0.9.0 -- un registro creado vía MCP
+  (móvil, otro cliente sin CLI local) ahora también puede quedar
+  co-etiquetado a más de un recuerdo.
+- **Aviso de fusión de contexto cruzado**, en los cuatro caminos de
+  escritura (`remember.mjs`, `remember-batch.mjs`, y ambos servidores
+  MCP): si un `claim` nuevo cita literalmente "#NNN" de un registro
+  vigente sin `--supersedes`/`--complements`, avisa (no bloquea) para
+  revisar si se trajo contenido de ese registro hacia el texto nuevo en
+  vez de solo citarlo -- previene que un registro nuevo repita, sin
+  dejarlo trazable, información que ya vive en otro registro del mismo
+  recuerdo.
+
 ## v0.9.0 (2026-09-21)
 
 Sin migración de `schema.sql`. Un registro puede pertenecer genuinamente a

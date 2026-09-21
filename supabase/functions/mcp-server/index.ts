@@ -483,6 +483,164 @@ Responde SOLO con JSON, sin texto adicional:
     .filter((a: string) => !existingLower.has(a.toLowerCase()));
 }
 
+// Recuerdos adicionales (portado desde D:\MyBrain scripts/db/lib/classify-memory.mjs
+// y literal-mention-candidates.mjs, 2026-09-21): classifyNode (arriba) es de un
+// solo recuerdo por diseno -- un registro genuinamente sobre dos asuntos a la vez
+// (ej. una persona Y la institucion de la que participa) quedaba tageado solo
+// bajo el primero, aunque el segundo ya estuviera entre los candidatos de
+// memories_similar() con similitud alta. Reusa el MISMO candidate-list, sin
+// ninguna busqueda nueva -- solo le pregunta al LLM, aparte, "el registro
+// pertenece TAMBIEN a alguno de estos otros?". Fail-open: cualquier fallo del
+// clasificador no bloquea nada, el registro sigue solo con lo que ya tenia.
+async function classifyAdditionalMemories(
+  newClaim: string,
+  primaryNodes: string,
+  candidates: { memory_name: string; examples: string[]; similarity: number | null; aliases?: string[]; matchedOn?: string }[],
+): Promise<{ node: string; confidence: number; reasoning: string }[]> {
+  if (!OLLAMA_API_KEY) return [];
+  if (candidates.length === 0) return [];
+
+  const candidateList = candidates
+    .map((c) => {
+      const aliasLine = c.aliases?.length ? `, alias: ${c.aliases.join(', ')}` : '';
+      const signal = c.matchedOn
+        ? `mencionado literalmente en el texto como "${c.matchedOn}"`
+        : `similitud ${(c.similarity ?? 0).toFixed(2)}`;
+      return `  "${c.memory_name}"${aliasLine} (${signal}), ejemplos:\n${c.examples.map((ex) => `      - "${ex}"`).join('\n')}`;
+    })
+    .join('\n');
+  const prompt = `Eres un clasificador que decide si un registro nuevo, dentro de un segundo cerebro \
+personal, pertenece TAMBIÉN a recuerdos (tema/entidad) además del/de los que ya se le \
+asignaron. Un registro puede ser genuinamente sobre más de un asunto a la vez (ej. un hecho \
+que describe tanto a una persona como a la institución/lugar del que participa) -- eso NO es \
+lo mismo que un tema vagamente relacionado o solo mencionado de pasada. Un candidato \
+"mencionado literalmente" es una señal fuerte a favor (el texto lo nombra por su propio \
+nombre o alias), pero igual debe cumplir el mismo criterio real de pertenencia -- nombrar a \
+alguien de pasada no basta si el registro no es genuinamente también sobre esa persona/entidad.
+
+registro nuevo: "${newClaim}"
+recuerdo(s) ya asignado(s): ${primaryNodes}
+
+Otros recuerdos existentes parecidos (candidatos a recuerdo ADICIONAL):
+${candidateList}
+
+Responde SOLO con JSON, sin texto adicional, con esta forma exacta:
+{"additional": [{"node": "nombre exacto del candidato", "belongs": true o false, "confidence": número entre 0 y 1, "reasoning": "una oración breve"}, ...]}
+
+Incluye una entrada por cada candidato de la lista de arriba, en el mismo orden. "belongs": \
+true SOLO si el registro es genuina y directamente sobre ese segundo asunto/entidad también \
+(no basta con que lo mencione de pasada, ni con que el tema esté relacionado en abstracto). \
+RECHAZA explícitamente (belongs: false) cualquier candidato que sea un recuerdo "paraguas" \
+amplio sobre la vida o identidad general de la persona (ej. "usuario", "vida-personal", o \
+equivalente) -- casi cualquier hecho personal encaja ahí en abstracto, así que etiquetarlo \
+como adicional cada vez lo diluiría hasta volverlo inútil; ese tipo de recuerdo paraguas solo \
+debería ganar como recuerdo PRIMARIO, nunca como adicional. Reserva "belongs: true" para \
+entidades específicas y acotadas (una persona, un lugar, una institución, un proyecto) que el \
+registro trata de forma directa. Si no estás seguro, baja la confidence en vez de forzar true.`;
+
+  let res: Response;
+  try {
+    res = await fetch('https://ollama.com/api/generate', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${OLLAMA_API_KEY}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ model: NODE_CLASSIFIER_MODEL, prompt, format: 'json', stream: false }),
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch {
+    return [];
+  }
+
+  if (!res.ok) return [];
+
+  let parsed: any;
+  try {
+    const { response } = await res.json();
+    const cleaned = response.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    parsed = JSON.parse(cleaned);
+  } catch {
+    return [];
+  }
+
+  if (!Array.isArray(parsed.additional)) return [];
+
+  const validNames = new Set(candidates.map((c) => c.memory_name));
+  const result: { node: string; confidence: number; reasoning: string }[] = [];
+  for (const item of parsed.additional) {
+    const node = typeof item?.node === 'string' ? item.node.trim() : '';
+    const confidence = Number(item?.confidence);
+    if (!validNames.has(node) || item?.belongs !== true || !Number.isFinite(confidence) || confidence < 0 || confidence > 1) continue;
+    result.push({ node, confidence, reasoning: typeof item.reasoning === 'string' ? item.reasoning : '' });
+  }
+  return result;
+}
+
+// Candidatos por mencion literal (portado desde D:\MyBrain
+// scripts/db/lib/detect-memory-mentions.mjs + literal-mention-candidates.mjs,
+// 2026-09-21): memories_similar() es puramente por embedding, puede no traer
+// un recuerdo que el texto SI nombra explicito si su contenido existente es
+// tematicamente lejano. Coincidencia por palabra completa, insensible a
+// mayusculas/acentos, sin embeddings ni LLM -- misma logica exacta que el
+// .mjs, portada 1:1.
+const MENTION_MIN_LENGTH = 3;
+function normalizeForMention(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+function escapeRegexForMention(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function detectNodeMentions(
+  claimText: string,
+  excludeNodeNames: string[],
+  allNodes: { name: string; aliases: string[] }[],
+): { node: string; matchedOn: string }[] {
+  const normalizedClaim = normalizeForMention(claimText);
+  const excludeSet = new Set(excludeNodeNames.map(normalizeForMention));
+  const found: { node: string; matchedOn: string }[] = [];
+
+  for (const node of allNodes) {
+    if (excludeSet.has(normalizeForMention(node.name))) continue;
+    const candidates = [node.name, ...(node.aliases ?? [])];
+    for (const candidate of candidates) {
+      if (!candidate || candidate.length < MENTION_MIN_LENGTH) continue;
+      const pattern = new RegExp(`\\b${escapeRegexForMention(normalizeForMention(candidate))}\\b`, 'i');
+      if (pattern.test(normalizedClaim)) {
+        found.push({ node: node.name, matchedOn: candidate });
+        break;
+      }
+    }
+  }
+  return found;
+}
+
+async function literalMentionCandidates(
+  claim: string,
+  excludeNames: string[],
+  allNodeRows: { name: string; aliases: string[] }[],
+  examplesPerNode = 3,
+): Promise<{ memory_name: string; examples: string[]; similarity: null; aliases: string[]; matchedOn: string }[]> {
+  const mentions = detectNodeMentions(claim, excludeNames, allNodeRows);
+  const result = [];
+  for (const m of mentions) {
+    const { data: exampleRows } = await supabase
+      .from('record_memories')
+      .select('records!inner(claim, date, valid_until)')
+      .eq('memory_name', m.node)
+      .is('records.valid_until', null)
+      .order('records(date)', { ascending: false })
+      .limit(examplesPerNode);
+    const examples = (exampleRows ?? []).map((r: any) => r.records.claim);
+    const nodeRow = allNodeRows.find((n) => n.name === m.node);
+    result.push({
+      memory_name: m.node,
+      examples,
+      similarity: null,
+      aliases: nodeRow?.aliases ?? [],
+      matchedOn: m.matchedOn,
+    });
+  }
+  return result;
+}
+
 const mcp = new McpServer({
   name: 'segundo-cerebro-mcp',
   version: '1.0.0',
@@ -786,6 +944,40 @@ mcp.tool('remember', {
         ` en vez de ${requestedNodes.map((n) => `"${n}"`).join(', ')}, se respeta tu elección explícita.)`;
     }
 
+    // Recuerdos adicionales + candidatos por mencion literal (portado desde
+    // D:\MyBrain remember.mjs, 2026-09-21): reusa el candidate-list de
+    // memories_similar() ya calculado arriba, suma los recuerdos vigentes
+    // mencionados literalmente en el texto que memories_similar() pudo no
+    // traer, y le pregunta al clasificador si el registro pertenece TAMBIEN a
+    // alguno de ellos ademas del recuerdo primario. Los candidatos que puede
+    // agregar son siempre recuerdos YA EXISTENTES, no interfiere con el
+    // chequeo de "crea exactamente un recuerdo nuevo" de aliases más abajo.
+    let additionalAdvisory = '';
+    const { data: allNodeRowsForAdditional } = await supabase
+      .from('memories')
+      .select('name, aliases')
+      .is('merged_into', null)
+      .eq('is_meta', false);
+    const literalCandidates = (
+      await literalMentionCandidates(args.claim, requestedNodes, allNodeRowsForAdditional ?? [])
+    ).filter((c: { memory_name: string }) => !nodeCandidates.some((n: { memory_name: string }) => n.memory_name === c.memory_name));
+    const remainingNodeCandidates = [
+      ...nodeCandidates.filter((c: { memory_name: string }) => !requestedNodes.includes(c.memory_name)),
+      ...literalCandidates,
+    ];
+    if (remainingNodeCandidates.length > 0) {
+      const additional = await classifyAdditionalMemories(args.claim, requestedNodes.join(', '), remainingNodeCandidates);
+      const addedAdvisories: string[] = [];
+      for (const item of additional) {
+        if (item.confidence < NODE_CLASSIFIER_CONFIDENCE_THRESHOLD) continue;
+        requestedNodes.push(item.node);
+        addedAdvisories.push(`"${item.node}" (confianza ${item.confidence.toFixed(2)}: ${item.reasoning})`);
+      }
+      if (addedAdvisories.length > 0) {
+        additionalAdvisory = `(recuerdo(s) adicional(es) auto-detectado(s) por ${NODE_CLASSIFIER_MODEL}: ${addedAdvisories.join('; ')})`;
+      }
+    }
+
     // Alias explícitos para el recuerdo nuevo (2026-09-18, portado desde
     // D:\MyBrain scripts/db/remember.mjs): solo válido junto con createMemory,
     // y solo si esta llamada crea exactamente UN recuerdo nuevo -- con varios
@@ -871,6 +1063,29 @@ mcp.tool('remember', {
       }
     }
 
+    // Aviso de fusión de contexto cruzado (portado desde D:\MyBrain, ver
+    // MEMORY.md y remember.mjs/remember-batch.mjs, caso #872): si el claim
+    // cita literalmente "#NNN" de un registro vigente que no está cubierto
+    // por supersedes, avisa (nunca bloquea, hay citas legítimas).
+    let crossRefAdvisory = '';
+    const mentionedIds = [...new Set([...args.claim.matchAll(/#(\d+)/g)].map((m) => Number(m[1])))];
+    if (mentionedIds.length > 0) {
+      const uncovered = mentionedIds.filter((id) => !supersedesIds.includes(id));
+      if (uncovered.length > 0) {
+        const { data: liveRows } = await supabase
+          .from('records')
+          .select('id')
+          .in('id', uncovered)
+          .is('valid_until', null);
+        const liveIds = (liveRows ?? []).map((r: any) => r.id);
+        if (liveIds.length > 0) {
+          crossRefAdvisory =
+            `(aviso: el claim menciona ${liveIds.map((id: number) => `#${id}`).join(', ')} -- si es solo una cita/referencia, ignora esto; ` +
+            `si trajiste contenido de ese registro hacia este texto, revisa si de verdad pertenece aqui, memory-status.mjs ya sintetiza juntos los registros del mismo recuerdo, no hace falta repetirlo.)`;
+        }
+      }
+    }
+
     const { data: inserted, error } = await supabase
       .from('records')
       .insert({
@@ -944,6 +1159,8 @@ mcp.tool('remember', {
     if (resolvedNodes.length > 0) text += `\nrecuerdo(s): ${resolvedNodes.join(', ')}`;
     for (const advisory of linkAdvisories) text += `\n${advisory}`;
     if (nodeAdvisory) text += `\n${nodeAdvisory}`;
+    if (additionalAdvisory) text += `\n${additionalAdvisory}`;
+    if (crossRefAdvisory) text += `\n${crossRefAdvisory}`;
     for (const advisory of aliasAdvisories) text += `\n${advisory}`;
     if (supersedesIds.length > 0) text += `\nReemplazó a #${supersedesIds.join(', #')}.`;
     else if (similar.length > 0 && distinct) text += `\nConfirmado como distinto pese al parecido.`;

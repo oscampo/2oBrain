@@ -442,6 +442,32 @@ for (const name of requestedNodes) {
   }
 }
 
+// Aviso de fusión de contexto cruzado (portado desde D:\MyBrain, caso #872,
+// ver MEMORY.md): si el claim menciona literalmente "#NNN" de un registro
+// vigente que no está cubierto por --supersedes/--complements, avisa
+// (nunca bloquea, hay citas legítimas como "...sobre el objetivo 1
+// (#872)"). memory-status.mjs ya sintetiza juntos los registros del mismo
+// recuerdo al leer, no hace falta repetir su contenido al escribir.
+const mentionedIds = [...new Set([...args.claim.matchAll(/#(\d+)/g)].map((m) => Number(m[1])))];
+if (mentionedIds.length > 0) {
+  const covered = new Set([...supersedesIds, ...(complementsId !== null ? [complementsId] : [])]);
+  const uncovered = mentionedIds.filter((id) => !covered.has(id));
+  if (uncovered.length > 0) {
+    const { rows: liveRows } = await client.query(
+      `select id from records where id = any($1::bigint[]) and valid_until is null`,
+      [uncovered],
+    );
+    const liveIds = liveRows.map((r) => Number(r.id));
+    if (liveIds.length > 0) {
+      console.error(
+        `(aviso: el claim menciona ${liveIds.map((id) => `#${id}`).join(', ')} -- si es solo una cita/referencia, ignora esto; ` +
+          `si trajiste contenido de ese registro hacia este texto, revisa si de verdad pertenece aquí, memory-status.mjs ya sintetiza juntos los registros del mismo recuerdo, no hace falta repetirlo. ` +
+          `Si es una relación real, --complements <id> lo deja trazable en vez de fundido en la prosa.)`,
+      );
+    }
+  }
+}
+
 const { rows } = await client.query(
   `insert into records (claim, kind, date, source, confidence, embedding, complements)
    values ($1, $2, $3, $4, $5, $6, $7)

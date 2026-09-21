@@ -301,6 +301,29 @@ for (let i = 0; i < records.length; i++) {
   }
   if (nodeFailed) continue;
 
+  // Aviso de fusión de contexto cruzado (portado desde D:\MyBrain, caso
+  // #872, ver MEMORY.md): mismo chequeo que remember.mjs, ver ahí el
+  // porqué. remember-batch.mjs no soporta --complements, así que aquí lo
+  // único "cubierto" es supersedesIds.
+  const mentionedIds = [...new Set([...f.claim.matchAll(/#(\d+)/g)].map((m) => Number(m[1])))];
+  if (mentionedIds.length > 0) {
+    const covered = new Set(supersedesIds);
+    const uncovered = mentionedIds.filter((id) => !covered.has(id));
+    if (uncovered.length > 0) {
+      const { rows: liveRows } = await client.query(
+        `select id from records where id = any($1::bigint[]) and valid_until is null`,
+        [uncovered],
+      );
+      const liveIds = liveRows.map((r) => Number(r.id));
+      if (liveIds.length > 0) {
+        console.error(
+          `  (aviso: el claim menciona ${liveIds.map((id) => `#${id}`).join(', ')} -- si es solo una cita/referencia, ignora esto; ` +
+            `si trajo contenido de ese registro hacia este texto, revisa si de verdad pertenece aquí, memory-status.mjs ya sintetiza juntos los registros del mismo recuerdo, no hace falta repetirlo.)`,
+        );
+      }
+    }
+  }
+
   const { rows } = await client.query(
     `insert into records (claim, kind, date, source, confidence, embedding)
      values ($1, $2, $3, $4, $5, $6)
