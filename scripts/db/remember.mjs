@@ -45,7 +45,8 @@ import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { embed, toVectorLiteral } from './lib/embed.mjs';
 import { classifyDuplicate, CLASSIFIER_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL, CLASSIFIER_PROVIDER } from './lib/classify-duplicate.mjs';
-import { classifyNode, CLASSIFIER_CONFIDENCE_THRESHOLD as NODE_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL as NODE_CLASSIFIER_MODEL, CLASSIFIER_PROVIDER as NODE_CLASSIFIER_PROVIDER } from './lib/classify-memory.mjs';
+import { classifyNode, classifyAdditionalMemories, CLASSIFIER_CONFIDENCE_THRESHOLD as NODE_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL as NODE_CLASSIFIER_MODEL, CLASSIFIER_PROVIDER as NODE_CLASSIFIER_PROVIDER } from './lib/classify-memory.mjs';
+import { literalMentionCandidates } from './lib/literal-mention-candidates.mjs';
 import { detectNodeMentions } from './lib/detect-memory-mentions.mjs';
 import { findAliasCollisions } from './lib/check-alias-collision.mjs';
 import { classifyMentionRelationHybrid, CLASSIFIER_CONFIDENCE_THRESHOLD as MENTION_CONFIDENCE_THRESHOLD } from './lib/classify-mention-relation.mjs';
@@ -301,6 +302,47 @@ if (requestedNodes.length === 0) {
       `sugiere ${nodeVerdict.verdict === 'new' ? `un recuerdo nuevo distinto: "${nodeVerdict.node}"` : `el recuerdo existente "${nodeVerdict.node}"`}` +
       ` en vez de ${requestedNodes.map((n) => `"${n}"`).join(', ')}, ${nodeVerdict.reasoning}. Se respeta tu elección explícita.)`,
   );
+}
+
+// Recuerdos adicionales (portado desde D:\MyBrain, pedido original de Oscar):
+// classifyNode (arriba) es de un solo recuerdo por diseño -- un registro
+// genuinamente sobre dos asuntos a la vez (ej. una persona Y la institución de
+// la que participa) quedaba tageado solo bajo el primero, aunque el segundo ya
+// estuviera entre los candidatos de memories_similar() con similitud alta.
+// Reusa el MISMO candidate-list que memories_similar() ya calculó arriba, sin
+// ninguna búsqueda nueva -- solo le pregunta al LLM, aparte, "¿el registro
+// pertenece TAMBIÉN a alguno de estos otros?". Mismo umbral de confianza que
+// el pick primario (NODE_CONFIDENCE_THRESHOLD) para no diluir un recuerdo
+// paraguas con falsos positivos. Fail-open: cualquier fallo del clasificador
+// no bloquea nada, el registro sigue solo con lo que ya tenía.
+//
+// Candidatos por mención literal (portado desde D:\MyBrain, cierre de
+// #1056/#872): memories_similar() es puramente por embedding, y puede no
+// traer un recuerdo que el texto SÍ nombra explícito si su contenido
+// existente es temáticamente lejano. Se suman los recuerdos que
+// detectNodeMentions encuentra por nombre/alias literal en el texto, aunque
+// no hayan rankeado por embedding -- mismo mecanismo barato que ya usa
+// Etapa 6 más abajo, pero acá alimenta el clasificador de recuerdos
+// adicionales en vez de solo crear un memory_link.
+const { rows: allNodeRowsForAdditional } = await client.query(
+  `select name, aliases from memories where merged_into is null and not is_meta`,
+);
+const literalCandidates = (
+  await literalMentionCandidates(client, args.claim, requestedNodes, allNodeRowsForAdditional)
+).filter((c) => !nodeCandidates.some((n) => n.memory_name === c.memory_name));
+const remainingNodeCandidates = [
+  ...nodeCandidates.filter((c) => !requestedNodes.includes(c.memory_name)),
+  ...literalCandidates,
+];
+if (remainingNodeCandidates.length > 0) {
+  const additional = await classifyAdditionalMemories(args.claim, requestedNodes.join(', '), remainingNodeCandidates);
+  for (const item of additional) {
+    if (item.confidence < NODE_CONFIDENCE_THRESHOLD) continue;
+    requestedNodes.push(item.node);
+    console.error(
+      `(recuerdo adicional auto-detectado por ${NODE_CLASSIFIER_MODEL}, confianza ${item.confidence.toFixed(2)}: "${item.node}" -- ${item.reasoning})`,
+    );
+  }
 }
 
 // --aliases (2026-09-02): un recuerdo nuevo nacía siempre con aliases vacío --

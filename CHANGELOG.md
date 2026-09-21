@@ -5,6 +5,37 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.9.0 (2026-09-21)
+
+Sin migración de `schema.sql`. Un registro puede pertenecer genuinamente a
+más de un recuerdo a la vez (ej. un hecho que describe tanto a una persona
+como a la institución/lugar del que participa) -- hasta ahora `remember.mjs`
+solo podía asignar un único recuerdo primario, aunque el segundo ya
+apareciera entre los candidatos por similitud de embedding. Salto de
+versión menor por ser un cambio de comportamiento visible en la escritura
+de registros para cualquier instalación existente, no solo un fix interno.
+
+- **`classifyAdditionalMemories`** (`lib/classify-memory.mjs`): segunda
+  pasada del clasificador, tras el pick primario de `classifyNode`, que
+  pregunta si el registro pertenece TAMBIÉN a otro de los candidatos que
+  `memories_similar()` ya trajo. Mismo umbral de confianza que el pick
+  primario para no diluir un recuerdo "paraguas" (ej. "usuario",
+  "vida-personal") con falsos positivos; ese tipo de recuerdo se rechaza
+  explícito como candidato adicional. Fail-open: cualquier fallo del
+  clasificador no bloquea el registro, sigue con lo que ya tenía.
+- **Candidatos por mención literal** (`lib/literal-mention-candidates.mjs`,
+  nuevo): `memories_similar()` es puramente por similitud de embedding y
+  puede no traer un recuerdo que el texto SÍ nombra explícito, si su
+  contenido existente es temáticamente lejano. Se suman como candidatos
+  adicionales los recuerdos que `detectNodeMentions` encuentra por
+  nombre/alias literal en el texto (mismo mecanismo barato, sin embeddings
+  ni LLM, que ya usaba Etapa 6 para crear `memory_links`), aunque no hayan
+  rankeado por embedding.
+- Wiring en `remember.mjs` y `remember-batch.mjs`: ambos caminos de
+  escritura (interactivo y por lote) corren la segunda pasada tras resolver
+  el recuerdo primario, y suman al registro cualquier recuerdo adicional
+  confirmado antes de continuar con la creación de enlaces (Etapa 6).
+
 ## v0.8.0 (2026-09-20)
 
 Sin migración de `schema.sql`. Grafo (vista por registros) y `search.mjs`

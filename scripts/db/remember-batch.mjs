@@ -29,7 +29,8 @@ import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { embed, toVectorLiteral } from './lib/embed.mjs';
 import { classifyDuplicate, CLASSIFIER_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL } from './lib/classify-duplicate.mjs';
-import { classifyNode, CLASSIFIER_CONFIDENCE_THRESHOLD as NODE_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL as NODE_CLASSIFIER_MODEL } from './lib/classify-memory.mjs';
+import { classifyNode, classifyAdditionalMemories, CLASSIFIER_CONFIDENCE_THRESHOLD as NODE_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL as NODE_CLASSIFIER_MODEL } from './lib/classify-memory.mjs';
+import { literalMentionCandidates } from './lib/literal-mention-candidates.mjs';
 import { detectNodeMentions } from './lib/detect-memory-mentions.mjs';
 import { classifyMentionRelationHybrid, CLASSIFIER_CONFIDENCE_THRESHOLD as MENTION_CONFIDENCE_THRESHOLD } from './lib/classify-mention-relation.mjs';
 import { formatFactsBlock } from './lib/format-records.mjs';
@@ -256,6 +257,30 @@ for (let i = 0; i < records.length; i++) {
         `${nodeVerdict.verdict === 'new' ? `un recuerdo nuevo distinto: "${nodeVerdict.node}"` : `el recuerdo existente "${nodeVerdict.node}"`}` +
         ` en vez de ${requestedNodes.map((n) => `"${n}"`).join(', ')}, se respeta el recuerdo explícito del JSON.)`,
     );
+  }
+
+  // Recuerdos adicionales (portado desde D:\MyBrain): mismo mecanismo que
+  // remember.mjs, ver el comentario ahí -- reusa el candidate-list de
+  // memories_similar() ya calculado arriba, sin bloquear el lote si el
+  // clasificador falla. Suma también candidatos por mención literal
+  // (literalMentionCandidates, cierre de #1056/#872).
+  const { rows: allNodeRowsForAdditional } = await client.query(
+    `select name, aliases from memories where merged_into is null and not is_meta`,
+  );
+  const literalCandidates = (
+    await literalMentionCandidates(client, f.claim, requestedNodes, allNodeRowsForAdditional)
+  ).filter((c) => !nodeCandidates.some((n) => n.memory_name === c.memory_name));
+  const remainingNodeCandidates = [
+    ...nodeCandidates.filter((c) => !requestedNodes.includes(c.memory_name)),
+    ...literalCandidates,
+  ];
+  if (remainingNodeCandidates.length > 0) {
+    const additional = await classifyAdditionalMemories(f.claim, requestedNodes.join(', '), remainingNodeCandidates);
+    for (const item of additional) {
+      if (item.confidence < NODE_CONFIDENCE_THRESHOLD) continue;
+      requestedNodes.push(item.node);
+      console.error(`  (recuerdo adicional auto-detectado por ${NODE_CLASSIFIER_MODEL}, confianza ${item.confidence.toFixed(2)}: "${item.node}" -- ${item.reasoning})`);
+    }
   }
 
   const resolvedNodes = [];

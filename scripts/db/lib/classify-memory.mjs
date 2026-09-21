@@ -133,6 +133,125 @@ export async function classifyNode(newClaim, candidates) {
   };
 }
 
+function buildAdditionalPrompt(newClaim, primaryNodes, candidates) {
+  const candidateList = candidates
+    .map((c) => {
+      const examples = c.examples.map((ex) => `      - "${ex}"`).join('\n');
+      const aliasLine = c.aliases?.length ? `, alias: ${c.aliases.join(', ')}` : '';
+      // Dos vías de candidato (portado desde D:\MyBrain, cierre de #1056/#872):
+      // por similitud de embedding (memories_similar) o por mención LITERAL del
+      // nombre/alias en el texto (memories_similar puede no traerlo si su
+      // contenido existente es temáticamente lejano, aunque el texto SÍ lo
+      // nombre explícito) -- se le dice honestamente al clasificador cuál de
+      // las dos señales trajo a cada candidato, es información real, no
+      // ruido a ocultar.
+      const signal = c.matchedOn
+        ? `mencionado literalmente en el texto como "${c.matchedOn}"`
+        : `similitud ${c.similarity.toFixed(2)}`;
+      return `  "${c.memory_name}"${aliasLine} (${signal}), ejemplos:\n${examples}`;
+    })
+    .join('\n');
+  return `Eres un clasificador que decide si un registro nuevo, dentro de un segundo cerebro \
+personal, pertenece TAMBIÉN a recuerdos (tema/entidad) además del/de los que ya se le \
+asignaron. Un registro puede ser genuinamente sobre más de un asunto a la vez (ej. un hecho \
+que describe tanto a una persona como a la institución/lugar del que participa) -- eso NO es \
+lo mismo que un tema vagamente relacionado o solo mencionado de pasada. Un candidato \
+"mencionado literalmente" es una señal fuerte a favor (el texto lo nombra por su propio \
+nombre o alias), pero igual debe cumplir el mismo criterio real de pertenencia -- nombrar a \
+alguien de pasada no basta si el registro no es genuinamente también sobre esa persona/entidad.
+
+registro nuevo: "${newClaim}"
+recuerdo(s) ya asignado(s): ${primaryNodes}
+
+Otros recuerdos existentes parecidos (candidatos a recuerdo ADICIONAL):
+${candidateList}
+
+Responde SOLO con JSON, sin texto adicional, con esta forma exacta:
+{"additional": [{"node": "nombre exacto del candidato", "belongs": true o false, "confidence": número entre 0 y 1, "reasoning": "una oración breve"}, ...]}
+
+Incluye una entrada por cada candidato de la lista de arriba, en el mismo orden. "belongs": \
+true SOLO si el registro es genuina y directamente sobre ese segundo asunto/entidad también \
+(no basta con que lo mencione de pasada, ni con que el tema esté relacionado en abstracto). \
+RECHAZA explícitamente (belongs: false) cualquier candidato que sea un recuerdo "paraguas" \
+amplio sobre la vida o identidad general de la persona (ej. "usuario", "vida-personal", o \
+equivalente) -- casi cualquier hecho personal encaja ahí en abstracto, así que etiquetarlo \
+como adicional cada vez lo diluiría hasta volverlo inútil; ese tipo de recuerdo paraguas solo \
+debería ganar como recuerdo PRIMARIO, nunca como adicional. Reserva "belongs: true" para \
+entidades específicas y acotadas (una persona, un lugar, una institución, un proyecto) que el \
+registro trata de forma directa. Si no estás seguro, baja la confidence en vez de forzar true.`;
+}
+
+/**
+ * Etapa de recuerdos adicionales (portado desde D:\MyBrain, pedido original de
+ * Oscar): además del recuerdo primario que ya decidió classifyNode, un registro
+ * puede pertenecer genuinamente a otro(s) de los MISMOS candidatos que
+ * memories_similar() ya trajo (sin ninguna búsqueda nueva) -- caso real que lo
+ * motivó: un registro sobre una persona mencionaba también una institución/lugar,
+ * que ya rankeaba entre los candidatos por embedding, pero el pick de un solo
+ * elemento nunca lo consideraba. Mismo patrón fail-open que el resto del
+ * pipeline: cualquier fallo devuelve [], el llamador sigue con lo que ya tenía,
+ * nunca bloquea el registro completo por esto.
+ *
+ * @param {string} newClaim
+ * @param {string} primaryNodes - recuerdo(s) ya asignados, solo para darle contexto al prompt
+ * @param {{memory_name: string, examples: string[], similarity: number, aliases?: string[]}[]} candidates
+ *   candidatos restantes de memories_similar(), SIN los ya asignados como primaryNodes
+ * @returns {Promise<{node: string, confidence: number, reasoning: string}[]>}
+ *   solo los candidatos que el clasificador marcó belongs=true, el llamador
+ *   sigue aplicando su propio umbral de confianza antes de usarlos
+ */
+export async function classifyAdditionalMemories(newClaim, primaryNodes, candidates) {
+  if (!classifierEnabled) return [];
+  if (candidates.length === 0) return [];
+
+  const prompt = buildAdditionalPrompt(newClaim, primaryNodes, candidates);
+  let responseText;
+  try {
+    if (PROVIDER === 'openrouter') {
+      responseText = await callOpenRouter(prompt, MODEL, { timeoutMs: 20_000 });
+    } else {
+      const res = await fetch('https://ollama.com/api/generate', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.OLLAMA_API_KEY}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ model: MODEL, prompt, format: 'json', stream: false }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!res.ok) throw new Error(`Ollama Cloud falló: ${res.status}`);
+      responseText = (await res.json()).response;
+    }
+  } catch (err) {
+    console.error(`  (clasificador de recuerdos adicionales ${PROVIDER} no disponible: ${err.message}, se omite)`);
+    return [];
+  }
+
+  let parsed;
+  try {
+    const cleaned = responseText.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+    parsed = JSON.parse(cleaned);
+  } catch (err) {
+    console.error(`  (respuesta del clasificador de recuerdos adicionales no es JSON válido: ${err.message}, se omite)`);
+    return [];
+  }
+
+  if (!Array.isArray(parsed.additional)) {
+    console.error(`  (respuesta del clasificador de recuerdos adicionales con forma inesperada: ${JSON.stringify(parsed)}, se omite)`);
+    return [];
+  }
+
+  const validNames = new Set(candidates.map((c) => c.memory_name));
+  const result = [];
+  for (const item of parsed.additional) {
+    const node = typeof item?.node === 'string' ? item.node.trim() : '';
+    const confidence = Number(item?.confidence);
+    if (!validNames.has(node) || item?.belongs !== true || !Number.isFinite(confidence) || confidence < 0 || confidence > 1) continue;
+    result.push({ node, confidence, reasoning: typeof item.reasoning === 'string' ? item.reasoning : '' });
+  }
+  return result;
+}
+
 export const CLASSIFIER_CONFIDENCE_THRESHOLD = CONFIDENCE_THRESHOLD;
 export const CLASSIFIER_MODEL = MODEL;
 export const CLASSIFIER_PROVIDER = PROVIDER;
