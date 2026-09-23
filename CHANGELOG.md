@@ -5,6 +5,19 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.9.3 (2026-09-23)
+
+- **Nuevo `scripts/db/briefing-crossref.mjs`.** El check `morning-briefing`
+  de `HEARTBEAT.md` pedía en prosa cruzar cada candidato de mail/calendario
+  contra tus propios registros antes de reportar -- fácil de saltarse bajo
+  presión, depende de acordarse en el momento. Este script lo convierte en
+  mecánico: recibe los candidatos por stdin (`etiqueta | texto de
+  búsqueda`, uno por línea), corre la búsqueda híbrida (embedding + rerank)
+  contra `records_search` para cada uno, e imprime qué registro vigente ya
+  lo cubre o `SIN COINCIDENCIA` si es genuinamente nuevo. `HEARTBEAT.md`
+  ahora exige que el texto del briefing se componga desde esa salida, no
+  desde memoria de lo que está o no registrado. Sin migración de esquema.
+
 ## v0.9.2 (2026-09-23)
 
 **Requiere migración de `schema.sql`** (agrega `records_newer_in_memory`).
