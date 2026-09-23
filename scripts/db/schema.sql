@@ -652,6 +652,39 @@ language sql stable as $$
   limit match_count;
 $$;
 
+-- Verificación de vigencia (2026-09-23, portado desde D:\MyBrain, ver
+-- segundo-cerebro #1149/#1151/#1152, caso real #699 vs #882): un resultado
+-- con buen score de similitud puede venir de un registro que YA fue
+-- superado por otro más reciente del mismo recuerdo que el ranking por
+-- similitud no trajo (vocabulario distinto, mismo hecho). Consulta
+-- determinística y barata, sin LLM: dado un recuerdo y la fecha del
+-- registro más reciente ya mostrado de ese recuerdo, ¿hay registros
+-- vigentes MÁS recientes que esa fecha? La consulta se acota por fecha, no
+-- por top-N fijo ni porcentaje del timeline -- gratis cuando no hay
+-- brecha, escala con el tamaño real del gap. Fuente única compartida entre
+-- scripts/db/search.mjs y la tool 'search' del MCP server, mismo patrón
+-- que memory_match_records de arriba.
+create or replace function records_newer_in_memory(
+  p_memory_name text,
+  p_threshold_date date
+)
+returns table (
+  id bigint,
+  claim text,
+  date date,
+  source text,
+  kind text
+)
+language sql stable as $$
+  select r.id, r.claim, r.date, r.source, r.kind
+  from records r
+  join record_memories rm on rm.record_id = r.id
+  where rm.memory_name = p_memory_name
+    and r.valid_until is null
+    and r.date > p_threshold_date
+  order by r.date desc;
+$$;
+
 -- Router de recuerdos por identidad semántica (2026-09-18, portado desde
 -- D:\MyBrain): el router de search (nodeIsMatched, solo alias exacto) falla
 -- cuando la pregunta parafrasea en vez de usar el alias literal (ej.

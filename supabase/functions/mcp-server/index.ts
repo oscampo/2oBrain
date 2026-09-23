@@ -757,6 +757,37 @@ mcp.tool('search', {
       ...rerankedFacts.filter((f: any) => !nodeMatchIds.has(f.id)),
     ];
 
+    // Verificación de vigencia (2026-09-23, portado desde D:\MyBrain, ver
+    // segundo-cerebro #1149/#1151/#1152, caso real #699 vs #882): un resultado
+    // con buen score de similitud puede venir de un registro que YA fue
+    // superado por otro más reciente del mismo recuerdo que el ranking por
+    // similitud no trajo (vocabulario distinto, mismo hecho). Chequeo
+    // determinístico y barato, sin LLM: por cada recuerdo tocado por lo
+    // mostrado, ¿hay registros vigentes MÁS recientes de ese mismo recuerdo?
+    // records_newer_in_memory (schema.sql) es la misma función SQL que usa
+    // scripts/db/search.mjs -- una sola fuente de verdad para CLI y MCP.
+    const shownIds = new Set(records.map((r: any) => Number(r.id)));
+    const shownMemoryMaxDate = new Map<string, string>();
+    for (const r of records) {
+      if (!r.memories) continue;
+      for (const m of String(r.memories).split(',').map((s: string) => s.trim()).filter(Boolean)) {
+        const prev = shownMemoryMaxDate.get(m);
+        if (!prev || r.date > prev) shownMemoryMaxDate.set(m, r.date);
+      }
+    }
+    const staleEntries = [...shownMemoryMaxDate.entries()];
+    const staleResults = await Promise.all(
+      staleEntries.map(([memName, thresholdDate]) =>
+        supabase.rpc('records_newer_in_memory', { p_memory_name: memName, p_threshold_date: thresholdDate }),
+      ),
+    );
+    const staleWarnings: any[] = [];
+    staleEntries.forEach(([memName], i) => {
+      for (const row of staleResults[i].data ?? []) {
+        if (!shownIds.has(Number(row.id))) staleWarnings.push({ ...row, memory_name: memName });
+      }
+    });
+
     let text = '';
     if (rerankedPages.length > 0) {
       text += '--- páginas ---\n';
@@ -786,6 +817,13 @@ mcp.tool('search', {
         const scoreLabel = f.score == null ? '[recuerdo]' : `[${f.score.toFixed(4)}]`;
         text += `\n${scoreLabel} #${f.id} [${f.date}] ${f.claim}\n  fuente: ${f.source} · tipo: ${f.kind}${f.memories ? ` · recuerdos: ${f.memories}` : ''}\n`;
       }
+
+    if (staleWarnings.length > 0) {
+      text += '\n--- ⚠ posible desactualización: hay registros vigentes MÁS RECIENTES de estos recuerdos, no mostrados arriba ---\n';
+      for (const r of staleWarnings) {
+        text += `\n#${r.id} [${r.date}] (${r.memory_name}) ${r.claim}\n  fuente: ${r.source} · tipo: ${r.kind}\n`;
+      }
+    }
 
     return { content: [{ type: 'text', text }] };
   },

@@ -5,6 +5,22 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.9.2 (2026-09-23)
+
+**Requiere migración de `schema.sql`** (agrega `records_newer_in_memory`).
+
+- **Verificación de vigencia en `search`.** Un resultado con buen score de
+  similitud puede venir de un registro que ya fue superado por otro más
+  reciente del mismo recuerdo, que el ranking por similitud simplemente no
+  trajo (vocabulario distinto describiendo el mismo hecho -- la búsqueda
+  por embeddings no siempre conecta dos registros sobre lo mismo). Ahora,
+  por cada recuerdo tocado por los resultados mostrados, `search.mjs` y la
+  tool `search` del MCP server chequean si existen registros vigentes de
+  ese mismo recuerdo con fecha posterior al más reciente ya mostrado; si
+  los hay, se listan aparte bajo "posible desactualización". Chequeo
+  determinístico (una consulta SQL acotada por fecha, `records_newer_in_memory`
+  en `schema.sql`), sin LLM ni costo adicional cuando no hay brecha.
+
 ## v0.9.1 (2026-09-21)
 
 Sin migración de `schema.sql`. Cierra el hueco de recuerdos adicionales que

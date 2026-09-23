@@ -193,6 +193,32 @@ for (const r of [...records]) {
   }
 }
 
+// Verificación de vigencia (2026-09-23, portado desde D:\MyBrain, ver
+// segundo-cerebro #1149/#1151/#1152, caso real #699 vs #882): un resultado
+// con buen score de similitud puede venir de un registro que YA fue
+// superado por otro más reciente del mismo recuerdo que el ranking por
+// similitud no trajo (vocabulario distinto, mismo hecho). Chequeo
+// determinístico y barato, sin LLM: por cada recuerdo tocado por lo
+// mostrado, ¿hay registros vigentes MÁS recientes de ese mismo recuerdo?
+// records_newer_in_memory (schema.sql) es la misma función SQL que usa la
+// tool 'search' del MCP server -- una sola fuente de verdad.
+const shownMemoryMaxDate = new Map(); // memory_name -> fecha (string YYYY-MM-DD) más reciente ya mostrada
+for (const r of records) {
+  if (!r.memories) continue;
+  const dateStr = r.date.toISOString().slice(0, 10);
+  for (const m of r.memories.split(',').map((s) => s.trim()).filter(Boolean)) {
+    const prev = shownMemoryMaxDate.get(m);
+    if (!prev || dateStr > prev) shownMemoryMaxDate.set(m, dateStr);
+  }
+}
+const staleWarnings = [];
+for (const [memName, thresholdDate] of shownMemoryMaxDate) {
+  const { rows } = await client.query(`select * from records_newer_in_memory($1, $2::date)`, [memName, thresholdDate]);
+  for (const row of rows) {
+    if (!shownIds.has(Number(row.id))) staleWarnings.push({ ...row, memory_name: memName });
+  }
+}
+
 console.log('--- Páginas ---');
 if (pages.length === 0) {
   console.log('Sin resultados.');
@@ -220,6 +246,15 @@ if (records.length === 0) {
     const complementsLabel = r.complements != null ? ` [complementa a #${r.complements}]` : '';
     console.log(`\n${scoreLabel} #${r.id} [${date}] ${r.claim}${complementsLabel}`);
     console.log(`  fuente: ${r.source} · tipo: ${r.kind}${r.memories ? ` · recuerdos: ${r.memories}` : ''}`);
+  }
+}
+
+if (staleWarnings.length > 0) {
+  console.log('\n--- ⚠ posible desactualización: hay registros vigentes MÁS RECIENTES de estos recuerdos, no mostrados arriba ---');
+  for (const r of staleWarnings) {
+    const date = r.date.toISOString().slice(0, 10);
+    console.log(`\n#${r.id} [${date}] (${r.memory_name}) ${r.claim}`);
+    console.log(`  fuente: ${r.source} · tipo: ${r.kind}`);
   }
 }
 
