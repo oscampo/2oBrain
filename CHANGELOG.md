@@ -5,6 +5,16 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.9.5 (2026-09-24)
+
+- **Barra lateral del dashboard como panel flotante.** El botón ☰ en el
+  header muestra/oculta el menú lateral completo; en vez de empujar el
+  contenido (comportamiento anterior), ahora se superpone encima sin
+  desplazarlo (`position: absolute` + `transform: translateX`), arranca
+  cerrado por defecto, y se cierra solo con un clic fuera de él (o del
+  botón ☰). Estado (abierto/cerrado) persistido en `localStorage`. Sin
+  migración de esquema.
+
 ## v0.9.4 (2026-09-24)
 
 Sin migración de `schema.sql`.

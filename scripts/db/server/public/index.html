@@ -61,6 +61,12 @@
      del contenido), y .sidebar debajo queda como una región de scroll
      propia, corta e independiente del contenido. */
   header { flex-shrink: 0; display: flex; align-items: stretch; border-bottom: 1px solid var(--border); }
+  .sidebar-toggle-btn {
+    flex-shrink: 0; width: calc(44px * var(--ui-scale)); display: flex; align-items: center; justify-content: center;
+    background: none; border: none; border-right: 1px solid var(--border); color: var(--muted); cursor: pointer;
+    font-size: calc(18px * var(--ui-scale));
+  }
+  .sidebar-toggle-btn:hover { color: var(--text); background: var(--panel); }
   .header-brand { width: calc(200px * var(--ui-scale)); flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 8px; border-right: 1px solid var(--border); }
   .header-brand .brand-logo { width: calc(76px * var(--ui-scale)); height: auto; }
   .header-info { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: calc(3px * var(--ui-scale)); padding: calc(10px * var(--ui-scale)) 24px; }
@@ -68,8 +74,14 @@
   header .badge { font-size: calc(11px * var(--ui-scale)); color: var(--warn); border: 1px solid var(--warn); padding: 2px 8px; border-radius: 999px; }
   .header-actions { flex-shrink: 0; display: flex; align-items: center; padding: 0 20px; }
   .header-actions button.run { margin-top: 0; font-size: calc(12px * var(--ui-scale)); padding: calc(6px * var(--ui-scale)) 14px; }
-  .layout { display: flex; flex: 1; min-height: 0; }
-  .sidebar { width: calc(200px * var(--ui-scale)); border-right: 1px solid var(--border); flex-shrink: 0; overflow-y: auto; }
+  .layout { display: flex; flex: 1; min-height: 0; position: relative; }
+  .sidebar {
+    position: absolute; top: 0; left: 0; bottom: 0; z-index: 40;
+    width: calc(200px * var(--ui-scale)); border-right: 1px solid var(--border); overflow-y: auto;
+    background: var(--bg); box-shadow: 3px 0 14px rgba(0,0,0,.25);
+    transform: translateX(-100%); transition: transform .18s ease;
+  }
+  html[data-sidebar="open"] .sidebar { transform: translateX(0); }
   .brand-name { font-size: calc(32px * var(--ui-scale)); font-weight: 700; color: var(--text); }
   .brand-sub { font-size: calc(20px * var(--ui-scale)); color: var(--muted); }
   nav { padding: 12px 0; }
@@ -326,6 +338,7 @@
 </head>
 <body>
 <header>
+  <button class="sidebar-toggle-btn" id="sidebar-toggle-btn" title="Mostrar/ocultar menú" aria-label="Mostrar/ocultar menú">☰</button>
   <div class="header-brand">
     <svg class="brand-logo" viewBox="-10 -10 518 420" xmlns="http://www.w3.org/2000/svg" aria-label="2oBrain">
       <g transform="matrix(1,0,0,1,-1114.83,-708.856)">
@@ -402,6 +415,32 @@ const SECTIONS = [
 
 const nav = document.getElementById('nav');
 const main = document.getElementById('main');
+
+const SIDEBAR_OPEN_KEY = 'segundo-cerebro-dashboard-sidebar-open-v1';
+(function initSidebarToggle() {
+  const btn = document.getElementById('sidebar-toggle-btn');
+  const sidebarEl = document.querySelector('.sidebar');
+  function apply(open) {
+    if (open) document.documentElement.setAttribute('data-sidebar', 'open');
+    else document.documentElement.removeAttribute('data-sidebar');
+  }
+  let open = localStorage.getItem(SIDEBAR_OPEN_KEY) === '1';
+  apply(open);
+  function setOpen(next) {
+    open = next;
+    apply(open);
+    try { localStorage.setItem(SIDEBAR_OPEN_KEY, open ? '1' : '0'); } catch {}
+  }
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    setOpen(!open);
+  });
+  document.addEventListener('click', (e) => {
+    if (!open) return;
+    if (sidebarEl.contains(e.target) || btn.contains(e.target)) return;
+    setOpen(false);
+  });
+})();
 
 function isFeatureEnabled(id) {
   return localStorage.getItem('advFeature:' + id) === '1';
