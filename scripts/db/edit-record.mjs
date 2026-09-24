@@ -26,7 +26,9 @@
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { embed, toVectorLiteral } from './lib/embed.mjs';
-import { resolveLiveMemory } from './lib/create-link.mjs';
+import { resolveLiveMemory, createLink } from './lib/create-link.mjs';
+import { classifyMentionRelationHybrid } from './lib/classify-mention-relation.mjs';
+import { formatFactsBlock } from './lib/format-records.mjs';
 
 function parseArgs(argv) {
   const out = {};
@@ -147,12 +149,49 @@ const { rows: after } = await client.query(`select id, claim, date, kind, source
 const { rows: afterMemRows } = await client.query(`select memory_name from record_memories where record_id = $1 order by memory_name`, [id]);
 const afterMemories = afterMemRows.map((r) => r.memory_name);
 
+// Auto-enlace entre recuerdos co-etiquetados (2026-09-24, portado desde
+// D:\MyBrain, mismo mecanismo que remember.mjs/remember-batch.mjs/MCP -- ver
+// comentario allá): faltaba acá, editar --memory por el dashboard (este
+// mismo script) nunca disparaba la creación automática de memory_links, a
+// diferencia de capturar un registro nuevo con varios recuerdos a la vez.
+// Caso real: #1174/#1175 (D:\MyBrain) editados por Oscar vía dashboard
+// agregando "proyectos-personales" a la lista de recuerdos, asumiendo que
+// guardar bastaba para conectar el nodo en el grafo -- no bastaba, el
+// enlace nunca se creó hasta corregirlo a mano. Mismo criterio: solo pares
+// que faltan, relación nombrada por el clasificador con fallback a
+// "co-registrado_en".
+const linkAdvisories = [];
+if (requestedMemories !== null && afterMemories.length > 1) {
+  for (let i = 0; i < afterMemories.length; i++) {
+    for (let j = i + 1; j < afterMemories.length; j++) {
+      const from = afterMemories[i];
+      const to = afterMemories[j];
+      const { rows: existingLink } = await client.query(
+        `select 1 from memory_links where (from_memory, to_memory) in (($1, $2), ($2, $1)) limit 1`,
+        [from, to],
+      );
+      if (existingLink.length > 0) continue;
+
+      const { rows: bFactRows } = await client.query(`select * from records_timeline($1, $2, false)`, [to, 1000]);
+      const judged = await classifyMentionRelationHybrid(after[0].claim, from, to, formatFactsBlock(bFactRows));
+      const relation = judged?.relation || 'co-registrado_en';
+      const reasonTag = judged?.relation
+        ? `[auto-creado por co-etiquetado explícito vía edit-record.mjs (${judged.via}), confianza ${judged.confidence.toFixed(2)}]: ${judged.reasoning} (registro #${id})`
+        : `[auto-creado por co-etiquetado explícito vía edit-record.mjs, sin clasificar] (registro #${id})`;
+
+      const edgeResult = await createLink(client, from, to, relation, reasonTag, after[0].date.toISOString().slice(0, 10));
+      if (edgeResult.ok) linkAdvisories.push(`(enlace auto-creado: ${edgeResult.fromMemory} -> ${edgeResult.toMemory} (${edgeResult.relation}))`);
+    }
+  }
+}
+
 console.log(`Registro #${id} editado${before[0].valid_until ? ' (estaba retractado, sigue retractado)' : ''}:`);
 if (args.claim !== undefined) console.log(`  claim:   "${before[0].claim}"\n       ->  "${after[0].claim}"`);
 if (args.date !== undefined) console.log(`  date:    ${before[0].date.toISOString().slice(0, 10)} -> ${after[0].date.toISOString().slice(0, 10)}`);
 if (args.kind !== undefined) console.log(`  kind:    ${before[0].kind} -> ${after[0].kind}`);
 if (args.source !== undefined) console.log(`  source:  "${before[0].source}"\n       ->  "${after[0].source}"`);
 if (requestedMemories !== null) console.log(`  memory:  ${beforeMemories.join(', ') || '(ninguno)'} -> ${afterMemories.join(', ') || '(ninguno)'}`);
+for (const advisory of linkAdvisories) console.log(advisory);
 console.log(`Motivo: ${args.reason}`);
 
 await client.end();

@@ -5,6 +5,21 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.9.4 (2026-09-24)
+
+Sin migración de `schema.sql`.
+
+- **`edit-record.mjs` dispara auto-enlace al editar `--memory`.** Bug real:
+  editar un registro ya existente para agregarle un recuerdo (por CLI o vía
+  el botón "Editar" del dashboard) actualizaba la etiqueta (`record_memories`)
+  pero nunca conectaba los nodos en el grafo (`memory_links`) -- el
+  auto-enlace entre recuerdos co-etiquetados solo estaba conectado a la ruta
+  de *inserción* (`remember.mjs`/`remember-batch.mjs`/la tool `remember` del
+  MCP), nadie lo había portado a la ruta de *edición*. Ahora, tras aplicar
+  `--memory`, recorre todos los pares del conjunto resultante y crea los que
+  falten, mismo criterio de siempre (relación nombrada por el clasificador,
+  `co-registrado_en` como respaldo).
+
 ## v0.9.3 (2026-09-23)
 
 - **Nuevo `scripts/db/briefing-crossref.mjs`.** El check `morning-briefing`
