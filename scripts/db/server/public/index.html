@@ -417,6 +417,13 @@ const nav = document.getElementById('nav');
 const main = document.getElementById('main');
 
 const SIDEBAR_OPEN_KEY = 'segundo-cerebro-dashboard-sidebar-open-v1';
+// closeSidebar: expuesta fuera del IIFE (2026-09-28, a pedido de Oscar) para
+// que renderNav() pueda cerrar el menú apenas se elige una sección, en vez
+// de esperar un click fuera de él -- antes, el click en un botón de nav
+// caía DENTRO de .sidebar y el listener de "click fuera" lo ignoraba a
+// propósito (esa es su función normal), así que el menú se quedaba abierto
+// tapando el contenido hasta un segundo click aparte.
+let closeSidebar = () => {};
 (function initSidebarToggle() {
   const btn = document.getElementById('sidebar-toggle-btn');
   const sidebarEl = document.querySelector('.sidebar');
@@ -431,6 +438,7 @@ const SIDEBAR_OPEN_KEY = 'segundo-cerebro-dashboard-sidebar-open-v1';
     apply(open);
     try { localStorage.setItem(SIDEBAR_OPEN_KEY, open ? '1' : '0'); } catch {}
   }
+  closeSidebar = () => setOpen(false);
   btn.addEventListener('click', (e) => {
     e.stopPropagation();
     setOpen(!open);
@@ -466,7 +474,7 @@ function renderNav() {
     const btn = document.createElement('button');
     btn.textContent = s.label;
     btn.dataset.target = s.id;
-    btn.addEventListener('click', () => show(s.id));
+    btn.addEventListener('click', () => { show(s.id); closeSidebar(); });
     nav.appendChild(btn);
   }
   // Si la sección visible antes de desactivar una función era esa misma

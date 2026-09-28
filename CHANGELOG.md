@@ -5,6 +5,14 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.9.6 (2026-09-28)
+
+- **El menú lateral del dashboard se cierra solo al elegir una sección.**
+  Antes solo se cerraba con un clic fuera de él (o tocando el botón ☰):
+  el clic en un botón de navegación caía dentro del panel, así que el
+  listener de "clic fuera" lo dejaba abierto a propósito, tapando el
+  contenido hasta un segundo clic aparte. Sin migración de esquema.
+
 ## v0.9.5 (2026-09-24)
 
 - **Barra lateral del dashboard como panel flotante.** El botón ☰ en el
