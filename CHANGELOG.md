@@ -5,6 +5,34 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.10.6 (2026-10-02)
+
+Sin migración de `schema.sql`, sin redespliegue del servidor MCP y sin pasos a
+mano: recarga la página del dashboard (el servidor lee `index.html` en cada
+carga, no hace falta reiniciarlo).
+
+- **Grafo: la búsqueda ahora avisa cuando no encuentra nada.** Antes, buscar
+  algo que no estaba en el grafo no mostraba ningún mensaje: el botón "Ir" se
+  quedaba sin efecto visible. Ahora aparece un aviso bajo la barra de búsqueda:
+  - **Vista por recuerdos:** si el recuerdo no existe, dice que puede haberse
+    fusionado, renombrado o borrado, y sugiere "Refrescar". La búsqueda ya no
+    distingue mayúsculas de minúsculas como último recurso.
+  - **Vista por registros, búsqueda por número (`#123`, `#94, #95`):** distingue
+    tres casos que antes se veían igual: el registro no existe en la base
+    (purgado o nunca existió), existe pero está retractado o reemplazado
+    (indica por cuál), o existe y el filtro "Ocultar registros
+    supersedidos/retractados" lo esconde del grafo. Un registro vigente no
+    muestra aviso.
+  - **Vista por registros, texto libre sin resultados:** avisa y sugiere buscar
+    por número.
+  El aviso se limpia al cambiar de vista o de búsqueda.
+- **Cómo se verificó**: el dashboard se levantó en un puerto de prueba contra una
+  base real y se probaron en el navegador los siete casos (recuerdo existente e
+  inexistente, id purgado, retractado, reemplazado, vigente y mezcla de ids),
+  más el caso del filtro de ocultar, sin errores de consola. La rama de "texto
+  libre sin resultados" no se pudo provocar, porque la búsqueda híbrida casi
+  siempre devuelve algo.
+
 ## v0.10.5 (2026-10-02)
 
 **Cambia `schema.sql` y el servidor MCP.** Corre `node scripts/db/apply-schema.mjs`
