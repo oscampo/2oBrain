@@ -5,6 +5,60 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.10.0 (2026-10-01)
+
+**Cambia `schema.sql` y el servidor MCP.** Corre `node scripts/db/apply-schema.mjs`
+después de actualizar, y **redespliega** `supabase/functions/mcp-server/`
+(`supabase functions deploy mcp-server`): actualizar el archivo local no
+basta, el servidor corre desplegado aparte. Cierra el drift de la ruta
+`remember` acumulado desde mediados de septiembre entre D:\MyBrain y este
+scaffold (tres piezas encadenadas, portadas juntas).
+
+- **`schema.sql`**: nueva columna `records.source_at timestamptz` (instante
+  real del evento fuente, distinto de `created_at` y de `date`) y las
+  funciones `records_similar` y `records_timeline`, que ahora devuelven
+  `source_at` (y `created_at` en la segunda). Cambiar el tipo de retorno de
+  una función exige drop + create, el schema lo hace solo. Sin
+  `apply-schema.mjs`, `remember` fallará al leer `source_at`.
+- **`lib/classify-duplicate.mjs`**: el clasificador ahora devuelve cuatro
+  veredictos (antes tres). Nuevo **`redundant`**: el registro nuevo no
+  aporta nada que uno vigente no tuviera ya, así que nunca se inserta (antes
+  entraba como `distinct` y dejaba una fila duplicada). Además ve la fuente y
+  el instante de cada registro y aplica dos candados deterministas, no solo
+  instrucciones de prompt: una extracción automática sin revisión humana no
+  puede reemplazar a un registro de fuente directa, y un hecho más viejo no
+  puede reemplazar a uno más nuevo cuando ambos instantes se conocen.
+- **`remember.mjs`**: nuevo `--source-at` (instante ISO 8601 del evento);
+  `redundant` responde `Ya cubierto por #N, no se inserta` y sale con código
+  0; el mensaje de bloqueo explica el caso redundante. **Arreglo**: el cierre
+  automático de compromisos ya no toca a un compromiso que el registro nuevo
+  declara complementar (`--complements`) o que ya reemplaza (`--supersedes`):
+  antes, un registro "complementa a #N" cerraba además #N por completo.
+- **`remember-batch.mjs`**: igual que `remember.mjs`. `redundant` ya no
+  inserta (se cuenta aparte en el resumen), `complements` guarda el vínculo
+  (antes se perdía) y cada registro del JSON acepta `sourceAt` opcional.
+- **`supabase/functions/mcp-server/index.ts`**: la tool `remember` gana el
+  parámetro `complements` y el opcional `sourceAt` (por defecto, el instante de
+  la llamada), maneja `redundant`, cuenta `complements` como cubierto en el
+  aviso de citas cruzadas y avisa de los compromisos abiertos de los mismos
+  recuerdos (consulta SQL determinista, sin modelo) porque este servidor no
+  cierra compromisos solo: si el registro nuevo resuelve alguno, hay que
+  cerrarlo después con `supersede-record.mjs` desde Claude Code.
+- **`skills/segundo-cerebro-capture/SKILL.md`**: documenta `--complements`,
+  el caso redundante y `--source-at`.
+- **Sin cambios en `deno-deploy/mcp-server/`.** Esa copia ya estaba por
+  detrás de la de Supabase en funciones (no soporta `complements` ni los alias
+  automáticos) y no se actualiza en esta versión. Si la usas, sigue
+  funcionando como antes, sin lo nuevo; para tenerlo, migra a la Edge Function
+  de Supabase.
+- **Cómo se verificó**: `remember.mjs` y `remember-batch.mjs` se ejecutaron de
+  verdad contra una base con el schema aplicado: `source_at` se guarda
+  (también por lote, y un valor inválido se ignora con aviso), `redundant` no
+  inserta, `--complements` guarda el vínculo y protege al compromiso (sin
+  él, el mismo registro lo cierra). El servidor pasa `deno check`. No se
+  probó en vivo contra una Edge Function desplegada de este scaffold, ni el
+  veredicto `complements` del clasificador dentro del lote.
+
 ## v0.9.6 (2026-09-28)
 
 - **El menú lateral del dashboard se cierra solo al elegir una sección.**

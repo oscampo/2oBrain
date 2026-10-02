@@ -132,7 +132,7 @@ const client = new pg.Client({
 });
 await client.connect();
 
-const results = { inserted: [], autoResolved: [], blocked: [], invalid: [], nodeMissing: [], nodeAmbiguous: [], mentions: [] };
+const results = { inserted: [], autoResolved: [], redundant: [], blocked: [], invalid: [], nodeMissing: [], nodeAmbiguous: [], mentions: [] };
 
 // Etapa 6 (PLAN-recuerdos.md, 2026-09-02, registro #487): mismo detector de
 // co-ocurrencia que remember.mjs -- una sola carga por lote, no cambia
@@ -180,7 +180,7 @@ for (let i = 0; i < records.length; i++) {
   const vectorLiteral = toVectorLiteral(embedding);
 
   const { rows: candidates } = await client.query(
-    `select id, claim, date, source, kind,
+    `select id, claim, date, source, kind, source_at,
             1 - (embedding <=> $1) as similarity
      from records
      where valid_until is null and embedding is not null
@@ -192,8 +192,19 @@ for (let i = 0; i < records.length; i++) {
   const similar = candidates.filter((c) => c.similarity >= SIMILARITY_THRESHOLD);
 
   let supersedesIds = [];
+  let complementsId = null;
   let autoResolved = null;
   let source = f.source;
+
+  // sourceAt por registro (opcional, ISO 8601): instante real del evento fuente,
+  // mismo criterio que --source-at de remember.mjs. Un valor inválido se ignora
+  // con aviso, nunca detiene el lote.
+  let sourceAt = null;
+  if (f.sourceAt) {
+    const parsed = new Date(f.sourceAt);
+    if (!Number.isNaN(parsed.getTime())) sourceAt = parsed.toISOString();
+    else console.error(`${label} sourceAt inválido "${f.sourceAt}", se ignora (sin candado de cronología para este registro).`);
+  }
 
   // distinct por registro (2026-09-09, dashboard "Extraer de página"): mismo
   // criterio que --distinct de remember.mjs, un humano ya revisó la tarjeta y
@@ -204,10 +215,22 @@ for (let i = 0; i < records.length; i++) {
   if (similar.length > 0 && f.distinct) {
     console.error(`  (confirmado como distinto pese al parecido con #${similar.map((c) => c.id).join(', #')}, explícito en el JSON)`);
   } else if (similar.length > 0) {
-    autoResolved = await classifyDuplicate(f.claim, similar);
+    autoResolved = await classifyDuplicate(f.claim, similar, source, sourceAt);
     if (autoResolved && autoResolved.confidence >= CLASSIFIER_CONFIDENCE_THRESHOLD) {
+      // El clasificador devuelve cuatro veredictos. 'supersedes' reemplaza,
+      // 'complements' guarda el vínculo (ambos quedan vigentes), 'redundant'
+      // nunca inserta (sería una fila duplicada) y 'distinct' entra normal.
       if (autoResolved.verdict === 'supersedes') {
         supersedesIds = autoResolved.supersedesIds;
+      } else if (autoResolved.verdict === 'complements') {
+        complementsId = autoResolved.complementsId;
+      } else if (autoResolved.verdict === 'redundant') {
+        console.error(
+          `  (auto-resuelto por Ollama Cloud, ${CLASSIFIER_MODEL}, confianza ${autoResolved.confidence.toFixed(2)}: ${autoResolved.reasoning})`,
+        );
+        console.error(`  Ya cubierto por #${autoResolved.redundantId}, no se inserta (redundante).`);
+        results.redundant.push({ fact: f, coveredBy: autoResolved.redundantId });
+        continue;
       }
       console.error(
         `  (auto-resuelto por Ollama Cloud, ${CLASSIFIER_MODEL}, confianza ${autoResolved.confidence.toFixed(2)}: ${autoResolved.reasoning})`,
@@ -307,7 +330,7 @@ for (let i = 0; i < records.length; i++) {
   // único "cubierto" es supersedesIds.
   const mentionedIds = [...new Set([...f.claim.matchAll(/#(\d+)/g)].map((m) => Number(m[1])))];
   if (mentionedIds.length > 0) {
-    const covered = new Set(supersedesIds);
+    const covered = new Set([...supersedesIds, ...(complementsId !== null ? [complementsId] : [])]);
     const uncovered = mentionedIds.filter((id) => !covered.has(id));
     if (uncovered.length > 0) {
       const { rows: liveRows } = await client.query(
@@ -325,8 +348,8 @@ for (let i = 0; i < records.length; i++) {
   }
 
   const { rows } = await client.query(
-    `insert into records (claim, kind, date, source, confidence, embedding)
-     values ($1, $2, $3, $4, $5, $6)
+    `insert into records (claim, kind, date, source, confidence, embedding, source_at, complements)
+     values ($1, $2, $3, $4, $5, $6, $7, $8)
      returning id, date, claim`,
     [
       f.claim,
@@ -335,6 +358,8 @@ for (let i = 0; i < records.length; i++) {
       source,
       f.confidence ? Number(f.confidence) : 1.0,
       vectorLiteral,
+      sourceAt,
+      complementsId,
     ],
   );
 
@@ -387,6 +412,8 @@ for (let i = 0; i < records.length; i++) {
       [newId, supersedesIds],
     );
     console.error(`  Reemplazó a #${supersedesIds.join(', #')}.`);
+  } else if (complementsId !== null) {
+    console.error(`  Complementa a #${complementsId} (ambos quedan vigentes, se anexan juntos en la búsqueda).`);
   }
 
   console.error(`  Registrado #${newId}.`);
@@ -438,9 +465,10 @@ await client.end();
 console.log('\n--- Resumen ---');
 console.log(`Insertados: ${results.inserted.length}`);
 console.log(`  de los cuales auto-resueltos (duplicado/contradicción): ${results.autoResolved.length}`);
+console.log(`Redundantes (ya cubiertos por un registro vigente, no se insertaron): ${results.redundant.length}`);
 console.log(`Bloqueados (requieren remember.mjs manual con --supersedes o --distinct): ${results.blocked.length}`);
 console.log(`recuerdo inexistente (falta createMemory: true o corregir el nombre): ${results.nodeMissing.length}`);
-console.log(`recuerdo ambiguo (sin node en el JSON, desambiguación sin confianza o propuso recuerdo nuevo): ${results.nodeAmbiguous.length}`);
+console.log(`recuerdo ambiguo (sin memory en el JSON, desambiguación sin confianza o propuso recuerdo nuevo): ${results.nodeAmbiguous.length}`);
 console.log(`Inválidos (faltaba claim/date/source o fecha mal formada): ${results.invalid.length}`);
 console.log(`Mencionan otro recuerdo (posible relación, revisión manual): ${results.mentions.length}`);
 

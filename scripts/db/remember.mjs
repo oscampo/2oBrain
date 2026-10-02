@@ -34,13 +34,23 @@
 // enlaces automáticos. Desactivar con --no-suggest-aliases.
 //
 // Uso:
-//   node remember.mjs --claim "texto del registro" --date 2026-08-22 --source "conversación Claude Code" [--kind fact|event|commitment] [--memory recuerdo1,recuerdo2] [--create-memory] [--aliases "alias1,alias2"] [--no-suggest-aliases] [--confidence 0.9] [--supersedes 12,15] [--complements 12] [--distinct] [--confirm-date]
+//   node remember.mjs --claim "texto del registro" --date 2026-08-22 --source "conversación Claude Code" [--kind fact|event|commitment] [--memory recuerdo1,recuerdo2] [--create-memory] [--aliases "alias1,alias2"] [--no-suggest-aliases] [--confidence 0.9] [--supersedes 12,15] [--complements 12] [--distinct] [--confirm-date] [--source-at ISO8601]
 //
 // --confirm-date: obligatorio si --date no es la fecha real de hoy (America/
 // Bogota): confirma que un registro con fecha distinta es intencional
 // (histórico, backfill), no un error de no verificar la fecha antes de llamar.
 //
 // Sin --memory, deja que la desambiguación automática lo resuelva (bloquea si no hay confianza suficiente).
+//
+// --source-at: instante real (ISO 8601, con hora) del mensaje o evento fuente
+// que generó este registro, NO cuándo se corre este script. Sin esto, dos
+// registros del mismo día (misma --date, granularidad de solo el día) son
+// indistinguibles en el tiempo aunque describan estados a horas distintas, y un
+// registro insertado TARDE pero sobre un estado más VIEJO puede terminar
+// superando (supersede) a uno insertado antes pero sobre un estado más nuevo.
+// lib/classify-duplicate.mjs usa este instante para bloquear ese caso de forma
+// determinista. Opcional: sin --source-at, el candado de cronología simplemente
+// no aplica para este registro.
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { embed, toVectorLiteral } from './lib/embed.mjs';
@@ -93,7 +103,7 @@ const args = parseArgs(process.argv.slice(2));
 if (!args.claim || !args.date || !args.source) {
   console.error(
     'Faltan campos obligatorios. Uso:\n' +
-      '  node remember.mjs --claim "..." --date YYYY-MM-DD --source "..." [--kind fact] [--memory recuerdo1,recuerdo2] [--create-memory] [--aliases "a,b"] [--no-suggest-aliases] [--confidence 1.0] [--supersedes id,id] [--complements id] [--distinct] [--confirm-date]',
+      '  node remember.mjs --claim "..." --date YYYY-MM-DD --source "..." [--kind fact] [--memory recuerdo1,recuerdo2] [--create-memory] [--aliases "a,b"] [--no-suggest-aliases] [--confidence 1.0] [--supersedes id,id] [--complements id] [--distinct] [--confirm-date] [--source-at ISO8601]',
   );
   process.exit(1);
 }
@@ -101,6 +111,16 @@ if (!args.claim || !args.date || !args.source) {
 if (!/^\d{4}-\d{2}-\d{2}$/.test(args.date)) {
   console.error(`Fecha inválida: "${args.date}". Debe ser YYYY-MM-DD, no se infiere.`);
   process.exit(1);
+}
+
+let sourceAt = null;
+if (args['source-at'] && args['source-at'] !== true) {
+  const parsed = new Date(args['source-at']);
+  if (Number.isNaN(parsed.getTime())) {
+    console.error(`--source-at inválido: "${args['source-at']}". Debe ser un instante ISO 8601 parseable (ej. 2026-09-21T18:07:00Z).`);
+    process.exit(1);
+  }
+  sourceAt = parsed.toISOString();
 }
 
 const envPath = new URL('../../.env', import.meta.url);
@@ -150,7 +170,7 @@ const embedding = await embed(args.claim, 'document');
 const vectorLiteral = toVectorLiteral(embedding);
 
 const { rows: candidates } = await client.query(
-  `select f.id, f.claim, f.date, f.source, f.kind,
+  `select f.id, f.claim, f.date, f.source, f.kind, f.source_at,
           (select string_agg(memory_name, ', ' order by memory_name) from record_memories where record_id = f.id) as memories,
           1 - (f.embedding <=> $1) as similarity
    from records f
@@ -173,14 +193,17 @@ let complementsId = args.complements ? Number(args.complements) : null;
 if (complementsId !== null && !Number.isInteger(complementsId)) complementsId = null;
 
 let autoResolved = null;
+let redundantId = null;
 
 if (similar.length > 0 && supersedesIds.length === 0 && complementsId === null && !args.distinct) {
-  autoResolved = await classifyDuplicate(args.claim, similar);
+  autoResolved = await classifyDuplicate(args.claim, similar, args.source, sourceAt);
   if (autoResolved && autoResolved.confidence >= CLASSIFIER_CONFIDENCE_THRESHOLD) {
     if (autoResolved.verdict === 'supersedes') {
       supersedesIds = autoResolved.supersedesIds;
     } else if (autoResolved.verdict === 'complements') {
       complementsId = autoResolved.complementsId;
+    } else if (autoResolved.verdict === 'redundant') {
+      redundantId = autoResolved.redundantId;
     } else {
       args.distinct = true;
     }
@@ -190,6 +213,18 @@ if (similar.length > 0 && supersedesIds.length === 0 && complementsId === null &
   } else {
     autoResolved = null; // confianza insuficiente o clasificador no disponible: no se usa como resolución
   }
+}
+
+// "redundant": el registro nuevo no aporta nada que #redundantId no tuviera ya.
+// A diferencia de "distinct" (que sí inserta una fila nueva), esto NUNCA debe
+// insertar, ni siquiera cuando un proceso automático (extract-records.mjs --auto)
+// llama a este script sin humano mirando. Sale con código 0 (decisión correcta,
+// no un error) para que el llamador lo cuente como "resuelto", no como
+// "pendiente de revisión manual".
+if (redundantId !== null) {
+  console.log(`Ya cubierto por #${redundantId}, no se inserta (redundante).`);
+  await client.end();
+  process.exit(0);
 }
 
 if (similar.length > 0 && supersedesIds.length === 0 && complementsId === null && !args.distinct) {
@@ -203,7 +238,8 @@ if (similar.length > 0 && supersedesIds.length === 0 && complementsId === null &
   console.error(
     '\nSi este registro reemplaza a alguno de los anteriores, pasa --supersedes <id>[,<id>...].\n' +
       'Si agrega información real sobre UNO de ellos sin repetir todo lo que ya dice, pasa --complements <id>.\n' +
-      'Si es genuinamente distinto pese al parecido, pasa --distinct para confirmarlo explícitamente.',
+      'Si es genuinamente distinto pese al parecido, pasa --distinct para confirmarlo explícitamente.\n' +
+      'Si NO aporta nada que alguno de ellos no tuviera ya, no lo insertes: no hace falta ningún flag, ese es justo el caso que el clasificador debería haber resuelto solo como "redundant".',
   );
   await client.end();
   process.exit(1);
@@ -469,8 +505,8 @@ if (mentionedIds.length > 0) {
 }
 
 const { rows } = await client.query(
-  `insert into records (claim, kind, date, source, confidence, embedding, complements)
-   values ($1, $2, $3, $4, $5, $6, $7)
+  `insert into records (claim, kind, date, source, confidence, embedding, complements, source_at)
+   values ($1, $2, $3, $4, $5, $6, $7, $8)
    returning id, date, claim`,
   [
     args.claim,
@@ -480,6 +516,7 @@ const { rows } = await client.query(
     args.confidence ? Number(args.confidence) : 1.0,
     vectorLiteral,
     complementsId,
+    sourceAt,
   ],
 );
 
@@ -558,15 +595,21 @@ if (supersedesIds.length > 0) {
 // diciendo que fue un compromiso, ahora cerrado). "partial": mismo cierre,
 // más un aviso explícito para crear el compromiso que sigue pendiente --
 // nunca se redacta solo, eso requiere criterio de quien captura.
+// Un compromiso al que el registro nuevo declara complementar, o que ya
+// reemplazó vía --supersedes, no entra al juicio del clasificador: la relación
+// explícita manda sobre una lectura automática (antes, un registro marcado
+// "complementa a #N" cerraba además #N por completo).
 if (resolvedNodes.length > 0) {
+  const alreadyRelatedIds = [...supersedesIds, ...(complementsId !== null ? [complementsId] : [])];
   const { rows: openCommitments } = await client.query(
     `select distinct r.id, r.claim
      from records r
      join record_memories rm on rm.record_id = r.id
      where r.kind = 'commitment' and r.valid_until is null
        and rm.memory_name = any($1::text[])
-       and r.id <> $2`,
-    [resolvedNodes, newId],
+       and r.id <> $2
+       and r.id <> all($3::bigint[])`,
+    [resolvedNodes, newId, alreadyRelatedIds],
   );
 
   for (const commitment of openCommitments) {

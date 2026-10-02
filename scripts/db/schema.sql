@@ -297,6 +297,18 @@ alter table records add column if not exists superseded_by bigint references rec
 alter table records add column if not exists complements bigint references records(id);
 create index if not exists records_complements_idx on records (complements) where complements is not null;
 
+-- source_at (2026-09-22, portado desde MyBrain en v0.10.0): instante real del
+-- mensaje o evento fuente, distinto de created_at (cuándo se INSERTÓ la fila) y
+-- de date (solo el día calendario del evento, sin hora). Nullable: solo se
+-- conoce cuando el capturador puede derivarlo (una captura en vivo, donde el
+-- momento de inserción SÍ coincide con el evento, o un lote que lo trae). Lo
+-- usa lib/classify-duplicate.mjs (y su port en los dos servidores MCP) para
+-- bloquear un "supersedes" cuando el registro nuevo describe un estado
+-- cronológicamente anterior al candidato que pretende reemplazar -- sin esto,
+-- un registro insertado tarde pero sobre un estado viejo podía superar a uno
+-- insertado antes pero sobre un estado más nuevo.
+alter table records add column if not exists source_at timestamptz;
+
 alter table records add column if not exists content_tsv tsvector
   generated always as (to_tsvector('spanish', claim)) stored;
 
@@ -478,7 +490,12 @@ drop function if exists facts_similar(vector(1024), int);
 -- Renombrado (2026-09-05): facts_similar -> records_similar, nodes -> memories.
 drop function if exists facts_similar(vector(1024), int);
 
-create or replace function records_similar(query_embedding vector(1024), match_count int default 5)
+-- source_at agregado a esta función (v0.10.0): cambiar el tipo de retorno de una
+-- función existente exige drop + create, `create or replace` no basta (Postgres
+-- lo rechaza con 42P13 si difieren las columnas devueltas).
+drop function if exists records_similar(vector(1024), int);
+
+create function records_similar(query_embedding vector(1024), match_count int default 5)
 returns table (
   id bigint,
   claim text,
@@ -486,12 +503,14 @@ returns table (
   source text,
   kind text,
   memories text,
-  similarity float
+  similarity float,
+  source_at timestamptz
 )
 language sql stable as $$
   select r.id, r.claim, r.date, r.source, r.kind,
          (select string_agg(memory_name, ', ' order by memory_name) from record_memories where record_id = r.id) as memories,
-         1 - (r.embedding <=> query_embedding) as similarity
+         1 - (r.embedding <=> query_embedding) as similarity,
+         r.source_at
   from records r
   where r.valid_until is null and r.embedding is not null
   order by r.embedding <=> query_embedding
@@ -568,7 +587,11 @@ drop function if exists facts_timeline(text, int, boolean);
 -- p_memory, fact_nodes -> record_memories.
 drop function if exists facts_timeline(text, int, boolean);
 
-create or replace function records_timeline(p_memory text default null, match_count int default 20, p_all boolean default false)
+-- created_at y source_at agregados a esta función (v0.10.0): mismo motivo, el
+-- tipo de retorno cambia, drop + create.
+drop function if exists records_timeline(text, int, boolean);
+
+create function records_timeline(p_memory text default null, match_count int default 20, p_all boolean default false)
 returns table (
   id bigint,
   date date,
@@ -578,12 +601,14 @@ returns table (
   confidence real,
   memories text,
   valid_until timestamptz,
-  superseded_by bigint
+  superseded_by bigint,
+  created_at timestamptz,
+  source_at timestamptz
 )
 language sql stable as $$
   select r.id, r.date, r.claim, r.kind, r.source, r.confidence,
          (select string_agg(memory_name, ', ' order by memory_name) from record_memories where record_id = r.id) as memories,
-         r.valid_until, r.superseded_by
+         r.valid_until, r.superseded_by, r.created_at, r.source_at
   from records r
   where (p_memory is null or exists (
     select 1 from record_memories rm where rm.record_id = r.id and rm.memory_name = p_memory

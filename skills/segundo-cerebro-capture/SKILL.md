@@ -64,12 +64,26 @@ no hay ruta por defecto:
 
 - **Reemplaza uno o más**: `--supersedes 12,15` (marca esos ids como
   reemplazados y los saca de las consultas por defecto).
+- **Agrega información real sobre UNO de ellos** sin repetir todo lo que
+  ya dice: `--complements 12` (ambos quedan vigentes y se anexan juntos en
+  la búsqueda; el compromiso o registro complementado nunca se cierra por
+  este camino).
 - **Es genuinamente distinto** pese al parecido: `--distinct` (confirma
   explícitamente y lo inserta sin tocar los demás).
+
+Si el registro nuevo es una versión más delgada o repetida de UNO que ya
+existe y no aporta nada propio, el clasificador lo resuelve solo como
+"redundante": responde `Ya cubierto por #N, no se inserta` y sale con código
+0, no hay nada que hacer.
 
 No hay una tercera opción de "ignorar y seguir", el gate existe
 precisamente para que una contradicción no quede coexistiendo sin que
 alguien la haya visto y decidido.
+
+Si conoces la hora real del evento que describe el registro (no cuándo
+lo guardas), pasa `--source-at` con un instante ISO 8601 (por ejemplo
+`2026-09-21T18:07:00Z`). Un hecho más viejo nunca puede reemplazar a uno más
+nuevo cuando ambos instantes se conocen.
 
 ## Cerrar compromisos que este registro resuelve
 

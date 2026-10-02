@@ -79,7 +79,7 @@ const MAX_NODE_MATCH_FACTS = 15;
 const NODE_MATCH_POOL = 50;
 
 function normalizeText(s: string): string {
-  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 function wordMatch(term: string, queryNorm: string): boolean {
   const t = normalizeText(term).trim();
@@ -179,31 +179,101 @@ function formatPath(path: { node: string; relation: string | null }[]): string {
 // scripts/db/lib/classify-duplicate.mjs: misma lógica, mismo modelo, mismo
 // umbral. Nunca trata un error de red o una respuesta inválida como
 // "distinct": fallar hacia el lado seguro es bloquear, no insertar.
+//
+// 2026-09-22: dos candados deterministicos portados desde
+// scripts/db/lib/classify-duplicate.mjs, motivados por un bug real (un registro
+// generado por una extracción automática de una sesión CLI superó por error a
+// otro capturado directo por el usuario vía este mismo MCP desde el móvil, en
+// el momento exacto en que ocurrió una confirmación). Ninguno
+// depende de que el LLM obedezca la instrucción del prompt, son `if`s:
+//   1. isUnreviewedAutoExtraction: un candidato cuya fuente es una extracción
+//      automática sin revisión humana nunca puede superar a uno de fuente
+//      directa.
+//   2. Cronología (más general): cuando se conoce el instante
+//      real (source_at) de AMBOS registros, uno más viejo nunca supera a uno
+//      más nuevo, sin importar el canal.
+function isUnreviewedAutoExtraction(source: string | null | undefined): boolean {
+  return typeof source === 'string' && source.includes('sin revisión humana');
+}
+
 async function classifyDuplicate(
   newClaim: string,
-  candidates: { id: number; claim: string; similarity: number }[],
-): Promise<{ verdict: 'distinct' | 'supersedes'; supersedesIds: number[]; confidence: number; reasoning: string } | null> {
+  candidates: { id: number; claim: string; similarity: number; source: string; source_at: string | null }[],
+  newSource?: string,
+  newSourceAt?: string | null,
+): Promise<{ verdict: 'distinct' | 'supersedes' | 'complements' | 'redundant'; supersedesIds: number[]; complementsId: number | null; redundantId: number | null; confidence: number; reasoning: string } | null> {
   if (!OLLAMA_API_KEY) return null;
 
   const candidateList = candidates
-    .map((c) => `  #${c.id} (similitud ${c.similarity.toFixed(2)}): "${c.claim}"`)
+    .map((c) => `  #${c.id} (similitud ${c.similarity.toFixed(2)}, fuente: "${c.source}"${c.source_at ? `, instante: ${new Date(c.source_at).toISOString()}` : ''}): "${c.claim}"`)
     .join('\n');
   const prompt = `Eres un clasificador que decide si un registro nuevo, comparado con registros ya \
-registrados y parecidos por embedding, es genuinamente distinto o si reemplaza \
-(supersede) a alguno de ellos por describir el mismo estado de cosas actualizado.
+registrados y parecidos por embedding, es genuinamente distinto, si reemplaza \
+(supersede) a alguno de ellos, si lo complementa sin reemplazarlo, o si ya está \
+enteramente cubierto por uno de ellos (redundante).
 
-registro nuevo: "${newClaim}"
+registro nuevo (fuente: "${newSource ?? '(desconocida)'}"${newSourceAt ? `, instante: ${new Date(newSourceAt).toISOString()}` : ''}): "${newClaim}"
 
 registros vigentes parecidos:
 ${candidateList}
 
+La fuente de cada registro importa para decidir "supersedes": una fuente que \
+dice "Extracción automática ... sin revisión humana" es una inferencia barata \
+de una sesión, sin que nadie la haya verificado -- pesa MENOS que una fuente \
+que describe una confirmación o reporte directo (del usuario, por chat, por \
+correo, vía MCP desde cualquier otro canal/sesión, "revisado y aprobado", \
+etc.). Si el registro NUEVO viene de una extracción automática sin revisión \
+humana y el registro VIEJO viene de una fuente directa, sé especialmente \
+conservador con "supersedes": ante cualquier duda de que el nuevo pueda estar \
+basado en información incompleta o desactualizada (por ejemplo, una \
+afirmación del propio asistente dentro de esa sesión, no un reporte directo \
+del usuario), prefiere "distinct" en vez de "supersedes", y baja la \
+confidence.
+
+Cuando el "instante" esté disponible en ambos (nuevo y candidato), es la señal \
+más confiable de cuál describe un estado más reciente: un registro que \
+describe un instante ANTERIOR al de un candidato NUNCA lo reemplaza \
+("supersedes"), sin importar cuál se insertó primero en la base -- lo que \
+importa es cuándo ocurrió el hecho que describen, no cuándo se guardó.
+
 Responde SOLO con JSON, sin texto adicional, con esta forma exacta:
-{"verdict": "distinct" | "supersedes", "supersedes_ids": [ids numéricos de los registros que reemplaza, vacío si verdict es "distinct"], "confidence": número entre 0 y 1, "reasoning": "una oración breve en español"}
+{"verdict": "distinct" | "supersedes" | "complements" | "redundant", "supersedes_ids": [ids numéricos de los registros que reemplaza, vacío si verdict no es "supersedes"], "complements_id": id numérico del registro que complementa, o null si verdict no es "complements", "redundant_id": id numérico del registro que ya cubre por completo al nuevo, o null si verdict no es "redundant", "confidence": número entre 0 y 1, "reasoning": "una oración breve en español"}
 
 "supersedes" solo si el registro nuevo describe el mismo asunto en un estado más \
-reciente o corrige al anterior. "distinct" si es temáticamente parecido pero es \
-información genuinamente distinta (otro aspecto, otro momento no contradictorio, \
-otro sujeto). Si no estás seguro, baja la confidence en vez de adivinar.`;
+reciente o corrige al anterior, Y el registro viejo no aporta ningún dato que el \
+nuevo no repita (el viejo queda enteramente obsoleto). "complements" SOLO si \
+puedes nombrar explícitamente un dato, matiz o detalle CONCRETO que el registro \
+NUEVO aporta y que NINGÚN candidato ya tenía -- no basta con que el candidato \
+tenga contexto o detalle adicional que el nuevo no repite, eso por sí solo NO \
+convierte al nuevo en "complements", es la señal de "redundant". Dicho de otro \
+modo: que el viejo sepa más que el nuevo es IRRELEVANTE para decidir entre \
+"complements" y "redundant" -- lo único relevante es si el NUEVO sabe algo que \
+el viejo no sabía. "redundant": el registro nuevo es una versión más delgada, \
+parcial o repetida del MISMO hecho que ya cuenta UN candidato concreto, y no \
+aporta NINGÚN dato, matiz o detalle propio que ese candidato no tenga ya -- \
+aunque el candidato viejo sea más completo, más detallado, o cubra además otras \
+cosas que el nuevo no menciona, eso no importa: si el nuevo no agrega nada \
+PROPIO, es "redundant", nunca "complements". El candidato viejo no queda \
+obsoleto (no es supersedes) ni se le suma nada real (no es complements), el \
+nuevo simplemente sobra. Usa redundant_id con el id de ese candidato. "distinct" \
+si es temáticamente parecido pero es información genuinamente distinta (otro \
+aspecto, otro momento no contradictorio, otro sujeto), sin relación de \
+actualización, complemento ni redundancia real.
+
+Antes de responder "complements", complétalo explícitamente en tu razonamiento \
+interno: "el nuevo aporta ___, que el candidato #___ no tenía". Si no puedes \
+llenar ese espacio con un dato concreto (no una reformulación, no un subconjunto \
+más corto), la respuesta correcta es "redundant", no "complements", sin importar \
+cuánto más sepa el candidato viejo. Antes de responder "supersedes", pregúntate \
+explícitamente: ¿el registro nuevo contiene TODO lo que el viejo decía? Si la \
+respuesta es no, la respuesta correcta es "complements" (si además el nuevo \
+aporta algo propio, nombrable) o "redundant" (si no), nunca "supersedes". Antes \
+de responder "distinct" pese a un parecido temático fuerte, pregúntate lo mismo \
+al revés: ¿el candidato ya dice todo lo que dice el nuevo, sin que el nuevo \
+agregue algo propio nombrable? Si sí, la respuesta correcta es "redundant", no \
+"distinct" -- "distinct" es para temas relacionados pero genuinamente separados, \
+no para una repetición más corta del mismo hecho. Si no estás seguro, baja la \
+confidence en vez de adivinar.`;
 
   let res: Response;
   try {
@@ -234,21 +304,52 @@ otro sujeto). Si no estás seguro, baja la confidence en vez de adivinar.`;
   const supersedesIds = Array.isArray(parsed.supersedes_ids)
     ? parsed.supersedes_ids.map(Number).filter((id: number) => validIds.has(id))
     : [];
+  const complementsId: number | null = Number.isFinite(Number(parsed.complements_id)) && validIds.has(Number(parsed.complements_id))
+    ? Number(parsed.complements_id)
+    : null;
+  const redundantId: number | null = Number.isFinite(Number(parsed.redundant_id)) && validIds.has(Number(parsed.redundant_id))
+    ? Number(parsed.redundant_id)
+    : null;
   const confidence = Number(parsed.confidence);
 
   if (
-    (parsed.verdict !== 'distinct' && parsed.verdict !== 'supersedes') ||
+    (parsed.verdict !== 'distinct' && parsed.verdict !== 'supersedes' && parsed.verdict !== 'complements' && parsed.verdict !== 'redundant') ||
     !Number.isFinite(confidence) ||
     confidence < 0 ||
     confidence > 1 ||
-    (parsed.verdict === 'supersedes' && supersedesIds.length === 0)
+    (parsed.verdict === 'supersedes' && supersedesIds.length === 0) ||
+    (parsed.verdict === 'complements' && complementsId === null) ||
+    (parsed.verdict === 'redundant' && redundantId === null)
   ) {
     return null; // forma inesperada: cae a bloqueo manual
+  }
+
+  if (parsed.verdict === 'supersedes' && isUnreviewedAutoExtraction(newSource)) {
+    const directCandidates = supersedesIds
+      .map((id: number) => candidates.find((c) => Number(c.id) === id))
+      .filter((c: typeof candidates[number] | undefined): c is typeof candidates[number] => !!c && !isUnreviewedAutoExtraction(c.source));
+    if (directCandidates.length > 0) return null; // extracción automática sin revisión intentando superar fuente directa: bloqueo manual
+  }
+
+  if (parsed.verdict === 'supersedes' && newSourceAt) {
+    const newInstant = new Date(newSourceAt).getTime();
+    if (!Number.isNaN(newInstant)) {
+      const olderCandidates = supersedesIds
+        .map((id: number) => candidates.find((c) => Number(c.id) === id))
+        .filter((c: typeof candidates[number] | undefined): c is typeof candidates[number] => {
+          if (!c || !c.source_at) return false;
+          const candidateInstant = new Date(c.source_at).getTime();
+          return !Number.isNaN(candidateInstant) && newInstant < candidateInstant;
+        });
+      if (olderCandidates.length > 0) return null; // el nuevo describe un estado más viejo que el que pretende superar: bloqueo manual
+    }
   }
 
   return {
     verdict: parsed.verdict,
     supersedesIds,
+    complementsId,
+    redundantId,
     confidence,
     reasoning: typeof parsed.reasoning === 'string' ? parsed.reasoning : '',
   };
@@ -831,7 +932,7 @@ mcp.tool('search', {
 
 mcp.tool('remember', {
   description:
-    'Registra un registro atómico con fecha y fuente obligatorias en el segundo cerebro. Antes de insertar, busca registros vigentes parecidos por embedding; si encuentra candidatos, se niega a insertar salvo que se pase supersedes o distinct explícito. El recuerdo (o recuerdos) debe existir de antemano en la tabla memories salvo que se pase createMemory.',
+    'Registra un registro atómico con fecha y fuente obligatorias en el segundo cerebro. Antes de insertar, busca registros vigentes parecidos por embedding; si encuentra candidatos, se niega a insertar salvo que se pase supersedes, complements o distinct explícito (un registro ya cubierto por completo por otro vigente no se inserta). El recuerdo (o recuerdos) debe existir de antemano en la tabla memories salvo que se pase createMemory.',
   inputSchema: z.object({
     claim: z.string().describe('Texto claro y autocontenido del registro'),
     date: z.string().describe('Fecha YYYY-MM-DD, nunca inferida de texto libre'),
@@ -842,8 +943,10 @@ mcp.tool('remember', {
     aliases: z.array(z.string()).optional().describe('Alias para el recuerdo nuevo -- solo válido junto con createMemory, y solo si esta llamada crea exactamente UN recuerdo nuevo'),
     noSuggestAliases: z.boolean().optional().describe('Desactiva la sugerencia automática de alias adicionales al crear un recuerdo (por defecto, se proponen variantes plausibles del nombre/alias dados)'),
     supersedes: z.array(z.number()).optional().describe('IDs de registros vigentes que este reemplaza'),
+    complements: z.number().optional().describe('ID de UN registro vigente al que este agrega información real sin repetirla ni reemplazarlo: ambos quedan vigentes y se anexan juntos en la búsqueda'),
     distinct: z.boolean().optional().describe('Confirma que es distinto pese al parecido con candidatos'),
     confirmDate: z.boolean().optional().describe(`Obligatorio si date no es la fecha real de hoy (${TIMEZONE}) -- confirma que un registro con fecha distinta es intencional (histórico, backfill), no un error de no verificar la fecha antes de llamar`),
+    sourceAt: z.string().optional().describe('Instante real (ISO 8601, con hora) del mensaje/evento fuente que generó este registro, si es genuinamente distinto de ahora (ej. reportando algo que pasó hace rato). Opcional -- por defecto se usa el instante de esta llamada, correcto para toda captura en vivo (que es el único caso de esta tool).'),
   }),
   handler: async (args: {
     claim: string;
@@ -855,14 +958,37 @@ mcp.tool('remember', {
     aliases?: string[];
     noSuggestAliases?: boolean;
     supersedes?: number[];
+    complements?: number;
     distinct?: boolean;
     confirmDate?: boolean;
+    sourceAt?: string;
   }) => {
     if (!DATE_RE.test(args.date)) {
       return {
         content: [{ type: 'text', text: `Fecha inválida: "${args.date}". Debe ser YYYY-MM-DD, no se infiere.` }],
         isError: true,
       };
+    }
+
+    // Default a "ahora" cuando el llamador no lo pasa (2026-09-22, hallazgo
+    // probando esta tool desde Chat): a diferencia de extract-records.mjs (que SÍ puede insertar horas
+    // después del evento real, procesando una transcripción vieja), esta
+    // tool nunca tiene una ruta de backfill -- toda llamada a 'remember' vía
+    // MCP es, por definición, una captura en vivo, así que "ahora" es la
+    // mejor estimación posible cuando el llamador no da un instante más
+    // preciso. Sin este default, el candado de cronología de
+    // classifyDuplicate() nunca tenía con qué operar salvo que el modelo que
+    // maneja esa sesión se acordara de pasar sourceAt explícito -- no fiable.
+    let sourceAt: string = new Date().toISOString();
+    if (args.sourceAt) {
+      const parsedSourceAt = new Date(args.sourceAt);
+      if (Number.isNaN(parsedSourceAt.getTime())) {
+        return {
+          content: [{ type: 'text', text: `sourceAt inválido: "${args.sourceAt}". Debe ser un instante ISO 8601 parseable (ej. 2026-09-21T18:07:00Z).` }],
+          isError: true,
+        };
+      }
+      sourceAt = parsedSourceAt.toISOString();
     }
 
     // Mismo criterio que remember.mjs/remember-batch.mjs (2026-09-03, registros
@@ -888,31 +1014,51 @@ mcp.tool('remember', {
     });
     const similar = (candidates ?? []).filter((c: any) => c.similarity >= SIMILARITY_THRESHOLD);
     let supersedesIds = args.supersedes ?? [];
+    let complementsId: number | null = Number.isInteger(args.complements) ? (args.complements as number) : null;
+    let redundantId: number | null = null;
     let distinct = args.distinct ?? false;
     let autoResolved: Awaited<ReturnType<typeof classifyDuplicate>> = null;
 
-    if (similar.length > 0 && supersedesIds.length === 0 && !distinct) {
-      autoResolved = await classifyDuplicate(args.claim, similar);
+    if (similar.length > 0 && supersedesIds.length === 0 && complementsId === null && !distinct) {
+      autoResolved = await classifyDuplicate(args.claim, similar, args.source, sourceAt);
       if (autoResolved && autoResolved.confidence >= CLASSIFIER_CONFIDENCE_THRESHOLD) {
         if (autoResolved.verdict === 'supersedes') supersedesIds = autoResolved.supersedesIds;
+        else if (autoResolved.verdict === 'complements') complementsId = autoResolved.complementsId;
+        else if (autoResolved.verdict === 'redundant') redundantId = autoResolved.redundantId;
         else distinct = true;
       } else {
         autoResolved = null; // confianza insuficiente o clasificador no disponible: no se usa
       }
     }
 
-    if (similar.length > 0 && supersedesIds.length === 0 && !distinct) {
+    // "redundant" (portado desde remember.mjs): el
+    // registro nuevo no aporta nada que #redundantId no tuviera ya, nunca se
+    // inserta. No es error: la decisión es correcta, solo no hay nada que guardar.
+    if (redundantId !== null) {
+      return { content: [{ type: 'text', text: `Ya cubierto por #${redundantId}, no se inserta (redundante).` }] };
+    }
+
+    if (similar.length > 0 && supersedesIds.length === 0 && complementsId === null && !distinct) {
       let text = `Hay ${similar.length} registro(s) vivo(s) parecido(s), resuélvelo antes de insertar:\n`;
       for (const c of similar) {
         text += `\n#${c.id} [${c.date}] (similitud ${c.similarity.toFixed(2)}) ${c.claim}\n  fuente: ${c.source}${c.memories ? ` · recuerdos: ${c.memories}` : ''}\n`;
       }
       text +=
-        '\nSi este registro reemplaza a alguno, vuelve a llamar con supersedes: [ids]. Si es genuinamente distinto, llama con distinct: true.';
+        '\nSi este registro reemplaza a alguno, vuelve a llamar con supersedes: [ids]. Si agrega información real sobre UNO de ellos sin repetir todo lo que ya dice, llama con complements: id. Si es genuinamente distinto, llama con distinct: true.';
       return { content: [{ type: 'text', text }], isError: true };
     }
 
     if (autoResolved) {
       args.source = `${args.source} [auto-resuelto por Ollama Cloud (${CLASSIFIER_MODEL}), confianza ${autoResolved.confidence.toFixed(2)}: ${autoResolved.reasoning}]`;
+    }
+
+    if (complementsId !== null && !(candidates ?? []).some((c: any) => Number(c.id) === complementsId)) {
+      return {
+        content: [
+          { type: 'text', text: `complements referencia un id que no apareció entre los parecidos vivos: ${complementsId}.` },
+        ],
+        isError: true,
+      };
     }
 
     if (supersedesIds.length > 0) {
@@ -1104,11 +1250,11 @@ mcp.tool('remember', {
     // Aviso de fusión de contexto cruzado (portado desde D:\MyBrain, ver
     // MEMORY.md y remember.mjs/remember-batch.mjs, caso #872): si el claim
     // cita literalmente "#NNN" de un registro vigente que no está cubierto
-    // por supersedes, avisa (nunca bloquea, hay citas legítimas).
+    // por supersedes o complements, avisa (nunca bloquea, hay citas legítimas).
     let crossRefAdvisory = '';
     const mentionedIds = [...new Set([...args.claim.matchAll(/#(\d+)/g)].map((m) => Number(m[1])))];
     if (mentionedIds.length > 0) {
-      const uncovered = mentionedIds.filter((id) => !supersedesIds.includes(id));
+      const uncovered = mentionedIds.filter((id) => !supersedesIds.includes(id) && id !== complementsId);
       if (uncovered.length > 0) {
         const { data: liveRows } = await supabase
           .from('records')
@@ -1132,6 +1278,8 @@ mcp.tool('remember', {
         date: args.date,
         source: args.source,
         embedding,
+        source_at: sourceAt,
+        complements: complementsId,
       })
       .select('id, date, claim')
       .single();
@@ -1193,14 +1341,52 @@ mcp.tool('remember', {
         .in('id', supersedesIds);
     }
 
+    // Aviso de compromisos abiertos: este MCP no cierra compromisos solo (a
+    // diferencia de remember.mjs), y desde aquí supersedes solo acepta registros
+    // parecidos por embedding, así que un compromiso resuelto con poco parecido
+    // textual no se puede cerrar desde una sesión de Chat. SQL determinista, sin
+    // modelo: solo lista los compromisos abiertos de los mismos recuerdos para que
+    // quien llama decida si avisar al usuario. Mejor esfuerzo: si la consulta
+    // falla, no hay aviso.
+    let commitmentAdvisory = '';
+    if (resolvedNodes.length > 0 && (args.kind ?? 'fact') !== 'commitment') {
+      const { data: openRows } = await supabase
+        .from('record_memories')
+        .select('records!inner(id, claim, date)')
+        .in('memory_name', resolvedNodes)
+        .eq('records.kind', 'commitment')
+        .is('records.valid_until', null);
+      const skip = new Set<number>([...supersedesIds, ...(complementsId !== null ? [complementsId] : [])]);
+      const seenOpen = new Set<number>();
+      const openCommitments: { id: number; claim: string; date: string }[] = [];
+      for (const row of openRows ?? []) {
+        const rec = (row as any).records;
+        if (!rec || skip.has(Number(rec.id)) || seenOpen.has(Number(rec.id)) || Number(rec.id) === Number(inserted.id)) continue;
+        seenOpen.add(Number(rec.id));
+        openCommitments.push(rec);
+      }
+      if (openCommitments.length > 0) {
+        const shown = openCommitments
+          .slice(0, 5)
+          .map((c) => `#${c.id} [${c.date}] ${c.claim.length > 140 ? c.claim.slice(0, 140) + '…' : c.claim}`)
+          .join(' | ');
+        commitmentAdvisory =
+          `(aviso: hay ${openCommitments.length} compromiso(s) abierto(s) en estos recuerdos: ${shown}${openCommitments.length > 5 ? ' | ...' : ''}. ` +
+          `Si este registro resuelve alguno, díselo al usuario para cerrarlo después con supersede-record.mjs en una sesión de Claude Code: desde aquí supersedes solo acepta registros parecidos por embedding. ` +
+          `Si no resuelve ninguno, ignora este aviso.)`;
+      }
+    }
+
     let text = `Registrado #${inserted.id}: [${inserted.date}] ${inserted.claim}`;
     if (resolvedNodes.length > 0) text += `\nrecuerdo(s): ${resolvedNodes.join(', ')}`;
     for (const advisory of linkAdvisories) text += `\n${advisory}`;
     if (nodeAdvisory) text += `\n${nodeAdvisory}`;
     if (additionalAdvisory) text += `\n${additionalAdvisory}`;
     if (crossRefAdvisory) text += `\n${crossRefAdvisory}`;
+    if (commitmentAdvisory) text += `\n${commitmentAdvisory}`;
     for (const advisory of aliasAdvisories) text += `\n${advisory}`;
     if (supersedesIds.length > 0) text += `\nReemplazó a #${supersedesIds.join(', #')}.`;
+    else if (complementsId !== null) text += `\nComplementa a #${complementsId} (ambos quedan vigentes, se anexan juntos en la búsqueda).`;
     else if (similar.length > 0 && distinct) text += `\nConfirmado como distinto pese al parecido.`;
 
     return { content: [{ type: 'text', text }] };
