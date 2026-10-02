@@ -5,6 +5,41 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.10.3 (2026-10-01)
+
+Sin migración de `schema.sql`, sin redespliegue del servidor MCP y sin pasos a
+mano: reinicia el dashboard (botón "Reiniciar servidor" o tu proceso habitual)
+para que tome el servidor y el frontend nuevos. Cierra el porte desde MyBrain
+iniciado en v0.10.0 con el dashboard.
+
+- **El timeline muestra la hora de cada registro.** Cada entrada agrega
+  "instante: HH:MM" (la hora real del mensaje o evento fuente, `source_at`) o,
+  si no existe, "insertado: HH:MM" (cuándo entró la fila, `created_at`). Usa la
+  zona horaria del navegador, no una fija. Estos dos campos llegaron al schema
+  en v0.10.0 y hasta ahora solo se podían ver con SQL; no se muestra nada para
+  registros que no tengan ninguno de los dos.
+- **Enter ejecuta la acción en tres campos**: la pregunta de "Buscar", el
+  recuerdo de "Estado de recuerdo" y el id de "Retractar/editar registro" (antes
+  había que hacer clic en el botón).
+- **`/favicon.svg` ahora se sirve.** `index.html` ya lo referenciaba pero el
+  servidor no tenía la ruta, así que el navegador recibía un 404 en cada carga.
+- **"Buscar" pide el contenido completo de las páginas** (`search.mjs --full`,
+  disponible desde v0.10.1): el bloque de datos crudos del dashboard lo
+  espera así para colorear cada resultado por relevancia.
+- **Windows**: el lote de "Guardar lote" ya no abre una ventana de consola
+  visible por cada ejecución de `remember-batch.mjs`.
+- **El resaltado del menú lateral** solo recorre los botones de navegación
+  (`button[data-target]`), no cualquier botón del panel.
+- **`scripts/db/server/dashboard.log` deja de estar versionado.** El servidor lo
+  reescribe en cada arranque, así que quedaba siempre como modificado sin
+  comitear. Ahora está en `.gitignore`; el archivo local sigue existiendo.
+- **Cómo se verificó**: se levantó el dashboard en un puerto de prueba contra
+  una base real y se revisó en el navegador: sin errores de consola, Enter lanza
+  la búsqueda y la síntesis responde, el menú se cierra al elegir "Timeline", el
+  timeline muestra "instante" e "insertado" con la hora local, y `/favicon.svg`
+  responde 200 con `image/svg+xml`. No se probaron en el navegador "Estado de
+  recuerdo" ni "Retractar/editar" con Enter, ni "Guardar lote" en Windows.
+
 ## v0.10.2 (2026-10-01)
 
 Sin migración de `schema.sql` y sin redespliegue del servidor MCP. **Pide dos

@@ -44,3 +44,6 @@ wiki/
 # config JSON files above — never commit it, same reasoning as .env.
 scripts/db/config/feedback.json
 !scripts/db/config/feedback.json.example
+
+# Log del servidor del dashboard: se reescribe en cada arranque (no versionar)
+scripts/db/server/dashboard.log

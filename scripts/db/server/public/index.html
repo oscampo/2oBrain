@@ -485,7 +485,7 @@ function renderNav() {
 }
 
 function show(id) {
-  for (const btn of nav.querySelectorAll('button')) btn.classList.toggle('active', btn.dataset.target === id);
+  for (const btn of nav.querySelectorAll('button[data-target]')) btn.classList.toggle('active', btn.dataset.target === id);
   for (const sec of main.querySelectorAll('section')) sec.classList.toggle('active', sec.id === id);
 }
 
@@ -1005,6 +1005,10 @@ function section(id, title, hint, bodyHtml) {
   // en la UI de Buscar.
   const FACT_ID_PATTERN = /^#?\d+(\s*,\s*#?\d+)*$/;
 
+  sec.querySelector('#search-q').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); sec.querySelector('#search-run').click(); }
+  });
+
   sec.querySelector('#search-run').addEventListener('click', async () => {
     const q = sec.querySelector('#search-q').value.trim();
     if (!q) return;
@@ -1120,6 +1124,10 @@ function section(id, title, hint, bodyHtml) {
   const MONTH_FMT = new Intl.DateTimeFormat('es-CO', { year: 'numeric', month: 'long', timeZone: 'UTC' });
   const MONTH_SHORT_FMT = new Intl.DateTimeFormat('es-CO', { month: 'short', timeZone: 'UTC' });
   const DAY_FMT = new Intl.DateTimeFormat('es-CO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  // A diferencia de DAY_FMT (fecha del EVENTO, columna `date`, sin hora, formateada en UTC a
+  // propósito para no desplazar el día), esto es para instantes reales con hora
+  // (`source_at`/`created_at`), formateados en la zona horaria local del navegador.
+  const TIME_FMT = new Intl.DateTimeFormat('es-CO', { hour: '2-digit', minute: '2-digit' });
   const KIND_LABELS = { fact: 'Hecho', event: 'Evento', commitment: 'Compromiso' };
 
   function statTile(value, label) {
@@ -1240,6 +1248,12 @@ function section(id, title, hint, bodyHtml) {
     const kindClass = `tl-kind-${escapeHtml(head.kind || 'fact')}`;
     const memoriesNote = head.memories ? ` · recuerdos: ${escapeHtml(head.memories)}` : '';
     const replacedNote = reemplazadoHead ? ` · reemplazado por #${head.superseded_by}` : '';
+    // source_at (instante real del evento/mensaje fuente) sobre created_at (cuándo se insertó la
+    // fila): es el dato más informativo cuando existe. Sin source_at, created_at igual sirve para
+    // saber cuándo entró el registro. Ninguno se muestra si falta.
+    const instant = head.source_at || head.created_at;
+    const instantLabel = head.source_at ? 'instante' : 'insertado';
+    const instantNote = instant ? ` · ${instantLabel}: ${TIME_FMT.format(new Date(instant))}` : '';
     const label = `Ver evolución (${history.length} ${history.length === 1 ? 'versión anterior' : 'versiones anteriores'})`;
     const historyHtml = history.length
       ? `<span class="tl-history-toggle" data-chain-toggle data-open-label="${escapeHtml(label)}">${forceOpen ? 'Ocultar evolución' : escapeHtml(label)}</span>
@@ -1253,7 +1267,7 @@ function section(id, title, hint, bodyHtml) {
       <div class="tl-entry ${kindClass}${reemplazadoHead ? ' tl-reemplazado' : ''}">
         <div class="tl-entry-date">#${head.id} · ${DAY_FMT.format(new Date(head.date))}</div>
         <div class="tl-entry-claim">${highlightMatch(head.claim, highlightQuery)}</div>
-        <div class="tl-entry-meta">fuente: ${escapeHtml(head.source || '')} · tipo: ${escapeHtml(head.kind || 'fact')}${memoriesNote}${replacedNote}</div>
+        <div class="tl-entry-meta">fuente: ${escapeHtml(head.source || '')} · tipo: ${escapeHtml(head.kind || 'fact')}${instantNote}${memoriesNote}${replacedNote}</div>
         ${historyHtml}
       </div>`;
   }
@@ -1694,6 +1708,10 @@ function section(id, title, hint, bodyHtml) {
       opt.value = n.name;
       list.appendChild(opt);
     }
+  });
+
+  sec.querySelector('#ns-memory').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); sec.querySelector('#ns-run').click(); }
   });
 
   sec.querySelector('#ns-run').addEventListener('click', async () => {
@@ -3687,6 +3705,9 @@ function section(id, title, hint, bodyHtml) {
     statusEl.textContent = 'El id cambió, vuelve a pulsar "Ver registro" antes de guardar.';
   }
   idInput.addEventListener('input', invalidatePreview);
+  idInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); sec.querySelector('#er-preview').click(); }
+  });
 
   sec.querySelector('#er-preview').addEventListener('click', async () => {
     const id = idInput.value.trim();

@@ -86,10 +86,16 @@ const app = new Hono();
 // una sola ruta.
 app.get('/', (c) => c.html(readFileSync(INDEX_HTML_PATH, 'utf8')));
 
+// index.html referencia /favicon.svg; sin esta ruta el navegador recibía un 404.
+app.get('/favicon.svg', (c) => {
+  c.header('Content-Type', 'image/svg+xml');
+  return c.body(readFileSync(join(SERVER_DIR, 'public', 'favicon.svg')));
+});
+
 app.get('/api/search', (c) => {
   const q = c.req.query('q');
   if (!q) return c.json({ ok: false, error: 'falta ?q=' }, 400);
-  return respond(c, runScript('search.mjs', [q]));
+  return respond(c, runScript('search.mjs', [q, '--full']));
 });
 
 // Toma resultados YA obtenidos de /api/search (el frontend los pasa, no se
@@ -293,7 +299,7 @@ app.post('/api/remember-batch/stream', async (c) => {
   c.header('Content-Type', 'text/plain; charset=utf-8');
   return stream(c, async (s) => {
     await new Promise((resolve) => {
-      const child = spawn(process.execPath, [join(DB_DIR, 'remember-batch.mjs'), ...streamArgs], { cwd: DB_DIR });
+      const child = spawn(process.execPath, [join(DB_DIR, 'remember-batch.mjs'), ...streamArgs], { cwd: DB_DIR, windowsHide: true });
       child.stdout.on('data', (chunk) => s.write(chunk));
       child.stderr.on('data', (chunk) => s.write(chunk));
       child.on('close', (code) => {
