@@ -533,10 +533,13 @@ app.post('/api/set-memory-aliases', async (c) => {
 // pensarlo (ver registro #498, caso real del registro #412).
 app.post('/api/recategorize-record', async (c) => {
   const body = await c.req.json().catch(() => null);
-  if (!body?.record || !body?.from || !body?.to || !body?.reason) {
-    return c.json({ ok: false, error: 'faltan record/from/to/reason' }, 400);
+  const adding = Boolean(body?.add);
+  if (!body?.record || !body?.reason || (adding ? (body.from || body.to || body.remove) : (!body?.from || (!body?.to && !body?.remove)))) {
+    return c.json({ ok: false, error: 'faltan record/reason y from + (to | remove: true), o add (para solo agregar una etiqueta)' }, 400);
   }
-  return respond(c, runScript('recategorize-record.mjs', ['--record', String(body.record), '--from', body.from, '--to', body.to, '--reason', body.reason]));
+  if (adding) return respond(c, runScript('recategorize-record.mjs', ['--record', String(body.record), '--add', body.add, '--reason', body.reason]));
+  const target = body.remove ? ['--remove'] : ['--to', body.to];
+  return respond(c, runScript('recategorize-record.mjs', ['--record', String(body.record), '--from', body.from, ...target, '--reason', body.reason]));
 });
 
 // set-record-kind.mjs, 2026-09-06: cambia solo la etiqueta hecho/evento/
@@ -681,6 +684,28 @@ function hasScheduledTask() {
   const r = spawnSync('schtasks', ['/query', '/tn', TASK_NAME], { windowsHide: true });
   return r.status === 0;
 }
+
+// Revision de etiquetas (garden.mjs, 2026-10-02): muestreo al azar de registros de extraccion
+// automatica y senales de texto, ambos sin revisar. Corregir una etiqueta reutiliza
+// /api/recategorize-record; aqui solo se listan los items y se guarda el veredicto.
+function gardenJson(c, args) {
+  const result = runScript('garden.mjs', [...args, '--json']);
+  try { return c.json({ ok: true, ...JSON.parse(result.stdout) }); }
+  catch { return c.json({ ok: false, error: result.stderr || 'garden.mjs no devolvio JSON valido' }, 500); }
+}
+const gardenNum = (v, d, max) => { const n = Number(v); return Number.isInteger(n) && n > 0 && n <= max ? String(n) : String(d); };
+app.get('/api/garden/sample', (c) => gardenJson(c, ['--sample', gardenNum(c.req.query('n'), 3, 20), '--since', gardenNum(c.req.query('since'), 3, 60)]));
+app.get('/api/garden/signals', (c) => gardenJson(c, ['--since', gardenNum(c.req.query('since'), 3, 60), '--limit', gardenNum(c.req.query('limit'), 10, 50)]));
+app.get('/api/garden/stats', (c) => gardenJson(c, ['--stats']));
+app.post('/api/garden/verdict', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!Number.isInteger(Number(body?.record)) || !['ok', 'corrected'].includes(body?.verdict)) {
+    return c.json({ ok: false, error: 'faltan record (numero) y verdict (ok|corrected)' }, 400);
+  }
+  const args = ['--verdict', String(Number(body.record)), body.verdict];
+  if (body.note) args.push('--note', String(body.note));
+  return respond(c, runScript('garden.mjs', args));
+});
 
 app.post('/api/restart', (c) => {
   c.header('Connection', 'close');

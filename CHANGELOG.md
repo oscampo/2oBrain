@@ -5,6 +5,48 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.10.7 (2026-10-02)
+
+Hay un paso de migración y un reinicio:
+
+1. `node scripts/db/apply-schema.mjs` (crea la tabla nueva `record_reviews`, con
+   RLS activo; es idempotente).
+2. Reinicia el servidor del dashboard: la página se recarga sola, pero los
+   endpoints nuevos (`/api/garden/...`) solo existen tras reiniciar.
+
+- **Revisión de etiquetas (nueva sección del dashboard, grupo Recuerdos).** Para
+  revisar a mano si los registros recientes quedaron en el recuerdo correcto, sin
+  depender de que ningún modelo opine sobre el asunto:
+  - **Muestrear registros automáticos:** trae al azar registros de la extracción
+    automática que nadie ha revisado. No detecta errores por sí mismo, mide qué
+    tan seguido el etiquetado se equivoca.
+  - **Señales de texto:** registros con un indicio concreto (solo tiene recuerdos
+    paraguas, el texto nombra a otro recuerdo que no tiene, o alguno de sus
+    recuerdos tiene 2 registros o menos).
+  - **Una tabla por tarjeta:** cada etiqueta actual se decide por separado
+    (Correcto, Mover a otro recuerdo o Quitar), se pueden añadir etiquetas
+    nuevas, y todo se aplica junto con **Aplicar** y un solo motivo. No se deja
+    el registro sin ninguna etiqueta. **Todas correctas** guarda el veredicto de
+    una vez. Cada revisión se guarda en `record_reviews` y el registro no vuelve a
+    salir; arriba se muestra la tasa de error observada (no concluir con menos de
+    unas 30 revisiones).
+  - También por consola: `node scripts/db/garden.mjs --sample`, `--stats`,
+    `--verdict <id> ok|corrected`.
+- **`recategorize-record.mjs` con dos modos nuevos:** `--remove` (quita una
+  etiqueta sin reasignarla, nunca la única) y `--add <recuerdo>` (agrega una
+  etiqueta sin tocar las que ya tiene). `--add` no crea enlaces entre recuerdos:
+  si el registro queda con dos recuerdos sin enlace, `doctor.mjs --fix` lo
+  resuelve.
+- **La señal "paraguas" arranca vacía.** En `garden.mjs`, `UMBRELLA` es la lista de
+  tus recuerdos demasiado amplios para decir de qué trata un registro; ponla ahí
+  si la quieres usar.
+- **Cómo se verificó**: se levantó el dashboard de 2oBrain en un puerto de prueba
+  contra una base real. Los tres endpoints de lectura (estadísticas, muestreo y
+  señales) respondieron bien y la sección se renderizó en el navegador sin
+  errores de consola; solo se hicieron lecturas desde esta copia. Las escrituras
+  (Aplicar con mover, quitar y añadir, y las guardas) se probaron en la copia de
+  trabajo de origen antes de portar.
+
 ## v0.10.6 (2026-10-02)
 
 Sin migración de `schema.sql`, sin redespliegue del servidor MCP y sin pasos a

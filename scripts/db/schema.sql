@@ -332,6 +332,19 @@ exception when unique_violation then
   raise notice 'records_live_claim_uniq no se creo: hay registros vigentes con texto identico. Retracta las copias y vuelve a correr schema.sql.';
 end $$;
 
+-- Revision humana de etiquetas (2-oct-2026, garden.mjs): cada fila es un registro cuyas
+-- etiquetas se reviso a mano. Sirve de cursor (que no vuelva a salir) y de conjunto
+-- de referencia verificado para medir la tasa real de error del etiquetado. Una fila por
+-- registro: la ultima decision gana. verdict: ok (etiquetas correctas) o corrected
+-- (hubo que moverlas o quitarlas).
+create table if not exists record_reviews (
+  record_id bigint primary key references records(id) on delete cascade,
+  verdict text not null check (verdict in ('ok', 'corrected')),
+  note text,
+  reviewed_at timestamptz not null default now()
+);
+alter table record_reviews enable row level security;
+
 do $$
 declare
   current_type text;

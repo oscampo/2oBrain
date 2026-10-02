@@ -242,6 +242,10 @@
   .fact-card .fc-suggestions { color: var(--accent); font-size: 12px; margin-top: 6px; cursor: default; }
   .fact-card .fc-suggestions span { cursor: pointer; text-decoration: underline dotted; }
   .gph-stats { display: flex; flex-wrap: wrap; gap: 10px; }
+  .tg-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .tg-table th, .tg-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border, rgba(128,128,128,.25)); vertical-align: middle; }
+  .tg-table td label { display: inline-flex; align-items: center; gap: 4px; margin: 0; font-weight: normal; white-space: nowrap; }
+  .tg-table input[type=text] { margin: 0; min-width: 180px; }
   .gph-note { margin-top: 8px; padding: 8px 12px; border: 1px solid var(--warn); border-left-width: 4px; border-radius: 6px; color: var(--text); background: var(--panel); font-size: 13px; line-height: 1.45; }
   .gph-note.gph-note-info { border-color: var(--accent); }
   .gph-stat { display: flex; align-items: baseline; gap: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 7px 14px; }
@@ -401,6 +405,7 @@ const SECTIONS = [
   { id: 'aliases', label: 'Alias', group: 'Recuerdos', advanced: true },
   { id: 'relations', label: 'Relaciones', group: 'Recuerdos', advanced: true },
   { id: 'category-candidates', label: 'Candidatos de categoría', group: 'Recuerdos', advanced: true },
+  { id: 'tag-garden', label: 'Revisión de etiquetas', group: 'Recuerdos' },
   { id: 'create-memory', label: 'Crear categoría/subcategoría', group: 'Recuerdos', advanced: true },
   { id: 'purge-memory', label: 'Borrar recuerdo', group: 'Recuerdos', advanced: true },
 
@@ -3359,6 +3364,197 @@ function section(id, title, hint, bodyHtml) {
       runBtn.disabled = false;
     }
   });
+}
+
+// --- Revisión de etiquetas ---
+{
+  const sec = section('tag-garden', 'Revisión de etiquetas', 'Revisa a mano si los registros recientes quedaron en el recuerdo correcto ("garden.mjs"). "Muestrear" trae registros al azar de la extracción automática que nadie ha revisado: no detecta errores por sí mismo, mide qué tan seguido el etiquetado se equivoca. "Señales de texto" trae registros con un indicio concreto (solo recuerdo paraguas, menciona otro recuerdo sin tenerlo, recuerdo de 2 registros o menos). Cada revisión se guarda y el registro no vuelve a salir. Cada etiqueta actual se decide por separado: Correcto, Mover (a otro recuerdo) o Quitar; además puedes añadir etiquetas nuevas. Todo se aplica junto con "Aplicar" y un solo motivo; el registro nunca queda sin etiquetas.',
+    `<div class="row">
+       <div><label>Cuántos</label><input type="number" id="tg-n" value="3" min="1" max="20"></div>
+       <div><label>Últimos días</label><input type="number" id="tg-days" value="3" min="1" max="60"></div>
+     </div>
+     <button class="run" id="tg-sample">Muestrear registros automáticos</button>
+     <button class="run secondary" id="tg-signals" style="margin-left:8px">Señales de texto</button>
+     <div class="status" id="tg-stats"></div>
+     <div class="status" id="tg-info"></div>
+     <datalist id="tg-memories-list"></datalist>
+     <div id="tg-cards"></div>`);
+
+  const infoEl = sec.querySelector('#tg-info');
+  const statsEl = sec.querySelector('#tg-stats');
+  const cardsEl = sec.querySelector('#tg-cards');
+  const FLAG_TEXT = { paraguas: 'solo tiene recuerdos paraguas', mencion: 'menciona otro recuerdo que no tiene', chico: 'recuerdo de 2 registros o menos' };
+
+  callMemoriesOnce().then((r) => {
+    const list = sec.querySelector('#tg-memories-list');
+    for (const n of r.memories ?? []) { const opt = document.createElement('option'); opt.value = n.name; list.appendChild(opt); }
+  });
+
+  async function refreshStats() {
+    const r = await call('GET', '/api/garden/stats');
+    if (!r.ok) { statsEl.textContent = ''; return; }
+    statsEl.textContent = r.reviewed
+      ? `Revisados: ${r.reviewed} | correctos: ${r.correct} | corregidos: ${r.corrected} | tasa de error observada: ${Math.round(100 * r.corrected / r.reviewed)}%${r.reviewed < 30 ? ' (muestra todavía chica, no concluir con menos de ~30)' : ''}`
+      : 'Todavía no hay revisiones guardadas.';
+  }
+
+  function renderItem(it) {
+    const card = document.createElement('div');
+    card.className = 'fact-card';
+    const flagsHtml = (it.flags ?? []).map((f) => `<div class="hint">• ${FLAG_TEXT[f.kind] ?? f.kind}: <code>${escapeHtml(f.memory ?? '')}</code>${f.via ? ` (por "${escapeHtml(f.via)}")` : ''}</div>`).join('');
+    const rowsHtml = it.tags.map((t, i) => `
+      <tr data-tag="${escapeHtml(t)}">
+        <td><code>${escapeHtml(t)}</code></td>
+        <td><label><input type="radio" name="tg-act-${it.id}-${i}" value="ok"> Correcto</label></td>
+        <td><label><input type="radio" name="tg-act-${it.id}-${i}" value="move"> Mover</label></td>
+        <td><label><input type="radio" name="tg-act-${it.id}-${i}" value="remove"> Quitar</label></td>
+        <td><input type="text" class="tg-dest" list="tg-memories-list" placeholder="recuerdo destino" disabled></td>
+      </tr>`).join('');
+    card.innerHTML = `
+      <div class="fc-top"><label>#${it.id}</label></div>
+      <div class="fc-fragment">${escapeHtml(it.claim)}</div>
+      ${flagsHtml}
+      <div style="overflow-x:auto; margin-top:12px">
+        <table class="tg-table">
+          <thead><tr><th>Etiqueta actual</th><th colspan="3">Qué hacer con ella</th><th>Recuerdo destino</th></tr></thead>
+          <tbody>${rowsHtml || '<tr><td colspan="5" class="hint">El registro no tiene etiquetas: solo se puede añadir.</td></tr>'}</tbody>
+        </table>
+      </div>
+      <label style="margin-top:12px">Añadir etiqueta (opcional)</label>
+      <div class="tg-adds"></div>
+      <button class="run secondary tg-add-more" type="button" style="margin-top:6px">+ añadir otra etiqueta</button>
+      <label style="margin-top:12px">Motivo (obligatorio si mueves, quitas o añades)</label>
+      <input type="text" class="tg-reason" placeholder="ej. el registro trata del diplomado, no del curso CABD">
+      <div style="margin-top:12px">
+        <button class="run tg-apply" disabled>Aplicar</button>
+        <button class="run secondary tg-all-ok" style="margin-left:8px" ${it.tags.length ? '' : 'disabled'}>Todas correctas</button>
+      </div>`;
+
+    const rows = [...card.querySelectorAll('tbody tr[data-tag]')];
+    const addsEl = card.querySelector('.tg-adds');
+    const applyBtn = card.querySelector('.tg-apply');
+    const allOkBtn = card.querySelector('.tg-all-ok');
+    const addMoreBtn = card.querySelector('.tg-add-more');
+    const choice = (row) => row.querySelector('input[type=radio]:checked')?.value ?? null;
+    const addValues = () => [...addsEl.querySelectorAll('.tg-add')].map((i) => i.value.trim()).filter(Boolean);
+
+    function addInput() {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'tg-add';
+      input.setAttribute('list', 'tg-memories-list');
+      input.placeholder = 'recuerdo a añadir';
+      input.style.marginTop = '6px';
+      input.addEventListener('input', refresh);
+      addsEl.appendChild(input);
+    }
+    function refresh() {
+      for (const row of rows) {
+        const dest = row.querySelector('.tg-dest');
+        dest.disabled = choice(row) !== 'move';
+        if (dest.disabled) dest.value = '';
+      }
+      const allDecided = rows.every((r) => choice(r));
+      const anyAdd = addValues().length > 0;
+      applyBtn.disabled = !(rows.length ? allDecided : anyAdd);
+    }
+    rows.forEach((row) => row.querySelectorAll('input[type=radio]').forEach((r) => r.addEventListener('change', refresh)));
+    addMoreBtn.addEventListener('click', addInput);
+    addInput();
+    refresh();
+
+    function lock(disabled) {
+      applyBtn.disabled = disabled;
+      allOkBtn.disabled = disabled || !it.tags.length;
+      addMoreBtn.disabled = disabled;
+    }
+    function finish(msg) {
+      card.innerHTML = `<div class="hint">#${it.id}: ${escapeHtml(msg)}</div>`;
+      refreshStats();
+    }
+    async function saveVerdict(verdict, note) {
+      return call('POST', '/api/garden/verdict', { record: it.id, verdict, note });
+    }
+
+    allOkBtn.addEventListener('click', async () => {
+      lock(true);
+      const r = await saveVerdict('ok', 'revisión en el dashboard');
+      if (!r.ok) { out(card, { ok: false, stdout: '', stderr: r.stderr || r.error || 'no se guardó' }); lock(false); refresh(); return; }
+      finish('todas las etiquetas correctas.');
+    });
+
+    applyBtn.addEventListener('click', async () => {
+      const plan = rows.map((row) => ({ tag: row.dataset.tag, action: choice(row), dest: row.querySelector('.tg-dest').value.trim() }));
+      const adds = [...new Set(addValues())];
+      const reason = card.querySelector('.tg-reason').value.trim();
+      const moves = plan.filter((p) => p.action === 'move');
+      const removes = plan.filter((p) => p.action === 'remove');
+      const error = (m) => out(card, { ok: false, stdout: '', stderr: m });
+
+      for (const m of moves) {
+        if (!m.dest) return error(`Falta el recuerdo destino para mover "${m.tag}".`);
+        if (m.dest === m.tag) return error(`El destino de "${m.tag}" es la misma etiqueta.`);
+      }
+      const dup = adds.find((a) => it.tags.includes(a));
+      if (dup) return error(`El registro ya tiene la etiqueta "${dup}": no se puede añadir.`);
+      const finalTags = new Set([...plan.filter((p) => p.action === 'ok').map((p) => p.tag), ...moves.map((m) => m.dest), ...adds]);
+      if (finalTags.size === 0) return error('El registro quedaría sin ninguna etiqueta: mueve o añade al menos una.');
+      const changes = moves.length + removes.length + adds.length;
+      if (changes > 0 && !reason) return error('Falta el motivo.');
+
+      if (changes === 0) {
+        lock(true);
+        const r = await saveVerdict('ok', 'revisión en el dashboard');
+        if (!r.ok) { out(card, { ok: false, stdout: '', stderr: r.stderr || r.error || 'no se guardó' }); lock(false); refresh(); return; }
+        finish('todas las etiquetas correctas.');
+        return;
+      }
+
+      // Orden: primero añadir y mover (el registro nunca queda sin recuerdos), al final quitar.
+      const ops = [
+        ...adds.filter((a) => !moves.some((m) => m.dest === a)).map((a) => ({ label: `añadir "${a}"`, body: { record: it.id, add: a, reason } })),
+        ...moves.map((m) => ({ label: `mover "${m.tag}" a "${m.dest}"`, body: { record: it.id, from: m.tag, to: m.dest, reason } })),
+        ...removes.map((m) => ({ label: `quitar "${m.tag}"`, body: { record: it.id, from: m.tag, remove: true, reason } })),
+      ];
+      lock(true);
+      const done = [];
+      for (const op of ops) {
+        const r = await call('POST', '/api/recategorize-record', op.body);
+        if (!r.ok) {
+          out(card, { ok: false, stdout: '', stderr: `Falló al ${op.label}: ${r.stderr || r.error || ''}\nYa aplicado: ${done.length ? done.join('; ') : 'nada'}.\nNo se guardó el veredicto. Vuelve a cargar la lista para revisar el estado actual.` });
+          return;
+        }
+        done.push(op.label);
+      }
+      const v = await saveVerdict('corrected', `${done.join('; ')}: ${reason}`);
+      finish(v.ok ? `${done.join('; ')}; marcado como corregido.` : `${done.join('; ')}, pero el veredicto no se guardó: ${v.stderr || v.error || ''}`);
+    });
+    return card;
+  }
+
+  async function load(path, button, label) {
+    cardsEl.innerHTML = '';
+    button.disabled = true;
+    infoEl.textContent = 'Buscando…';
+    try {
+      const r = await call('GET', path);
+      if (!r.ok) { infoEl.textContent = 'Error: ' + (r.error ?? 'sin detalle'); return; }
+      infoEl.textContent = r.items.length
+        ? (r.total != null ? `${r.total} registro(s) con señal en los últimos ${r.days} día(s); se muestran ${r.items.length}.` : `${r.items.length} registro(s) al azar, ${r.available} sin revisar disponibles en los últimos ${r.days} día(s).`)
+        : `${label}: nada pendiente en este rango.`;
+      r.items.forEach((it) => cardsEl.appendChild(renderItem(it)));
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  const nVal = () => encodeURIComponent(sec.querySelector('#tg-n').value);
+  const dVal = () => encodeURIComponent(sec.querySelector('#tg-days').value);
+  const sampleBtn = sec.querySelector('#tg-sample');
+  const signalsBtn = sec.querySelector('#tg-signals');
+  sampleBtn.addEventListener('click', () => load(`/api/garden/sample?n=${nVal()}&since=${dVal()}`, sampleBtn, 'Muestreo'));
+  signalsBtn.addEventListener('click', () => load(`/api/garden/signals?limit=${nVal()}&since=${dVal()}`, signalsBtn, 'Señales de texto'));
+  refreshStats();
 }
 
 // --- Crear categoría/subcategoría ---
