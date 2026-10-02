@@ -5,6 +5,49 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.10.2 (2026-10-01)
+
+Sin migración de `schema.sql` y sin redespliegue del servidor MCP. **Pide dos
+cosas a mano** (el hook y `CLAUDE.md` nunca se reemplazan a ciegas porque
+llevan tus preferencias), ver "Al actualizar" abajo. Porta el hook `Stop` desde
+MyBrain: último pendiente del porte iniciado en v0.10.0.
+
+- **`scripts/hooks/stop-capture-check.mjs`**:
+  - **El texto del protocolo ya no se repite en cada bloqueo.** El hook manda
+    un puntero corto a la sección "Protocolo del hook Stop" de `CLAUDE.md` más
+    el bloque dinámico de esa ejecución. En Claude Code CLI (a diferencia de
+    Desktop, que pliega estos bloques) el texto de un hook que bloquea se
+    imprime crudo en la terminal en cada cierre de turno, así que repetir
+    ~1500 caracteres estáticos era ruido y tokens gastados. El mensaje trae una
+    frase de respaldo por si todavía no copiaste esa sección a tu `CLAUDE.md`.
+  - **Nueva constante `AUTO_INSERT`, apagada por defecto.** Con `false`
+    (comportamiento de siempre) la extracción en segundo plano solo propone
+    candidatos y tú decides cuáles guardar. Con `true` lanza
+    `extract-records.mjs --auto`: un modelo barato inserta solo los candidatos
+    rutinarios, sin revisión humana, pasando por el mismo gate de duplicados de
+    `remember.mjs`, y el hook reporta cuántos insertó, cuántos descartó por ya
+    estar cubiertos y los que quedan pendientes para ti. Insertar sin revisión
+    es una decisión de cada usuario, por eso no se activa sola.
+  - En Windows, el job en segundo plano ya no abre una ventana de consola
+    visible cada vez que se lanza.
+- **`CLAUDE.md`**: nueva sección "Protocolo del hook Stop (captura de cierre
+  de turno)", con el texto de ambos modos (`SILENT` verdadero y falso), cómo
+  interpretar el bloque de extracción según `AUTO_INSERT`, y el "chequeo de
+  skill": evaluar si el contexto reciente amerita algo más que un registro (una
+  skill nueva), y proponérselo al usuario, nunca crearla sola. La Fase 9
+  recuerda dejar `AUTO_INSERT` en `false` salvo petición expresa.
+- **Al actualizar**: (1) antes de reemplazar `stop-capture-check.mjs`, anota los
+  valores de `LEVEL` y `SILENT` que tienes puestos y vuelve a ponerlos en la
+  versión nueva (el reemplazo los devuelve a los valores por defecto, `2` y
+  `false`); (2) copia a mano la sección "Protocolo del hook Stop" de este
+  `CLAUDE.md` al tuyo, justo antes de "Fase 0", sin tocar el resto.
+- **Cómo se verificó**: el hook se ejecutó de verdad en ambos modos. La
+  cadencia dispara exactamente en la llamada 10 con `LEVEL = 2` y no antes. El
+  bloque de candidatos aparece en modo propuesta, y con `AUTO_INSERT = true` se
+  leen bien los conteos de insertados y redundantes y las líneas pendientes; un
+  archivo de resultado del otro modo no se consume por error. No se probó el
+  ciclo completo con un modelo de extracción real lanzado por el hook.
+
 ## v0.10.1 (2026-10-01)
 
 Sin migración de `schema.sql`. No hace falta redesplegar el servidor MCP: el

@@ -87,6 +87,62 @@ no debería quedar como una tentación de empujar de vuelta aquí. Sigue
 desde ahí. Todo lo que sigue en este archivo asume que ya estás dentro de
 la carpeta clonada y ya desconectada.
 
+## Protocolo del hook Stop (captura de cierre de turno)
+
+Esta sección no la reescribe la Fase 5: es el texto que el hook `Stop`
+(`scripts/hooks/stop-capture-check.mjs`) ya no repite en cada bloqueo.
+Vivía completo dentro de cada bloqueo del hook, pero es siempre el mismo:
+en Claude Code CLI (a diferencia de Desktop, que pliega estos bloques) el
+texto de un hook que bloquea se imprime crudo en la terminal en CADA
+cierre de turno, así que repetir ~1500 caracteres estáticos era ruido
+visual además de tokens gastados. El hook manda ahora un puntero corto a
+esta sección más el bloque dinámico de esa ejecución, si lo hay.
+
+El bloque dinámico puede traer, según la constante `AUTO_INSERT` del script:
+
+- **Candidatos propuestos** (`AUTO_INSERT = false`, el valor por defecto):
+  la extracción en segundo plano encontró estos candidatos, tú decides cuáles
+  guardar, no asumas que ya están guardados.
+- **Conteo de insertados solos** (`AUTO_INSERT = true`): un modelo barato ya
+  insertó los registros rutinarios sin revisión humana, pasando por el mismo
+  gate de duplicados de `remember.mjs`; el bloque trae cuántos insertó y, aparte,
+  los que ese gate no pudo resolver, que quedan a tu criterio.
+
+**Modo silencioso** (`SILENT = true` en el script): revisa en silencio si hubo
+algo capturable en la conversación que TÚ debas guardar a mano (una decisión
+cerrada, una corrección, un registro con fecha); lo rutinario de esa ventana
+ya lo cubre la extracción en segundo plano, esto es sobre lo que ella no
+puede ver o resolver. Guarda cada uno con `node scripts/db/remember.mjs
+--claim "..." --date YYYY-MM-DD --source "..."`, sin narrar la revisión
+aparte. Si el bloque que mandó el hook trae pendientes, resuélvelos también (a
+mano con `remember.mjs` si valen la pena, o decide que no). Al final, suma lo
+que guardaste tú a mano más lo que la extracción ya insertó sola (si el hook lo
+reportó); si ese total es mayor que 0, antepón "(N🧠) " -- con N ese total
+exacto -- al inicio de tu próxima respuesta normal al usuario, esa es la única
+señal, nada más. Si el total es 0, no antepongas nada ni digas nada de esto,
+continúa normal.
+
+**Modo no-silencioso** (`SILENT = false`): revisa esta conversación. Si hubo una
+decisión cerrada, una corrección o un registro con fecha que valga la pena
+recordar, captúralo ahora con `node scripts/db/remember.mjs --claim "..."
+--date YYYY-MM-DD --source "..."` (agrega `--memory nombre-de-recuerdo` si
+aplica, ver `scripts/db/list-memories.mjs`; `--create-memory` si es
+genuinamente nuevo). Si no hay nada capturable, dilo explícitamente y
+continúa.
+
+**Chequeo de skill** (aplica en ambos modos, además de lo anterior): evalúa
+(no narres este paso, es interno) si el contexto reciente amerita algo más que
+un registro: un comportamiento nuevo que debería dispararse solo en el futuro
+(una SKILL en `.claude/skills/`, mismo patrón que
+`skills/segundo-cerebro-capture/SKILL.md`). Si el criterio dice que no, no
+hagas nada más en este eje, el registro rutinario queda cubierto por lo de
+arriba. Si el criterio SÍ sugiere que aplica, NO la crees todavía: rompe el
+silencio y propónsela al usuario en tu próxima respuesta normal (qué dispararía
+la skill, qué haría distinto de solo guardar un registro), y espera su
+confirmación antes de escribir el archivo -- nunca se crea sola, ni en modo
+silencioso. Una skill nueva cambia tu comportamiento futuro de forma
+persistente, a diferencia de un registro, que es solo un dato consultable.
+
 ## Fase 0: Detección de estado
 
 Antes de saludar, revisa si esto ya está instalado:
@@ -776,7 +832,11 @@ no describas los pasos para que el usuario los siga:
   activarlo, edita tú mismo las constantes `LEVEL` y `SILENT` al inicio de
   `scripts/hooks/stop-capture-check.mjs` con el nivel y la preferencia de
   silencio que dio el usuario en la Fase 5 (`LEVEL_TURNS` en el propio
-  script documenta qué número corresponde a cada nivel). Pruébalo a mano
+  script documenta qué número corresponde a cada nivel). Deja `AUTO_INSERT` en
+  `false` (la extracción en segundo plano solo propone candidatos) salvo que el
+  usuario pida expresamente que un modelo barato inserte solo, sin revisión
+  humana; el texto de qué hacer cuando el hook bloquea vive en la sección
+  "Protocolo del hook Stop" de este mismo archivo. Pruébalo a mano
   antes de engancharlo de verdad: corre `echo '{"session_id":"prueba"}' |
   node scripts/hooks/stop-capture-check.mjs` el número de veces que
   corresponda al nivel elegido y confirma que dispara justo en la última,

@@ -85,6 +85,11 @@ import { fileURLToPath } from 'node:url';
 // preguntan por esto y editan estas dos constantes con la respuesta real. ---
 const LEVEL = 2; // 4 = cada turno · 3 = cada 5 · 2 = cada 10 · 1 = cada 20 (para nivel 0, desengancha este hook en settings, no cambies este número)
 const SILENT = false; // true = solo testigo (N🧠) con el conteo si hubo captura · false = explicación completa
+// false = la extracción en segundo plano solo PROPONE candidatos y el agente decide cuáles guardar (comportamiento
+// de siempre). true = el modelo barato inserta solo los candidatos rutinarios (extract-records.mjs --auto, pasa por
+// el mismo gate de duplicados de remember.mjs, pero sin revisión humana turno a turno) y el agente solo resuelve lo
+// que ese gate no pudo autoresolver. Apagado por defecto: insertar sin revisión es una decisión de cada usuario.
+const AUTO_INSERT = false;
 const LEVEL_TURNS = { 4: 1, 3: 5, 2: 10, 1: 20 };
 const TRIGGER_EVERY = LEVEL_TURNS[LEVEL];
 
@@ -98,7 +103,7 @@ const MIN_WINDOW_MS = 45_000;
 // matado junto con la sesión) y se permite reintentar en el próximo disparo,
 // en vez de quedar bloqueado esperando un resultado que nunca llega.
 const INFLIGHT_STALE_MS = 5 * 60_000;
-const DONE_MARKER = 'Esto NO se insertó en la base.';
+const DONE_MARKER = AUTO_INSERT ? 'Auto-inserción terminada.' : 'Esto NO se insertó en la base.';
 
 const statePath = new URL('../../state/stop-capture-state.local.json', import.meta.url);
 const EXTRACT_SCRIPT = fileURLToPath(new URL('../db/extract-records.mjs', import.meta.url));
@@ -156,8 +161,9 @@ function kickoffExtraction(sessionId, fromIso, toIso, outPath) {
   try {
     const child = spawn(
       process.execPath,
-      [EXTRACT_SCRIPT, '--date', date, '--from', from, '--to', toParts.hhmm, '--session', sessionId, '--provider', 'ollama'],
-      { detached: true, stdio: ['ignore', fd, 'ignore'] },
+      [EXTRACT_SCRIPT, '--date', date, '--from', from, '--to', toParts.hhmm, '--session', sessionId, '--provider', 'ollama', ...(AUTO_INSERT ? ['--auto'] : [])],
+      // windowsHide: sin esto, en Windows cada lanzamiento abre una consola visible aunque stdio esté redirigido.
+      { detached: true, stdio: ['ignore', fd, 'ignore'], windowsHide: true },
     );
     child.unref();
     return true;
@@ -168,9 +174,12 @@ function kickoffExtraction(sessionId, fromIso, toIso, outPath) {
   }
 }
 
-// Lee un resultado ya terminado (si lo hay) y lo convierte en líneas "- [fecha] (tipo) texto"
-// listas para mostrar, o null si el archivo no existe o el job todavía no terminó.
-function readCompletedCandidates(outPath) {
+// Lee un resultado ya terminado (si lo hay), o null si el archivo no existe o el job todavía no terminó.
+// En modo propuesta (AUTO_INSERT = false) devuelve los candidatos como líneas "- [fecha] (tipo) texto" en
+// pendingLines. En modo --auto devuelve además cuántos registros insertó solo la extracción y cuántos
+// descartó por ya estar cubiertos (veredicto "redundant"); pendingLines son los que el gate de duplicados de
+// remember.mjs no pudo autoresolver.
+function readCompletedResult(outPath) {
   if (!existsSync(outPath)) return null;
   let content;
   try {
@@ -179,8 +188,15 @@ function readCompletedCandidates(outPath) {
     return null;
   }
   if (!content.includes(DONE_MARKER)) return null; // sigue corriendo, o terminó en error sin llegar a imprimir esto
-  const lines = content.split(/\r?\n/).filter((l) => l.startsWith('- ['));
-  return lines; // puede ser [] si el modelo no encontró nada capturable, sigue siendo un resultado válido
+  const pendingLines = content.split(/\r?\n/).filter((l) => l.startsWith('- ['));
+  if (!AUTO_INSERT) return { insertedCount: 0, redundantCount: 0, pendingLines }; // puede ser [], sigue siendo un resultado válido
+  const insertedMatch = content.match(/^Insertado\(s\) automáticamente: (\d+)\.$/m);
+  const redundantMatch = content.match(/correctamente NO insertado\(s\): (\d+)\.$/m);
+  return {
+    insertedCount: insertedMatch ? Number(insertedMatch[1]) : 0,
+    redundantCount: redundantMatch ? Number(redundantMatch[1]) : 0,
+    pendingLines, // puede ser [], sigue siendo un resultado válido
+  };
 }
 
 let input = '';
@@ -226,18 +242,18 @@ process.stdin.on('end', async () => {
     process.exit(0);
   }
 
-  let extractedLines = null;
+  let extractedResult = null;
   if (payload.session_id) {
     const outPath = pendingFilePath(payload.session_id);
 
     // 1. Recoger un resultado previo si ya terminó.
-    extractedLines = readCompletedCandidates(outPath);
+    extractedResult = readCompletedResult(outPath);
     const stillInflight =
       extractionInflightSince &&
       new Date(nowIso) - new Date(extractionInflightSince) < INFLIGHT_STALE_MS &&
-      extractedLines === null;
+      extractedResult === null;
 
-    if (extractedLines !== null) {
+    if (extractedResult !== null) {
       // Resultado consumido: libera el cupo para un próximo job.
       extractionInflightSince = null;
     }
@@ -260,27 +276,29 @@ process.stdin.on('end', async () => {
   writeState(newState);
 
   const candidateBlock =
-    extractedLines === null
+    extractedResult === null
       ? ''
-      : extractedLines.length === 0
-        ? '\n\nExtracción automática en segundo plano (ventana anterior): sin candidatos.'
-        : `\n\nExtracción automática en segundo plano (ventana anterior) encontró estos candidatos, independiente de lo que ya se haya notado -- decide cuáles guardar, no asumas que ya están guardados:\n${extractedLines.join('\n')}`;
+      : AUTO_INSERT
+        ? extractedResult.pendingLines.length === 0
+          ? `\n\nExtracción automática en segundo plano (ventana anterior): ${extractedResult.insertedCount} registro(s) insertado(s) solo(s) por el modelo barato (sin tu revisión), nada pendiente.`
+          : `\n\nExtracción automática en segundo plano (ventana anterior): ${extractedResult.insertedCount} registro(s) insertado(s) solo(s) por el modelo barato. Estos NO pudo resolverlos, quedan a tu criterio (guárdalos con remember.mjs si valen la pena, o decide que no):\n${extractedResult.pendingLines.join('\n')}`
+        : extractedResult.pendingLines.length === 0
+          ? '\n\nExtracción automática en segundo plano (ventana anterior): sin candidatos.'
+          : `\n\nExtracción automática en segundo plano (ventana anterior) encontró estos candidatos, independiente de lo que ya se haya notado -- decide cuáles guardar, no asumas que ya están guardados:\n${extractedResult.pendingLines.join('\n')}`;
 
-  const reason = SILENT
-    ? 'Antes de cerrar el turno: revisa en silencio si hubo algo capturable en esta conversación ' +
-      '(una decisión cerrada, una corrección, un registro con fecha). Guarda cada uno con ' +
-      'node scripts/db/remember.mjs --claim "..." --date YYYY-MM-DD --source "..." sin narrar la revisión ' +
-      'aparte, y cuenta cuántos registros guardaste de verdad en total (incluyendo los que vengan del bloque ' +
-      'de extracción automática de abajo, si hay). Si guardaste alguno, antepón ' +
-      '"(N🧠) " -- con N reemplazado por ese número exacto -- al inicio de tu próxima respuesta normal al ' +
-      'usuario, esa es la única señal, nada más. Si no guardaste ninguno, no antepongas nada ni digas ' +
-      'nada de esto, continúa normal.' + candidateBlock
-    : 'Antes de cerrar el turno: revisa esta conversación. Si hubo una decisión cerrada, ' +
-      'una corrección, o un registro con fecha que valga la pena recordar, captúralo ' +
-      'ahora con node scripts/db/remember.mjs --claim "..." --date YYYY-MM-DD ' +
-      '--source "..." (agrega --memory nombre-de-recuerdo si aplica, ver scripts/db/list-memories.mjs; ' +
-      '--create-memory si es genuinamente nuevo). ' +
-      'Si no hay nada capturable, dilo explícitamente y continúa.' + candidateBlock;
+  // El texto completo del protocolo (ambos modos + chequeo de skill) vive en CLAUDE.md,
+  // sección "Protocolo del hook Stop", no repetido aquí en cada bloqueo: en Claude Code CLI
+  // (a diferencia de Desktop, que pliega estos bloques) el texto de un hook que bloquea se
+  // imprime crudo en la terminal en CADA cierre de turno, y repetir ~1500 caracteres
+  // estáticos era ruido visual además de tokens gastados de más. El hook manda solo un
+  // puntero corto más el bloque dinámico de esa ejecución. La frase final es un respaldo
+  // para quien actualizó este script pero todavía no copió esa sección a su CLAUDE.md.
+  const modeLabel = SILENT ? 'modo silencioso' : 'modo no-silencioso';
+  const reason =
+    `Aplica el protocolo de captura del hook Stop (CLAUDE.md § "Protocolo del hook Stop", ${modeLabel}). ` +
+    'Si esa sección no existe en tu CLAUDE.md, revisa si hubo algo capturable en esta conversación y guárdalo ' +
+    'con node scripts/db/remember.mjs --claim "..." --date YYYY-MM-DD --source "...".' +
+    candidateBlock;
 
   console.log(JSON.stringify({ decision: 'block', reason }));
   process.exit(0);
