@@ -123,7 +123,7 @@ const args = parseArgs(process.argv.slice(2));
 if (!args.date || !args.from || !args.to) {
   console.error(
     'Faltan campos. Uso:\n' +
-      '  node extract-records.mjs --date YYYY-MM-DD --from HH:MM --to HH:MM [--review] [--provider gemini|ollama|openrouter] [--session id] [--tz-offset -5]',
+      '  node extract-records.mjs --date YYYY-MM-DD --from HH:MM --to HH:MM [--review|--auto] [--provider gemini|ollama|openrouter] [--session id] [--tz-offset -5]',
   );
   process.exit(1);
 }
@@ -161,6 +161,11 @@ if (args.review && !process.stdin.isTTY) {
       'Corre esto directamente en tu propia terminal; si te lo pidel usuario por chat, ' +
       'corre sin --review, muestra la lista, y captura con remember.mjs lo que él apruebe.',
   );
+  process.exit(1);
+}
+
+if (args.review && args.auto) {
+  console.error('--review y --auto son excluyentes: elige uno.');
   process.exit(1);
 }
 
@@ -220,7 +225,32 @@ function extractText(message) {
     .join('\n');
 }
 
+// Líneas "Registrado #N: ..." dentro de un tool_result de remember.mjs:
+// extractText() nunca incluía salidas de herramientas, solo texto de
+// usuario/asistente. Eso dejaba al extractor ciego a lo que ya se había
+// guardado a mano DENTRO de la misma ventana, y volvía a proponer el mismo
+// hecho con menos detalle; el gate de duplicados de remember.mjs no lo atrapaba
+// siempre. Con --auto insertando sin que nadie revise, eso producía registros
+// redundantes reales en la base. No hace falta el tool_result completo (rompería
+// el filtro de ruido para búsquedas o lecturas de archivo grandes), solo esta
+// línea puntual.
+function extractAlreadyRegisteredLines(message) {
+  if (!Array.isArray(message?.content)) return [];
+  const lines = [];
+  for (const block of message.content) {
+    if (block?.type !== 'tool_result') continue;
+    const text = typeof block.content === 'string'
+      ? block.content
+      : Array.isArray(block.content)
+        ? block.content.filter((c) => c.type === 'text').map((c) => c.text).join('\n')
+        : '';
+    for (const m of text.matchAll(/^Registrado #\d+:.*/gm)) lines.push(m[0]);
+  }
+  return lines;
+}
+
 const turns = [];
+const alreadyRegistered = [];
 const rl = createInterface({ input: createReadStream(sessionFile, 'utf8'), crlfDelay: Infinity });
 
 for await (const line of rl) {
@@ -235,13 +265,15 @@ for await (const line of rl) {
   if (entry.type !== 'user' && entry.type !== 'assistant') continue;
   if (!entry.timestamp || entry.timestamp < fromIso || entry.timestamp > toIso) continue;
 
+  if (entry.type === 'user') alreadyRegistered.push(...extractAlreadyRegisteredLines(entry.message));
+
   const text = extractText(entry.message).trim();
   if (!text) continue; // descarta turnos que son solo tool_use/tool_result/thinking
 
   turns.push({ time: entry.timestamp, speaker: entry.type === 'user' ? 'el usuario' : 'Claude', text });
 }
 
-if (turns.length === 0) {
+if (turns.length === 0 && alreadyRegistered.length === 0) {
   console.error('No se encontraron turnos de texto en ese rango. Nada que extraer.');
   process.exit(0);
 }
@@ -250,11 +282,21 @@ let transcript = turns
   .map((t) => `[${t.time.slice(11, 16)}] ${t.speaker}: ${t.text}`)
   .join('\n\n');
 
+// Trunca la CONVERSACIÓN antes de agregar el bloque "ya registrado", nunca
+// después: agregarlo antes de truncar dejaba que slice(0, maxChars) se lo
+// comiera entero en cualquier ventana larga (justo el caso que este bloque
+// cubre), silenciando la regla sin ningún aviso. El bloque nunca cuenta contra
+// el límite, siempre va completo: es corto (una línea por registro) y es la
+// única defensa real contra reinsertar lo que ya se guardó en la misma ventana.
 let truncated = false;
 const maxChars = MAX_TRANSCRIPT_CHARS[provider];
 if (transcript.length > maxChars) {
   transcript = transcript.slice(0, maxChars);
   truncated = true;
+}
+
+if (alreadyRegistered.length > 0) {
+  transcript += `\n\n--- Ya registrado en esta ventana, NO lo vuelvas a proponer ---\n${alreadyRegistered.join('\n')}`;
 }
 
 console.error(`${turns.length} turnos de texto, ${transcript.length} caracteres${truncated ? ' (TRUNCADO)' : ''}.`);
@@ -274,10 +316,14 @@ Transcripción (fecha del día: ${args.date}):
 ${transcript}
 
 Responde SOLO con JSON, sin texto adicional, con esta forma exacta:
-{"records": [{"claim": "registro atómico en una o varias oraciones, en una sola línea de texto, español, autocontenido", "date": "YYYY-MM-DD", "kind": "fact"|"event"|"commitment"}]}
+{"records": [{"claim": "registro atómico en una o varias oraciones, en una sola línea de texto, español, autocontenido", "date": "YYYY-MM-DD", "kind": "fact"|"event"|"commitment", "sourceTime": "HH:MM"}]}
 
 Si no hay nada capturable, responde {"records": []}. No inventes fechas: si el registro no tiene \
-fecha explícita, usa la fecha del día (${args.date}).`;
+fecha explícita, usa la fecha del día (${args.date}). Para "sourceTime": copia EXACTAMENTE una de \
+las etiquetas [HH:MM] que ya aparecen al inicio de cada línea de la transcripción, la del turno \
+donde el hecho quedó confirmado o cerrado (no el primero que lo menciona, si hubo una corrección \
+posterior). No inventes ni calcules una hora. Si no hay un turno único al que anclarlo, omite el \
+campo o usa null.`;
 }
 
 if (args['dump-prompt']) {
@@ -546,7 +592,73 @@ if (rawResponse == null) {
   if (parsed) {
     const records = parsed.records ?? [];
 
-    if (!args.review) {
+    // En --auto se captura stdout: un candidato correctamente rechazado como
+    // "redundant" por classify-duplicate.mjs no debe contarse igual que uno
+    // insertado de verdad -- sin esto no había forma de distinguir "el gate
+    // hizo su trabajo" de "sí se guardó un registro nuevo".
+    const source = `Extracción automática (${provider}/${model}), rango ${args.date} ${args.from}-${args.to}${args.auto ? ', inserción automática sin revisión humana' : ', revisado y aprobado por el usuario'}`;
+    const REDUNDANT_MARKER = /^Ya cubierto por #\d+, no se inserta \(redundante\)\.$/m;
+
+    // Resuelve f.sourceTime (etiqueta [HH:MM] que el modelo copió, ver prompt)
+    // contra el instante REAL (timestamp completo del .jsonl) del turno que la
+    // generó -- nunca se confía en que el modelo calcule un ISO completo, solo
+    // en que copie una etiqueta que ya existe en el texto que vio; el resto es
+    // una búsqueda determinística en `turns`. Sin match (etiqueta inventada),
+    // devuelve null: el registro simplemente entra sin source_at, ni error ni
+    // bloqueo.
+    function resolveSourceAt(sourceTime) {
+      if (!sourceTime || typeof sourceTime !== 'string') return null;
+      const match = turns.find((t) => t.time.slice(11, 16) === sourceTime);
+      return match ? match.time : null;
+    }
+
+    // el usuario solo aprueba/edita/salta el texto extraído. Si remember.mjs no
+    // puede insertar (duplicado ambiguo, su propio clasificador no tuvo
+    // confianza suficiente), NO se le pregunta al usuario aquí qué hacer: eso es
+    // una decisión de remember.mjs, no de esta revisión. Se registra aparte para
+    // que la resuelva a mano después, con calma.
+    function insertFact(f) {
+      const cliArgs = [REMEMBER_SCRIPT, '--claim', f.claim, '--date', f.date, '--kind', f.kind, '--source', source];
+      const sourceAt = resolveSourceAt(f.sourceTime);
+      if (sourceAt) cliArgs.push('--source-at', sourceAt);
+      if (args.auto) {
+        // windowsHide: sin esto, cada llamada abre una consola visible en
+        // Windows aunque stdio esté redirigido; --auto no espera que nadie la mire.
+        const result = spawnSync(process.execPath, cliArgs, { stdio: ['ignore', 'pipe', 'ignore'], encoding: 'utf8', windowsHide: true });
+        if (result.status === 0 && REDUNDANT_MARKER.test(result.stdout ?? '')) return 'redundant';
+        return result.status === 0 ? 'inserted' : 'manual';
+      }
+      const result = spawnSync(process.execPath, cliArgs, { stdio: 'inherit' });
+      return result.status === 0;
+    }
+
+    if (args.auto) {
+      // Modo no interactivo: inserta cada candidato directo, sin pedir aprobación
+      // turno a turno. No es "insertar a ciegas": pasa por el mismo remember.mjs
+      // con su mismo gate de duplicados y contradicciones que ya protege
+      // cualquier otra vía de inserción. Lo que remember.mjs no puede
+      // autoresolver queda pendiente igual, nunca se fuerza.
+      let insertedCount = 0;
+      let redundantCount = 0;
+      const needsManualReview = [];
+      for (const f of records) {
+        const outcome = insertFact(f);
+        if (outcome === 'inserted') insertedCount++;
+        else if (outcome === 'redundant') redundantCount++;
+        else needsManualReview.push(f);
+      }
+      console.log(`\nInsertado(s) automáticamente: ${insertedCount}.`);
+      if (redundantCount > 0) {
+        console.log(`Ya cubierto(s) por un registro existente, correctamente NO insertado(s): ${redundantCount}.`);
+      }
+      if (needsManualReview.length > 0) {
+        console.log(`Pendiente(s) de revisión manual (remember.mjs no pudo autoresolver):`);
+        for (const f of needsManualReview) {
+          console.log(`- [${f.date}] (${f.kind}) ${f.claim}`);
+        }
+      }
+      console.log('\nAuto-inserción terminada.');
+    } else if (!args.review) {
       console.log(`\n${records.length} registro(s) candidato(s):\n`);
       for (const f of records) {
         console.log(`- [${f.date}] (${f.kind}) ${f.claim}`);
@@ -556,19 +668,6 @@ if (rawResponse == null) {
       console.log('\nNada capturable en ese rango.');
     } else {
       const rlp = createInterfaceAsync({ input: process.stdin, output: process.stdout });
-      const source = `Extracción automática (${provider}/${model}), rango ${args.date} ${args.from}-${args.to}, revisado y aprobado por el usuario`;
-
-      // el usuario solo aprueba/edita/salta el texto extraído. Si remember.mjs no
-      // puede insertar (duplicado ambiguo, su propio clasificador de Ollama
-      // Cloud no tuvo confianza suficiente), NO se le pregunta al usuario aquí
-      // qué hacer: eso es una decisión de remember.mjs, no de esta revisión.
-      // Se registra aparte para que la resuelva a mano después, con calma.
-      function insertFact(f) {
-        const cliArgs = [REMEMBER_SCRIPT, '--claim', f.claim, '--date', f.date, '--kind', f.kind, '--source', source];
-        const result = spawnSync(process.execPath, cliArgs, { stdio: 'inherit' });
-        return result.status === 0;
-      }
-
       console.log(`\nRevisión interactiva: ${records.length} registro(s) candidato(s).\n`);
       let inserted = 0;
       let skipped = 0;

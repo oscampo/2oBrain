@@ -1399,8 +1399,7 @@ const httpHandler = transport.bind(mcp);
 const app = new Hono();
 const mcpApp = new Hono();
 
-// CORS (2026-09-01, handoff de la sesión de obsidian-neural-composer): ver
-// justificación completa en deno-deploy/mcp-server/main.ts: un cliente MCP
+// CORS (2026-09-01): un cliente MCP
 // en contexto navegador (Electron/Obsidian Desktop, o web) dispara preflight
 // OPTIONS por el Content-Type: application/json del POST; sin responderlo
 // con Access-Control-*, el navegador aborta la petición (net::ERR_FAILED)

@@ -1,5 +1,5 @@
 // Búsqueda híbrida (vector + texto completo) contra Supabase, sobre pages
-// y records a la vez. Uso: node search.mjs "tu pregunta" [--include-dashboard-log]
+// y records a la vez. Uso: node search.mjs "tu pregunta" [--include-dashboard-log] [--full]
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { embed, toVectorLiteral, rerank } from './lib/embed.mjs';
@@ -15,13 +15,31 @@ import { embed, toVectorLiteral, rerank } from './lib/embed.mjs';
 const EXCLUDE_SLUG = 'projects/segundo-cerebro-dashboard-log';
 const EXCLUDE_NODE = 'segundo-cerebro-dashboard-log';
 
-const includeDashboardLog = process.argv.includes('--include-dashboard-log');
+// Un flag inventado que no existe (por ejemplo "--limit 15", nunca fue una opción
+// real de este script) no daba ningún error: se colaba silenciosamente como texto
+// literal dentro de la pregunta semántica, degradando el embedding sin aviso y
+// haciendo desaparecer resultados que sí eran relevantes. Cualquier token que
+// empiece por "--" y no esté en esta lista es ahora un error explícito en vez de
+// ruido silencioso en la consulta.
+const KNOWN_FLAGS = ['--include-dashboard-log', '--full'];
+const rawArgs = process.argv.slice(2);
+const unknownFlags = rawArgs.filter((a) => a.startsWith('--') && !KNOWN_FLAGS.includes(a));
+if (unknownFlags.length > 0) {
+  console.error(`Flag(s) no reconocido(s): ${unknownFlags.join(', ')}`);
+  console.error(`Flags soportados: ${KNOWN_FLAGS.join(', ')}`);
+  console.error('(se rechaza en vez de colarlo silenciosamente dentro del texto de la búsqueda)');
+  process.exit(1);
+}
+
+const includeDashboardLog = rawArgs.includes('--include-dashboard-log');
 const excludeSlug = includeDashboardLog ? null : EXCLUDE_SLUG;
 const excludeMemory = includeDashboardLog ? null : EXCLUDE_NODE;
+// --full: imprime el contenido completo de cada página en vez de los primeros 200 caracteres.
+const fullContent = rawArgs.includes('--full');
 
-const query = process.argv.slice(2).filter((a) => a !== '--include-dashboard-log').join(' ');
+const query = rawArgs.filter((a) => a !== '--include-dashboard-log' && a !== '--full').join(' ');
 if (!query) {
-  console.error('Uso: node search.mjs "tu pregunta" [--include-dashboard-log]');
+  console.error('Uso: node search.mjs "tu pregunta" [--include-dashboard-log] [--full]');
   process.exit(1);
 }
 
@@ -67,14 +85,14 @@ function wordMatch(term) {
   const esc = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`(^|[^a-z0-9])${esc}([^a-z0-9]|$)`).test(queryNorm);
 }
-// Un recuerdo "matchea" si algún alias aparece completo en la pregunta, o si
-// algún segmento significativo de su nombre kebab-case aparece como
-// palabra completa (segmentos cortos o puramente numéricos, ej. "2026",
-// se ignoran por poco específicos).
+// Un recuerdo "matchea" por alias exacto (palabra completa en la pregunta,
+// señal fuerte, sin ambigüedad). El fallback anterior (segmento del nombre
+// kebab-case, ej. "proyecto" de "proyecto-atlas") se retiró: causaba falsos
+// positivos con palabras genéricas sueltas en la pregunta, y de todas formas
+// nunca resolvía un parafraseo. Lo reemplaza el matching por identidad
+// semántica de abajo (memories_match_query), que separa mejor los dos casos.
 function nodeIsMatched(n) {
-  if ((n.aliases ?? []).some((a) => wordMatch(a))) return true;
-  const segments = n.name.split(/[-_]/).filter((s) => s.length >= 4 && !/^\d+$/.test(s));
-  return segments.some((s) => wordMatch(s));
+  return (n.aliases ?? []).some((a) => wordMatch(a));
 }
 
 const { rows: allNodes } = await client.query(`select name, aliases, merged_into from memories`);
@@ -97,6 +115,27 @@ for (const n of allNodes) {
   if (!nodeIsMatched(n)) continue;
   const live = resolveLiveMemory(n.name);
   if (live && live !== excludeMemory) matchedLiveNodes.add(live);
+}
+
+// Matching por identidad semántica: complementa el alias exacto de arriba, no
+// lo reemplaza. Umbral RELATIVO al mejor resultado, no absoluto: una pregunta que
+// mezcla temas diluye cada score individual (el correcto puede caer por debajo
+// de un umbral fijo que sí funcionaba para preguntas de un solo tema). 0.25 es
+// solo un piso para acotar la consulta; el margen de 0.075 respecto al mejor
+// resultado es el filtro real.
+const MATCH_FLOOR = 0.25;
+const MATCH_MARGIN = 0.075;
+const { rows: semanticCandidates } = await client.query(
+  `select * from memories_match_query($1, 10, $2)`,
+  [vectorLiteral, MATCH_FLOOR],
+);
+if (semanticCandidates.length > 0) {
+  const top = semanticCandidates[0].similarity;
+  for (const m of semanticCandidates) {
+    if (m.similarity < top - MATCH_MARGIN) continue;
+    const live = resolveLiveMemory(m.memory_name);
+    if (live && live !== excludeMemory) matchedLiveNodes.add(live);
+  }
 }
 
 // Pool más grande que lo mostrado (2026-09-14, portado desde D:\UAObrain,
@@ -227,7 +266,8 @@ if (pages.length === 0) {
     console.log(`\n[${r.score.toFixed(4)}] ${r.slug} (${r.type}) - actualizado ${r.updated_at.toISOString().slice(0, 10)}`);
     console.log(`  ${r.title}`);
     console.log(`  fuente: ${r.source_path}`);
-    console.log(`  ${r.content.replace(/\s+/g, ' ').slice(0, 200)}...`);
+    if (fullContent) console.log(`\n${r.content}\n`);
+    else console.log(`  ${r.content.replace(/\s+/g, ' ').slice(0, 200)}...`);
   }
 }
 

@@ -5,6 +5,61 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.10.1 (2026-10-01)
+
+Sin migración de `schema.sql`. No hace falta redesplegar el servidor MCP: el
+único cambio en `supabase/functions/mcp-server/index.ts` es un comentario.
+Termina el porte desde MyBrain iniciado en v0.10.0: `extract-records.mjs` y
+`search.mjs`.
+
+- **`deno-deploy/mcp-server/` y `deno.jsonc` eliminados.** Esa copia ya estaba
+  por detrás del servidor de Supabase (no soportaba `complements` ni los alias
+  automáticos) y mantener dos servidores "intercambiables" era una trampa: un
+  arreglo aplicado a uno no llegaba al otro sin que nadie lo notara. El único
+  servidor MCP alojado de 2oBrain es ahora la Edge Function de Supabase
+  (`supabase/functions/mcp-server/`); `CLAUDE.md`, `README.md`, `README_SP.md` y
+  `.env.example` ya no mencionan Deno Deploy, ni piden `DENO_DEPLOY_TOKEN`.
+  **Si tenías el servidor en Deno Deploy**, tu instancia desplegada sigue
+  funcionando como estaba, pero ya no recibirá actualizaciones desde este repo:
+  para tener `complements`, `redundant` y lo que venga, despliega la Edge
+  Function de Supabase y cambia la URL en tus clientes MCP. El código viejo
+  sigue en el historial de git (`git show v0.10.0:deno-deploy/mcp-server/main.ts`).
+- **`extract-records.mjs`**:
+  - Nuevo modo `--auto` (excluyente con `--review`): inserta cada candidato sin
+    pedir aprobación, pasando por el mismo gate de duplicados de `remember.mjs`;
+    lo que ese gate no puede resolver queda listado como pendiente de revisión
+    manual, nunca se fuerza, y los candidatos rechazados como `redundant` se
+    cuentan aparte, no como insertados. Las inserciones llevan la marca
+    "inserción automática sin revisión humana" en la fuente, que el candado de
+    procedencia de `classify-duplicate.mjs` reconoce.
+  - El extractor ahora ve las líneas `Registrado #N: ...` que `remember.mjs` ya
+    imprimió dentro de la misma ventana y se le ordena no volver a proponerlas
+    (antes proponía de nuevo lo que ya se había guardado a mano, con menos
+    detalle). Ese bloque se agrega después de truncar la conversación, nunca
+    antes, para que un truncado en una ventana larga no se lo coma.
+  - El modelo devuelve `sourceTime` (una etiqueta `[HH:MM]` copiada de la
+    transcripción) y el script la resuelve al instante real del turno y la pasa
+    como `--source-at`: así los registros extraídos quedan con `source_at`
+    (columna que llegó en v0.10.0).
+  - Nota: el hook `Stop` de este scaffold todavía no usa `--auto`; sigue
+    funcionando como antes y `--auto` queda disponible a mano.
+- **`search.mjs`**:
+  - Un flag que no existe (por ejemplo `--limit 15`) ahora es un error
+    explícito. Antes se colaba como texto dentro de la pregunta semántica,
+    degradaba el embedding sin aviso y hacía desaparecer resultados relevantes.
+  - Nuevo `--full`: imprime el contenido completo de cada página en vez de los
+    primeros 200 caracteres.
+  - El router de recuerdos deja de usar el segmento del nombre como respaldo
+    (causaba falsos positivos con palabras genéricas) y suma el matching por
+    identidad semántica (`memories_match_query`, ya presente en el schema): el
+    CLI queda alineado con la tool `search` del servidor MCP, que ya lo hacía.
+- **Cómo se verificó**: `search.mjs` se ejecutó contra una base real (flag
+  inválido rechazado con código 1, búsqueda normal con el router semántico,
+  `--full` imprime más de cinco veces el contenido). `extract-records.mjs` se
+  probó con `--dump-prompt` sobre una sesión real: el prompt pide `sourceTime` y
+  el bloque "ya registrado" recoge las líneas `Registrado #N`. No se probó una
+  corrida completa con `--auto` contra un modelo de extracción, ni `--review`.
+
 ## v0.10.0 (2026-10-01)
 
 **Cambia `schema.sql` y el servidor MCP.** Corre `node scripts/db/apply-schema.mjs`

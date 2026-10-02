@@ -42,9 +42,8 @@ endpoint via `supergateway`, no code changes needed on either side.
   scripts over HTTP for a browser dashboard (`scripts/db/server/public/`):
   search with LLM-synthesized answers, a live d3-force graph of your memories,
   fact capture, memories maintenance.
-- **`deno-deploy/mcp-server/`** and **`supabase/functions/mcp-server/`**,
-  two interchangeable hosted MCP servers (pick one, or run both) that expose
-  `search`/`remember` to any MCP client over the network, Claude Desktop,
+- **`supabase/functions/mcp-server/`**, a hosted MCP server (Supabase Edge
+  Function) that exposes `search`/`remember` to any MCP client over the network, Claude Desktop,
   Claude Code, Claude Chat/Cowork, or anything else that speaks MCP.
 - **`scripts/hooks/`**, a Claude Code `Stop` hook (nudges you to capture a
   fact before closing a turn), a `UserPromptSubmit` hook (detects a
