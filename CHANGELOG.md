@@ -5,6 +5,38 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.10.5 (2026-10-02)
+
+**Cambia `schema.sql` y el servidor MCP.** Corre `node scripts/db/apply-schema.mjs`
+y, si usas el servidor MCP, redespliégalo (`supabase functions deploy mcp-server`).
+Completa v0.10.4: aquel cambio cerraba el duplicado exacto en la aplicación, este
+lo cierra en la base de datos.
+
+- **`schema.sql`**: índice único parcial `records_live_claim_uniq` sobre el
+  texto normalizado (sin contar espacios ni mayúsculas) de los registros
+  vigentes. La guarda de v0.10.4 compara contra lo ya insertado, así que dos
+  llamadas idénticas que llegan a la vez la pasaban las dos antes de que
+  cualquiera insertara; el índice las frena en la base. Un registro retractado o
+  reemplazado no cuenta, así que volver a guardar un texto retractado sigue
+  funcionando.
+- **Si tu base ya tiene duplicados vigentes**, el índice no se crea: el schema
+  avisa con un `notice` y sigue, no se rompe. Retracta las copias
+  (`node scripts/db/forget.mjs --id N --reason "..."`) y vuelve a correr
+  `apply-schema.mjs`. Para encontrarlas: agrupa por
+  `lower(regexp_replace(btrim(claim), '\s+', ' ', 'g'))` entre los registros con
+  `valid_until is null` y revisa los grupos de más de uno.
+- **Servidor MCP**: si el insert choca con ese índice, responde "Ya existe un
+  registro vigente con el mismo texto" como duplicado, no como error. Los scripts
+  de línea de comandos (`remember.mjs`, `remember-batch.mjs`) no manejan ese
+  error: ante la carrera extrema fallarían con el error de Postgres en vez de un
+  mensaje amable, sin insertar nada.
+- **Cómo se verificó**: el índice se creó en una base real y rechazó una copia
+  con espacios de más; el bloque del schema se probó con duplicados presentes
+  (avisa y no crea el índice, sin error). El servidor se desplegó y probó en la
+  instalación de origen con la guarda de aplicación, pero la rama del error
+  `23505` del servidor no se pudo ejercitar con llamadas realmente simultáneas,
+  y esta copia solo pasa `deno check`.
+
 ## v0.10.4 (2026-10-02)
 
 Sin migración de `schema.sql` y sin pasos a mano, salvo **redesplegar el

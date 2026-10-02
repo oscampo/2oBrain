@@ -315,6 +315,23 @@ alter table records add column if not exists content_tsv tsvector
 create index if not exists records_content_tsv_idx on records using gin (content_tsv);
 create index if not exists records_live_idx on records (valid_until) where valid_until is null;
 
+-- Unicidad de texto entre registros vigentes (2026-10-02): dos
+-- llamadas simultaneas a remember con el mismo texto pasaban ambas la guarda de
+-- aplicacion (ninguna habia insertado todavia). El indice cierra la carrera en la
+-- base. Compara el texto sin contar espacios ni mayusculas, igual que las guardas
+-- de remember.mjs, remember-batch.mjs y el servidor MCP. Parcial: un registro
+-- retractado o reemplazado (valid_until no nulo) no cuenta. Si la base ya tiene
+-- duplicados vigentes, no se crea y avisa en vez de romper esta pasada de
+-- schema.sql: retracta las copias (forget.mjs) y vuelve a correr el schema.
+do $$
+begin
+  create unique index if not exists records_live_claim_uniq
+    on records (md5(lower(regexp_replace(btrim(claim), '\s+', ' ', 'g'))))
+    where valid_until is null;
+exception when unique_violation then
+  raise notice 'records_live_claim_uniq no se creo: hay registros vigentes con texto identico. Retracta las copias y vuelve a correr schema.sql.';
+end $$;
+
 do $$
 declare
   current_type text;

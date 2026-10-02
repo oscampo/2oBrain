@@ -1294,6 +1294,11 @@ mcp.tool('remember', {
       .select('id, date, claim')
       .single();
 
+    if (error?.code === '23505') {
+      // Indice unico records_live_claim_uniq: otra llamada con el mismo texto se
+      // inserto primero (carrera). Mismo trato que la guarda de arriba.
+      return { content: [{ type: 'text', text: 'Ya existe un registro vigente con el mismo texto (detectado por la base de datos, llamada simultanea), no se inserta (duplicado exacto).' }] };
+    }
     if (error || !inserted) {
       return { content: [{ type: 'text', text: `Error al insertar: ${error?.message}` }], isError: true };
     }
