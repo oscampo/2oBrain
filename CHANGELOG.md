@@ -5,6 +5,31 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.10.4 (2026-10-02)
+
+Sin migración de `schema.sql` y sin pasos a mano, salvo **redesplegar el
+servidor MCP** si lo usas (`supabase functions deploy mcp-server`): el cambio
+también está en `supabase/functions/mcp-server/index.ts`.
+
+- **Un registro con texto idéntico a uno vigente ya no se inserta, sin importar
+  las banderas.** Antes, pasar `--complements`/`--distinct` (o `complements`/
+  `distinct` en el MCP y en el JSON de `remember-batch.mjs`) saltaba el
+  clasificador de duplicados, así que dos llamadas iguales seguidas dejaban el
+  mismo registro dos veces. Caso real: un cliente de voz llamó dos veces a
+  `remember` con el mismo texto y `complements` apuntando al mismo registro,
+  y entró el duplicado exacto. La guarda es determinista (compara el texto sin
+  contar espacios ni mayúsculas, sin modelo), vive en `remember.mjs`,
+  `remember-batch.mjs` y el servidor MCP, y responde "Ya existe un registro con
+  el mismo texto: #id". En `remember-batch.mjs` cuenta como redundante.
+- **Qué no cubre**: textos casi iguales pero no idénticos con `complements` o
+  `distinct` explícitos siguen entrando, porque ahí la decisión es de quien
+  llama. Sin banderas, esos casos los sigue resolviendo el clasificador.
+- **Cómo se verificó**: `remember.mjs` y `remember-batch.mjs` contra una base
+  real con el texto de un registro existente más `--complements`/`distinct`:
+  ninguno insertó nada. El servidor MCP se desplegó en la instalación de
+  origen y rechazó el duplicado con `distinct: true`; esta copia pasa
+  `deno check`, pero no se desplegó ni se probó en ejecución.
+
 ## v0.10.3 (2026-10-01)
 
 Sin migración de `schema.sql`, sin redespliegue del servidor MCP y sin pasos a

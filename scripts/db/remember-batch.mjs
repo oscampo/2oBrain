@@ -191,6 +191,16 @@ for (let i = 0; i < records.length; i++) {
 
   const similar = candidates.filter((c) => c.similarity >= SIMILARITY_THRESHOLD);
 
+  // Guarda determinista: texto idéntico a un registro vivo nunca se inserta, ni con
+  // distinct explícito en el JSON (que salta el clasificador).
+  const normClaim = (x) => String(x).replace(/\s+/g, ' ').trim().toLowerCase();
+  const identical = candidates.find((c) => normClaim(c.claim) === normClaim(f.claim));
+  if (identical) {
+    console.error(`  Ya existe un registro con el mismo texto: #${identical.id}, no se inserta (duplicado exacto).`);
+    results.redundant.push({ fact: f, coveredBy: identical.id });
+    continue;
+  }
+
   let supersedesIds = [];
   let complementsId = null;
   let autoResolved = null;

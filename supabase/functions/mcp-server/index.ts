@@ -1019,6 +1019,16 @@ mcp.tool('remember', {
     let distinct = args.distinct ?? false;
     let autoResolved: Awaited<ReturnType<typeof classifyDuplicate>> = null;
 
+    // Guarda determinista: texto idéntico a un registro vivo nunca se inserta, ni con
+    // complements/distinct explícitos (que se saltan el clasificador).
+    const normClaim = (x: string) => x.replace(/\s+/g, ' ').trim().toLowerCase();
+    const identical = (candidates ?? []).find(
+      (c: any) => normClaim(String(c.claim)) === normClaim(args.claim) && !supersedesIds.includes(Number(c.id)),
+    );
+    if (identical) {
+      return { content: [{ type: 'text', text: `Ya existe un registro con el mismo texto: #${identical.id}, no se inserta (duplicado exacto).` }] };
+    }
+
     if (similar.length > 0 && supersedesIds.length === 0 && complementsId === null && !distinct) {
       autoResolved = await classifyDuplicate(args.claim, similar, args.source, sourceAt);
       if (autoResolved && autoResolved.confidence >= CLASSIFIER_CONFIDENCE_THRESHOLD) {

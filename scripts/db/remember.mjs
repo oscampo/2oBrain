@@ -195,6 +195,17 @@ if (complementsId !== null && !Number.isInteger(complementsId)) complementsId = 
 let autoResolved = null;
 let redundantId = null;
 
+// Guarda determinista: un texto idéntico a un registro vivo nunca se inserta, ni con
+// --complements/--distinct explícitos (que se saltan el clasificador). Caso real:
+// un cliente llamó dos veces con el mismo claim y complements, y entró el duplicado.
+const normClaim = (x) => String(x).replace(/\s+/g, ' ').trim().toLowerCase();
+const identical = candidates.find((c) => normClaim(c.claim) === normClaim(args.claim) && !supersedesIds.includes(Number(c.id)));
+if (identical) {
+  console.log(`Ya existe un registro con el mismo texto: #${identical.id}, no se inserta (duplicado exacto).`);
+  await client.end();
+  process.exit(0);
+}
+
 if (similar.length > 0 && supersedesIds.length === 0 && complementsId === null && !args.distinct) {
   autoResolved = await classifyDuplicate(args.claim, similar, args.source, sourceAt);
   if (autoResolved && autoResolved.confidence >= CLASSIFIER_CONFIDENCE_THRESHOLD) {
