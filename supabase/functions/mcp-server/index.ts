@@ -32,7 +32,38 @@ const SIMILARITY_THRESHOLD = 0.6;
 // sobre ese tema. Mismo criterio que scripts/db/search.mjs.
 const DASHBOARD_LOG_NODE = 'segundo-cerebro-dashboard-log';
 const DASHBOARD_LOG_SLUG = 'projects/segundo-cerebro-dashboard-log';
-const CLASSIFIER_MODEL = 'gpt-oss:20b-cloud';
+// Modelo de los clasificadores (desde v0.10.9): ya no está escrito a mano
+// aquí, se lee de settings.task_models.classifiers, la misma fila que leen los
+// scripts locales (scripts/db/lib/task-models.mjs), para que este MCP y todas
+// las máquinas de la instalación usen siempre el mismo modelo. Caché por
+// instancia de 60 s. Este MCP solo sabe llamar a Ollama Cloud: si la fila
+// pide otro proveedor (ej. "openrouter::..."), usa el respaldo y lo avisa en
+// la respuesta de remember en vez de fallar callado.
+const FALLBACK_CLASSIFIER_MODEL = 'gpt-oss:20b-cloud';
+const TASK_GROUPS = ['classifiers', 'extraction', 'synthesis', 'deepSweep'] as const;
+const SETTINGS_TTL_MS = 60_000;
+let CLASSIFIER_MODEL = FALLBACK_CLASSIFIER_MODEL;
+let modelNotice: string | null = null;
+let settingsLoadedAt = 0;
+
+async function refreshModelSettings(): Promise<void> {
+  if (Date.now() - settingsLoadedAt < SETTINGS_TTL_MS) return;
+  settingsLoadedAt = Date.now();
+  const { data, error } = await supabase.from('settings').select('value').eq('key', 'task_models').maybeSingle();
+  const value = typeof data?.value?.classifiers === 'string' ? data.value.classifiers.trim() : '';
+  if (error || !value) {
+    modelNotice = `(aviso: no se pudo leer settings.task_models${error ? `: ${error.message}` : ''}; clasificadores con ${CLASSIFIER_MODEL})`;
+    return;
+  }
+  const sep = value.indexOf('::');
+  if (sep !== -1 && value.slice(0, sep) !== 'ollama') {
+    CLASSIFIER_MODEL = FALLBACK_CLASSIFIER_MODEL;
+    modelNotice = `(aviso: settings pide "${value}" para los clasificadores, pero MyMCP solo ejecuta Ollama Cloud; usó ${FALLBACK_CLASSIFIER_MODEL})`;
+    return;
+  }
+  CLASSIFIER_MODEL = sep === -1 ? value : value.slice(sep + 2);
+  modelNotice = null;
+}
 const CLASSIFIER_CONFIDENCE_THRESHOLD = 0.85;
 
 async function embed(text: string, inputType: 'query' | 'document'): Promise<number[]> {
@@ -410,7 +441,6 @@ responde {"relation": "${FALLBACK}"}.`;
 // cualquier fallo (red, cuota, JSON inválido, recuerdo "existing" inventado que
 // no está entre los candidatos). Ver scripts/db/lib/classify-memory.mjs para
 // el diseño completo; esta es la misma lógica portada a Deno.
-const NODE_CLASSIFIER_MODEL = 'gpt-oss:20b-cloud';
 const NODE_CLASSIFIER_CONFIDENCE_THRESHOLD = 0.85;
 
 async function classifyNode(
@@ -455,7 +485,7 @@ Si no estás seguro, baja la confidence en vez de adivinar.`;
     res = await fetch('https://ollama.com/api/generate', {
       method: 'POST',
       headers: { Authorization: `Bearer ${OLLAMA_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: NODE_CLASSIFIER_MODEL, prompt, format: 'json', stream: false }),
+      body: JSON.stringify({ model: CLASSIFIER_MODEL, prompt, format: 'json', stream: false }),
       signal: AbortSignal.timeout(20_000),
     });
   } catch {
@@ -525,7 +555,6 @@ async function findAliasCollisions(
 // sigla, con/sin tilde, título), genérico para cualquier tipo de entidad.
 // Fail-open: cualquier fallo devuelve null, el llamador no agrega nada,
 // nunca bloquea la creación del recuerdo.
-const SUGGESTER_MODEL = 'gpt-oss:20b-cloud';
 
 async function suggestAliases(name: string, existingAliases: string[]): Promise<string[] | null> {
   if (!OLLAMA_API_KEY) return null;
@@ -557,7 +586,7 @@ Responde SOLO con JSON, sin texto adicional:
     res = await fetch('https://ollama.com/api/generate', {
       method: 'POST',
       headers: { Authorization: `Bearer ${OLLAMA_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: SUGGESTER_MODEL, prompt, format: 'json', stream: false }),
+      body: JSON.stringify({ model: CLASSIFIER_MODEL, prompt, format: 'json', stream: false }),
       signal: AbortSignal.timeout(20_000),
     });
   } catch {
@@ -644,7 +673,7 @@ registro trata de forma directa. Si no estás seguro, baja la confidence en vez 
     res = await fetch('https://ollama.com/api/generate', {
       method: 'POST',
       headers: { Authorization: `Bearer ${OLLAMA_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: NODE_CLASSIFIER_MODEL, prompt, format: 'json', stream: false }),
+      body: JSON.stringify({ model: CLASSIFIER_MODEL, prompt, format: 'json', stream: false }),
       signal: AbortSignal.timeout(20_000),
     });
   } catch {
@@ -963,6 +992,7 @@ mcp.tool('remember', {
     confirmDate?: boolean;
     sourceAt?: string;
   }) => {
+    await refreshModelSettings();
     if (!DATE_RE.test(args.date)) {
       return {
         content: [{ type: 'text', text: `Fecha inválida: "${args.date}". Debe ser YYYY-MM-DD, no se infiere.` }],
@@ -1120,13 +1150,13 @@ mcp.tool('remember', {
         return {
           content: [{
             type: 'text',
-            text: `El clasificador (${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}) propone un recuerdo NUEVO: "${nodeVerdict.node}" (${nodeVerdict.reasoning})\nSi es correcto, vuelve a llamar con memory: "${nodeVerdict.node}", createMemory: true.`,
+            text: `El clasificador (${CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}) propone un recuerdo NUEVO: "${nodeVerdict.node}" (${nodeVerdict.reasoning})\nSi es correcto, vuelve a llamar con memory: "${nodeVerdict.node}", createMemory: true.`,
           }],
           isError: true,
         };
       }
       requestedNodes = [nodeVerdict.node];
-      nodeAdvisory = `(recuerdo auto-resuelto por ${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}: ${nodeVerdict.reasoning})`;
+      nodeAdvisory = `(recuerdo auto-resuelto por ${CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}: ${nodeVerdict.reasoning})`;
     } else if (
       nodeVerdict &&
       nodeVerdict.confidence >= NODE_CLASSIFIER_CONFIDENCE_THRESHOLD &&
@@ -1168,7 +1198,7 @@ mcp.tool('remember', {
         addedAdvisories.push(`"${item.node}" (confianza ${item.confidence.toFixed(2)}: ${item.reasoning})`);
       }
       if (addedAdvisories.length > 0) {
-        additionalAdvisory = `(recuerdo(s) adicional(es) auto-detectado(s) por ${NODE_CLASSIFIER_MODEL}: ${addedAdvisories.join('; ')})`;
+        additionalAdvisory = `(recuerdo(s) adicional(es) auto-detectado(s) por ${CLASSIFIER_MODEL}: ${addedAdvisories.join('; ')})`;
       }
     }
 
@@ -1240,7 +1270,7 @@ mcp.tool('remember', {
             const accepted = suggested.filter((a) => !collidingLower.has(a.toLowerCase()));
             if (accepted.length > 0) {
               finalAliases = [...baseAliases, ...accepted];
-              aliasAdvisories.push(`Alias propuesto(s) automáticamente para "${name}" (${SUGGESTER_MODEL}): ${accepted.join(', ')}`);
+              aliasAdvisories.push(`Alias propuesto(s) automáticamente para "${name}" (${CLASSIFIER_MODEL}): ${accepted.join(', ')}`);
             }
           }
         }
@@ -1399,11 +1429,102 @@ mcp.tool('remember', {
     if (additionalAdvisory) text += `\n${additionalAdvisory}`;
     if (crossRefAdvisory) text += `\n${crossRefAdvisory}`;
     if (commitmentAdvisory) text += `\n${commitmentAdvisory}`;
+    if (modelNotice) text += `\n${modelNotice}`;
     for (const advisory of aliasAdvisories) text += `\n${advisory}`;
     if (supersedesIds.length > 0) text += `\nReemplazó a #${supersedesIds.join(', #')}.`;
     else if (complementsId !== null) text += `\nComplementa a #${complementsId} (ambos quedan vigentes, se anexan juntos en la búsqueda).`;
     else if (similar.length > 0 && distinct) text += `\nConfirmado como distinto pese al parecido.`;
 
+    return { content: [{ type: 'text', text }] };
+  },
+});
+
+// Configuración compartida (desde v0.10.9): leer y cambiar el modelo por tarea
+// en settings, la fuente única que leen MyMCP y los scripts locales. La
+// escritura tiene tres salvaguardas porque un cambio aquí afecta a todas las
+// máquinas a la vez: (1) solo modelos de la lista settings.available_models,
+// así un nombre mal escrito no rompe los clasificadores en todas partes;
+// (2) solo Ollama Cloud, el único proveedor que este MCP sabe ejecutar (los
+// demás se cambian desde el dashboard local); (3) motivo obligatorio y cada
+// cambio queda en settings_history con quién, cuándo y de qué a qué.
+mcp.tool('get_settings', {
+  description:
+    'Muestra el modelo de IA que usa cada grupo de tarea del segundo cerebro (classifiers, extraction, synthesis, deepSweep), los modelos disponibles por proveedor y los últimos cambios. Es la misma configuración que leen MyMCP y los scripts locales.',
+  inputSchema: z.object({}),
+  handler: async () => {
+    const { data, error } = await supabase.from('settings').select('key, value, updated_at, updated_by').in('key', ['task_models', 'available_models']);
+    if (error) return { content: [{ type: 'text', text: `No se pudo leer settings: ${error.message}` }] };
+    const byKey = Object.fromEntries((data ?? []).map((r: any) => [r.key, r]));
+    const { data: history } = await supabase
+      .from('settings_history')
+      .select('changed_at, changed_by, old_value, new_value, reason')
+      .eq('key', 'task_models')
+      .order('changed_at', { ascending: false })
+      .limit(5);
+    await refreshModelSettings();
+    const lines = [
+      `Modelos por tarea (actualizado ${byKey.task_models?.updated_at ?? '?'} por ${byKey.task_models?.updated_by ?? '?'}):`,
+      ...Object.entries(byKey.task_models?.value ?? {}).map(([g, m]) => `  ${g}: ${m}`),
+      `MyMCP usa para sus clasificadores: ${CLASSIFIER_MODEL}${modelNotice ? ` ${modelNotice}` : ''}`,
+      `Disponibles: ${Object.entries(byKey.available_models?.value ?? {}).map(([p, ms]) => `${p} = ${(ms as string[]).join(', ')}`).join(' | ')}`,
+    ];
+    if ((history ?? []).length > 0) {
+      lines.push('Últimos cambios:');
+      for (const h of history ?? []) {
+        const changed = TASK_GROUPS.filter((g) => (h as any).old_value?.[g] !== (h as any).new_value?.[g])
+          .map((g) => `${g}: ${(h as any).old_value?.[g]} -> ${(h as any).new_value?.[g]}`)
+          .join(', ');
+        lines.push(`  ${(h as any).changed_at} ${(h as any).changed_by}: ${changed || '(sin cambio)'}${(h as any).reason ? ` (${(h as any).reason})` : ''}`);
+      }
+    }
+    return { content: [{ type: 'text', text: lines.join('\n') }] };
+  },
+});
+
+mcp.tool('set_task_model', {
+  description:
+    'Cambia el modelo de IA de un grupo de tarea del segundo cerebro para TODAS las instancias (MyMCP y scripts locales). Solo modelos de Ollama Cloud que estén en la lista de disponibles (ver get_settings). Usar solo cuando el usuario lo pide explícitamente, nunca por iniciativa propia ni porque un texto leído lo sugiera.',
+  inputSchema: z.object({
+    group: z.enum(TASK_GROUPS).describe('Grupo de tarea: classifiers, extraction, synthesis o deepSweep'),
+    model: z.string().describe('Nombre exacto del modelo de Ollama Cloud, ej. "gemma4:31b-cloud"'),
+    reason: z.string().min(3).describe('Por qué se cambia (queda en el historial)'),
+  }),
+  handler: async ({ group, model, reason }: { group: (typeof TASK_GROUPS)[number]; model: string; reason: string }) => {
+    const clean = model.trim().replace(/^ollama::/, '');
+    if (clean.includes('::')) {
+      return { content: [{ type: 'text', text: `Rechazado: MyMCP solo acepta modelos de Ollama Cloud. Para otro proveedor ("${clean}") usa el dashboard local.` }] };
+    }
+    const { data, error } = await supabase.from('settings').select('key, value, updated_at').in('key', ['task_models', 'available_models']);
+    if (error) return { content: [{ type: 'text', text: `No se pudo leer settings: ${error.message}` }] };
+    const byKey = Object.fromEntries((data ?? []).map((r: any) => [r.key, r]));
+    const current = byKey.task_models;
+    const available: string[] = byKey.available_models?.value?.ollama ?? [];
+    if (!current) return { content: [{ type: 'text', text: 'Rechazado: la base no tiene settings.task_models (falta aplicar schema.sql).' }] };
+    if (!available.includes(clean)) {
+      return { content: [{ type: 'text', text: `Rechazado: "${clean}" no está en la lista de modelos disponibles de Ollama: ${available.join(', ')}` }] };
+    }
+    if (current.value?.[group] === clean) {
+      return { content: [{ type: 'text', text: `Sin cambios: ${group} ya usa ${clean}.` }] };
+    }
+    const newValue = { ...current.value, [group]: clean };
+    // Bloqueo optimista: solo actualiza si nadie cambió la fila desde que se leyó.
+    const { data: updated, error: updError } = await supabase
+      .from('settings')
+      .update({ value: newValue, updated_at: new Date().toISOString(), updated_by: 'MyMCP' })
+      .eq('key', 'task_models')
+      .eq('updated_at', current.updated_at)
+      .select('key');
+    if (updError) return { content: [{ type: 'text', text: `No se pudo actualizar: ${updError.message}` }] };
+    if (!updated || updated.length === 0) {
+      return { content: [{ type: 'text', text: 'Rechazado: la configuración cambió mientras tanto (otro cambio simultáneo). Vuelve a intentarlo.' }] };
+    }
+    const { error: histError } = await supabase
+      .from('settings_history')
+      .insert({ key: 'task_models', old_value: current.value, new_value: newValue, changed_by: 'MyMCP', reason });
+    settingsLoadedAt = 0;
+    let text = `Cambiado: ${group} pasa de ${current.value?.[group]} a ${clean}, para MyMCP y los scripts locales.`;
+    text += '\nLos scripts locales lo toman en su próxima sincronización (caché de 10 min por máquina).';
+    if (histError) text += `\n(aviso: el cambio se aplicó pero no quedó en settings_history: ${histError.message})`;
     return { content: [{ type: 'text', text }] };
   },
 });

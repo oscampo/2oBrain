@@ -779,3 +779,42 @@ language sql stable as $$
   order by similarity desc
   limit match_count;
 $$;
+
+-- Configuración compartida (v0.10.9): la elección de modelo por tarea vivía
+-- en config/task-models.json de CADA máquina (editado por el dashboard sin
+-- comitear) y el servidor MCP tenía los suyos escritos a mano en index.ts,
+-- así que dos máquinas, o una máquina y el MCP, podían usar modelos distintos
+-- para la misma tarea. Una sola fila en la base es lo único que leen todos
+-- por igual.
+-- config/task-models.json queda como respaldo si la base no responde.
+-- RLS activado sin políticas: solo el rol de servicio (servidor MCP) y la conexión
+-- directa (scripts) leen/escriben, nunca anon/authenticated vía REST.
+create table if not exists settings (
+  key text primary key,
+  value jsonb not null,
+  updated_at timestamptz not null default now(),
+  updated_by text not null default 'desconocido'
+);
+alter table settings enable row level security;
+
+-- Historial de cambios de settings: quién cambió qué, cuándo y por qué, para
+-- poder reconstruir cuándo cambió el comportamiento de los clasificadores.
+create table if not exists settings_history (
+  id bigserial primary key,
+  key text not null,
+  old_value jsonb,
+  new_value jsonb not null,
+  changed_at timestamptz not null default now(),
+  changed_by text not null,
+  reason text
+);
+alter table settings_history enable row level security;
+
+-- Semilla: los valores de config/task-models.json de este repo en v0.10.9 y
+-- las listas de modelos disponibles de lib/task-models.mjs y lib/openrouter.mjs.
+-- "on conflict do nothing": re-aplicar el esquema nunca pisa un valor ya
+-- editado desde el dashboard o el servidor MCP.
+insert into settings (key, value, updated_by) values
+  ('task_models', '{"classifiers": "gpt-oss:20b-cloud", "extraction": "gpt-oss:120b-cloud", "synthesis": "gpt-oss:20b-cloud", "deepSweep": "gemma4:31b-cloud"}'::jsonb, 'semilla schema.sql'),
+  ('available_models', '{"ollama": ["gpt-oss:20b-cloud", "gpt-oss:120b-cloud", "gemma4:31b-cloud", "nemotron-3-nano:30b-cloud", "nemotron-3-super:cloud", "nemotron-3-ultra:cloud"], "openrouter": ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "nvidia/nemotron-3-super-120b-a12b:free", "nvidia/nemotron-3-ultra-550b-a55b:free"]}'::jsonb, 'semilla schema.sql')
+on conflict (key) do nothing;

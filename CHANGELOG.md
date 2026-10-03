@@ -5,6 +5,50 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.10.9 (2026-10-03)
+
+Hay tres pasos, en este orden:
+
+1. `node scripts/db/apply-schema.mjs` (crea las tablas nuevas `settings` y
+   `settings_history`, con RLS activo y sembradas con los valores actuales de
+   `config/task-models.json`; es idempotente y nunca pisa un valor ya editado).
+2. Redespliega la Edge Function `mcp-server` con el `index.ts` nuevo: las
+   herramientas nuevas y la lectura del modelo desde la base viven ahí, y sin
+   redesplegar el servidor MCP sigue con su modelo escrito a mano.
+3. Reinicia el servidor del dashboard.
+
+- **El modelo de IA por tarea ahora vive en la base, no en cada máquina.** Antes
+  la elección de modelo para cada grupo de tareas (classifiers, extraction,
+  synthesis, deepSweep) se guardaba en `config/task-models.json` de cada máquina,
+  y el servidor MCP tenía la suya escrita a mano: dos máquinas, o una máquina y
+  el MCP, podían usar modelos distintos para la misma tarea sin que nadie lo
+  notara. Ahora hay una sola fila en la base (`settings.task_models`) que leen por
+  igual los scripts y el servidor MCP. Los scripts la sincronizan al arrancar,
+  con un caché local de 10 minutos (`state/task-models.cache.local.json`, fuera de
+  git); si la base no responde en 3 segundos usan el caché anterior o, si nunca
+  hubo, `config/task-models.json`, que queda solo como respaldo.
+- **El dashboard escribe en la base.** Cambiar un modelo en la sección de modelos
+  por tarea ya no edita `config/task-models.json`: escribe en la base y deja el
+  cambio en `settings_history`. Si la base no responde, el cambio falla visible en
+  vez de guardarse solo en esa máquina.
+- **El servidor MCP expone dos herramientas nuevas:** `get_settings` (muestra el
+  modelo de cada grupo, los disponibles por proveedor y los últimos cambios) y
+  `set_task_model` (cambia el modelo de un grupo).
+- **Aviso de seguridad:** `set_task_model` cambia el modelo para TODAS las
+  máquinas y para el propio servidor MCP a la vez. Tiene salvaguardas (solo
+  modelos de la lista de disponibles, solo Ollama Cloud, motivo obligatorio,
+  historial en `settings_history` y bloqueo optimista contra cambios
+  simultáneos), pero en la app de Claude conviene dejar esa herramienta en
+  "Needs approval" para que nunca se ejecute sin que la confirmes.
+- **Cómo se verificó**: `node --check` sobre los dos `.mjs` tocados y
+  `deno check` sobre `index.ts`, sin errores. Con una copia de prueba se comprobó
+  que, sin base alcanzable, los scripts caen a `config/task-models.json` (en modo
+  nube al instante; en local tras esperar los 3 segundos del límite) y que
+  `setTaskModel` rechaza un modelo que no está en la lista de disponibles. **No se
+  probó contra una base real**: ni `apply-schema.mjs`, ni la sincronización
+  real, ni el guardado desde el dashboard, ni `get_settings`/`set_task_model`
+  desplegados.
+
 ## v0.10.8 (2026-10-02)
 
 Sin migración de `schema.sql` y sin pasos a mano, solo reinicia el servidor del
