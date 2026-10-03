@@ -66,12 +66,21 @@ function runScript(scriptName, args, { input } = {}) {
     encoding: 'utf8',
     input,
     windowsHide: true,
+    // maxBuffer (2026-10-02): el valor por defecto de spawnSync es 1 MiB y el JSON de
+    // /api/timeline y /api/graph lo superó al crecer la base (~1.100.000 y ~1.050.000
+    // bytes con ~1.700 registros). Al pasarse, el proceso se mata (status null, error
+    // ENOBUFS) y el dashboard respondía 422: las vistas Lista, Gráfico y Heatmap del
+    // Timeline y el Grafo dejaron de cargar sin avisar por qué. 256 MiB da margen de
+    // sobra para varios años de registros.
+    maxBuffer: 256 * 1024 * 1024,
   });
   return {
     ok: result.status === 0,
     exitCode: result.status,
     stdout: result.stdout ?? '',
-    stderr: result.stderr ?? '',
+    // Si el subproceso no terminó por sí mismo (se pasó del buffer, no arrancó),
+    // result.error lo explica; antes quedaba un 422 mudo con exitCode null.
+    stderr: result.stderr || (result.error ? `${result.error.code ?? 'error'}: ${result.error.message}` : ''),
   };
 }
 

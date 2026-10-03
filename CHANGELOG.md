@@ -5,6 +5,25 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.10.8 (2026-10-02)
+
+Sin migración de `schema.sql` y sin pasos a mano, solo reinicia el servidor del
+dashboard (el cambio está en el servidor, no en la página).
+
+- **Corrige las vistas Lista, Gráfico y Heatmap del Timeline y el Grafo, que
+  dejaban de cargar cuando la base crecía.** El servidor del dashboard corre cada
+  script como subproceso y `spawnSync` limita su salida a 1 MiB por defecto. El
+  JSON de `/api/timeline` y de `/api/graph` supera ese límite hacia los 1.500 o
+  1.700 registros: el subproceso se mataba (`ENOBUFS`) y el dashboard respondía
+  422 sin explicar por qué, así que las vistas quedaban vacías sin ningún aviso.
+  Ahora el límite es de 256 MiB, y si un subproceso no termina por sí mismo el
+  error se devuelve en `stderr` en vez de un 422 mudo. Si tu base es chica no lo
+  habías notado, pero habría aparecido con el uso.
+- **Cómo se verificó**: el fallo se reprodujo primero (los dos endpoints daban 422
+  con salidas de 1,10 MB y 1,05 MB, `status` nulo y `ENOBUFS`), y tras el cambio
+  los dos devolvieron 200 con los mismos tamaños; en el navegador cargaron las
+  tres vistas del Timeline sin errores nuevos de consola.
+
 ## v0.10.7 (2026-10-02)
 
 Hay un paso de migración y un reinicio:
