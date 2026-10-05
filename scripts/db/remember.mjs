@@ -21,20 +21,18 @@
 // (lib/classify-memory.mjs) decide el recuerdo, o bloquea si no hay confianza
 // suficiente (fail-closed, nunca inserta con recuerdo nulo o placeholder). Con
 // --memory explícito, la desambiguación igual corre pero solo como aviso, la
-// elección del humano nunca se sobreescribe. Un recuerdo debe existir de
-// antemano en la tabla `memories` (fail-closed contra typos) salvo que se pase
-// --create-memory explícitamente. Si un recuerdo fue fusionado a otro
-// (`merged_into`), se resuelve solo al recuerdo vigente.
-//
-// Alias sugeridos al crear (2026-09-17, portado desde D:\MyBrain, registro
-// #887): junto con --create-memory, se le pide a lib/suggest-aliases.mjs
-// proponer variantes del name/--aliases dados (nombre completo, sigla,
-// con/sin tilde, título) y se agregan solas al insert, impresas explícitas
-// -- mismo criterio fail-open que usa el clasificador de menciones para sus
-// enlaces automáticos. Desactivar con --no-suggest-aliases.
+// elección del humano nunca se sobreescribe. Recuerdos adicionales: además del
+// recuerdo primario (con o sin --memory), se le pregunta aparte al mismo
+// clasificador si el registro pertenece TAMBIÉN a otro de los candidatos que
+// memories_similar() ya trajo (mismo umbral de confianza, fail-open), ver
+// lib/classify-memory.mjs (classifyAdditionalMemories). Desde v0.11.0 todo eso son
+// propuestas, ver abajo. Si un recuerdo fue fusionado a otro (`merged_into`), se
+// resuelve solo al recuerdo vigente. (--create-memory, --aliases y la sugerencia
+// automática de alias al crear se retiraron en v0.11.0: este script ya no crea
+// recuerdos, para eso está create-memory.mjs.)
 //
 // Uso:
-//   node remember.mjs --claim "texto del registro" --date 2026-08-22 --source "conversación Claude Code" [--kind fact|event|commitment] [--memory recuerdo1,recuerdo2] [--create-memory] [--aliases "alias1,alias2"] [--no-suggest-aliases] [--confidence 0.9] [--supersedes 12,15] [--complements 12] [--distinct] [--confirm-date] [--source-at ISO8601]
+//   node remember.mjs --claim "texto del registro" --date 2026-08-22 --source "conversación Claude Code" [--kind fact|event|commitment] [--memory recuerdo1,recuerdo2] [--confidence 0.9] [--supersedes 12,15] [--complements 12] [--distinct] [--confirm-date] [--source-at ISO8601] [--queue-proposals]
 //
 // --confirm-date: obligatorio si --date no es la fecha real de hoy (America/
 // Bogota): confirma que un registro con fecha distinta es intencional
@@ -51,6 +49,21 @@
 // lib/classify-duplicate.mjs usa este instante para bloquear ese caso de forma
 // determinista. Opcional: sin --source-at, el candado de cronología simplemente
 // no aplica para este registro.
+//
+// Propuestas de etiqueta (v0.11.0, ver memory_proposals en schema.sql): este
+// script nunca aplica una etiqueta que no se pidió ni crea un recuerdo. Liga solo
+// los recuerdos de --memory que existen; un recuerdo pedido que no existe, o lo
+// que sugiera el clasificador (adicional, en vez del pedido, nuevo), queda
+// pendiente en memory_proposals y se imprime con su número. Solo se aplica desde
+// el dashboard (Revisión de etiquetas > Propuestas pendientes) o con
+// `garden.mjs --proposal <id> accept`, que corre el usuario. Mismo diseño que el
+// servidor MCP: un parámetro de confirmación lo puede poner el propio modelo, así
+// que no sirve como confirmación del usuario.
+//   - sin --memory no se guarda: se imprime el recuerdo que sugiere el clasificador
+//     para que la llamada lo diga explícito.
+//   - con --queue-proposals (sin nadie mirando: extract-records.mjs) sin --memory se
+//     usa el primario auto-resuelto, porque un registro necesita algún recuerdo.
+//   - --create-memory ya no crea: el recuerdo nuevo queda como propuesta.
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { embed, toVectorLiteral } from './lib/embed.mjs';
@@ -58,12 +71,11 @@ import { classifyDuplicate, CLASSIFIER_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL, C
 import { classifyNode, classifyAdditionalMemories, CLASSIFIER_CONFIDENCE_THRESHOLD as NODE_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL as NODE_CLASSIFIER_MODEL, CLASSIFIER_PROVIDER as NODE_CLASSIFIER_PROVIDER } from './lib/classify-memory.mjs';
 import { literalMentionCandidates } from './lib/literal-mention-candidates.mjs';
 import { detectNodeMentions } from './lib/detect-memory-mentions.mjs';
-import { findAliasCollisions } from './lib/check-alias-collision.mjs';
 import { classifyMentionRelationHybrid, CLASSIFIER_CONFIDENCE_THRESHOLD as MENTION_CONFIDENCE_THRESHOLD } from './lib/classify-mention-relation.mjs';
 import { formatFactsBlock } from './lib/format-records.mjs';
 import { createLink } from './lib/create-link.mjs';
 import { classifyCommitmentResolution, CLASSIFIER_CONFIDENCE_THRESHOLD as COMMITMENT_CONFIDENCE_THRESHOLD } from './lib/classify-commitment-resolution.mjs';
-import { suggestAliases, SUGGESTER_MODEL } from './lib/suggest-aliases.mjs';
+import { proposalQueuedText, queueProposals } from './lib/memory-proposals.mjs';
 
 const SIMILARITY_THRESHOLD = 0.6;
 
@@ -103,7 +115,7 @@ const args = parseArgs(process.argv.slice(2));
 if (!args.claim || !args.date || !args.source) {
   console.error(
     'Faltan campos obligatorios. Uso:\n' +
-      '  node remember.mjs --claim "..." --date YYYY-MM-DD --source "..." [--kind fact] [--memory recuerdo1,recuerdo2] [--create-memory] [--aliases "a,b"] [--no-suggest-aliases] [--confidence 1.0] [--supersedes id,id] [--complements id] [--distinct] [--confirm-date] [--source-at ISO8601]',
+      '  node remember.mjs --claim "..." --date YYYY-MM-DD --source "..." [--kind fact] [--memory recuerdo1,recuerdo2] [--confidence 1.0] [--supersedes id,id] [--complements id] [--distinct] [--confirm-date] [--source-at ISO8601] [--queue-proposals]',
   );
   process.exit(1);
 }
@@ -304,9 +316,25 @@ let requestedNodes = args.memory
       .filter(Boolean)
   : [];
 
+const queueMode = Boolean(args['queue-proposals']);
+if (args['memories-confirmed']) {
+  console.error(
+    '--memories-confirmed ya no existe (v0.11.0): remember.mjs guarda con los recuerdos pedidos que existen y deja todo lo demás ' +
+      'como propuesta pendiente. Las propuestas las acepta el usuario en el dashboard o con garden.mjs --proposal <id> accept.',
+  );
+  await client.end();
+  process.exit(1);
+}
+if (args.aliases) {
+  console.error('--aliases ya no aplica: remember.mjs no crea recuerdos. Los alias se ponen al aceptar la propuesta o con set-memory-aliases.mjs.');
+  await client.end();
+  process.exit(1);
+}
+// Propuestas del clasificador: nunca se aplican solas (ver el comentario de cabecera).
+const proposals = [];
+
 if (requestedNodes.length === 0) {
-  // Sin --memory explícito: la propuesta del clasificador ES la decisión, no
-  // solo una sugerencia: pero solo si pasa el umbral de confianza.
+  // Sin --memory explícito: hace falta un primario con confianza suficiente.
   if (!nodeVerdict || nodeVerdict.confidence < NODE_CONFIDENCE_THRESHOLD) {
     console.error('No se pasó --memory y la desambiguación automática no alcanzó confianza suficiente.\n');
     if (nodeCandidates.length > 0) {
@@ -319,20 +347,29 @@ if (requestedNodes.length === 0) {
       console.error('(no hay registros con embedding en ningún recuerdo todavía para comparar)');
     }
     console.error(
-      '\nPasa --memory <nombre existente>, o --memory <nombre nuevo> --create-memory si es genuinamente un recuerdo nuevo.',
+      '\nPasa --memory <nombre existente>. Si hace falta uno nuevo, agrégalo también en --memory: quedará como propuesta pendiente.',
     );
     await client.end();
     process.exit(1);
   }
   if (nodeVerdict.verdict === 'new') {
     console.error(
-      `El clasificador (${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}) propone un recuerdo NUEVO: "${nodeVerdict.node}" (${nodeVerdict.reasoning})\n` +
-        `Si es correcto, vuelve a llamar con --memory "${nodeVerdict.node}" --create-memory.`,
+      `No se guardó. El clasificador (${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}) propone un recuerdo NUEVO: "${nodeVerdict.node}" (${nodeVerdict.reasoning})\n` +
+        `Un registro necesita al menos un recuerdo existente: vuelve a llamar con --memory <existente adecuado>,${nodeVerdict.node}. ` +
+        'El nuevo quedará como propuesta y solo se crea si el usuario la acepta.',
     );
     await client.end();
     process.exit(1);
   }
-  // verdict === 'existing' con confianza suficiente: la propuesta ES el recuerdo.
+  if (!queueMode) {
+    console.error(
+      `No se guardó. Falta --memory. El clasificador (${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}) sugiere el recuerdo existente "${nodeVerdict.node}" (${nodeVerdict.reasoning}).\n` +
+        `Vuelve a llamar con --memory "${nodeVerdict.node}" (u otro que corresponda).`,
+    );
+    await client.end();
+    process.exit(1);
+  }
+  // Sin nadie mirando, el registro necesita un recuerdo: el primario se auto-resuelve.
   requestedNodes = [nodeVerdict.node];
   console.error(
     `(recuerdo auto-resuelto por ${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}: ${nodeVerdict.reasoning})`,
@@ -343,96 +380,57 @@ if (requestedNodes.length === 0) {
   (nodeVerdict.verdict === 'new' || !requestedNodes.includes(nodeVerdict.node))
 ) {
   // --memory vino explícito pero la desambiguación sugiere algo distinto con
-  // confianza alta: se avisa, nunca se bloquea ni se sobreescribe.
-  console.error(
-    `(aviso: la desambiguación automática (${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}) ` +
-      `sugiere ${nodeVerdict.verdict === 'new' ? `un recuerdo nuevo distinto: "${nodeVerdict.node}"` : `el recuerdo existente "${nodeVerdict.node}"`}` +
-      ` en vez de ${requestedNodes.map((n) => `"${n}"`).join(', ')}, ${nodeVerdict.reasoning}. Se respeta tu elección explícita.)`,
-  );
+  // confianza alta: es una propuesta, nunca sobreescribe lo pedido.
+  proposals.push({
+    memory: nodeVerdict.node,
+    kind: nodeVerdict.verdict === 'new' ? 'new' : 'instead',
+    confidence: nodeVerdict.confidence,
+    reasoning: nodeVerdict.reasoning,
+  });
 }
 
-// Recuerdos adicionales (portado desde D:\MyBrain, pedido original de Oscar):
-// classifyNode (arriba) es de un solo recuerdo por diseño -- un registro
-// genuinamente sobre dos asuntos a la vez (ej. una persona Y la institución de
-// la que participa) quedaba tageado solo bajo el primero, aunque el segundo ya
-// estuviera entre los candidatos de memories_similar() con similitud alta.
-// Reusa el MISMO candidate-list que memories_similar() ya calculó arriba, sin
+// Recuerdos adicionales: classifyNode (arriba) es de un solo recuerdo por diseño
+// -- un registro genuinamente sobre dos asuntos a la vez (ej. una persona Y la
+// institución de la que participa) quedaba tageado solo bajo el primero, aunque el
+// segundo ya estuviera entre los candidatos de memories_similar() con similitud
+// alta. Reusa el MISMO candidate-list que memories_similar() ya calculó arriba, sin
 // ninguna búsqueda nueva -- solo le pregunta al LLM, aparte, "¿el registro
-// pertenece TAMBIÉN a alguno de estos otros?". Mismo umbral de confianza que
-// el pick primario (NODE_CONFIDENCE_THRESHOLD) para no diluir un recuerdo
-// paraguas con falsos positivos. Fail-open: cualquier fallo del clasificador
-// no bloquea nada, el registro sigue solo con lo que ya tenía.
+// pertenece TAMBIÉN a alguno de estos otros?". Mismo umbral de confianza que el
+// pick primario (NODE_CONFIDENCE_THRESHOLD). Fail-open: cualquier fallo del
+// clasificador no bloquea nada. Desde v0.11.0 lo que devuelve es una PROPUESTA
+// (ver cabecera), no una etiqueta: agregada sola, contaminaba recuerdos ajenos, y
+// esos recuerdos contaminados sesgaban después al propio clasificador.
 //
-// Candidatos por mención literal (portado desde D:\MyBrain, cierre de
-// #1056/#872): memories_similar() es puramente por embedding, y puede no
-// traer un recuerdo que el texto SÍ nombra explícito si su contenido
-// existente es temáticamente lejano. Se suman los recuerdos que
-// detectNodeMentions encuentra por nombre/alias literal en el texto, aunque
-// no hayan rankeado por embedding -- mismo mecanismo barato que ya usa
-// Etapa 6 más abajo, pero acá alimenta el clasificador de recuerdos
-// adicionales en vez de solo crear un memory_link.
-const { rows: allNodeRowsForAdditional } = await client.query(
-  `select name, aliases from memories where merged_into is null and not is_meta`,
-);
-const literalCandidates = (
-  await literalMentionCandidates(client, args.claim, requestedNodes, allNodeRowsForAdditional)
-).filter((c) => !nodeCandidates.some((n) => n.memory_name === c.memory_name));
-const remainingNodeCandidates = [
-  ...nodeCandidates.filter((c) => !requestedNodes.includes(c.memory_name)),
-  ...literalCandidates,
-];
-if (remainingNodeCandidates.length > 0) {
-  const additional = await classifyAdditionalMemories(args.claim, requestedNodes.join(', '), remainingNodeCandidates);
-  for (const item of additional) {
-    if (item.confidence < NODE_CONFIDENCE_THRESHOLD) continue;
-    requestedNodes.push(item.node);
-    console.error(
-      `(recuerdo adicional auto-detectado por ${NODE_CLASSIFIER_MODEL}, confianza ${item.confidence.toFixed(2)}: "${item.node}" -- ${item.reasoning})`,
-    );
+// Candidatos por mención literal: memories_similar() es puramente por embedding, y
+// puede no traer un recuerdo que el texto SÍ nombra explícito si su contenido
+// existente es temáticamente lejano. Se suman los recuerdos que detectNodeMentions
+// encuentra por nombre/alias literal en el texto, aunque no hayan rankeado por
+// embedding.
+{
+  const { rows: allNodeRowsForAdditional } = await client.query(
+    `select name, aliases from memories where merged_into is null and not is_meta`,
+  );
+  const literalCandidates = (
+    await literalMentionCandidates(client, args.claim, requestedNodes, allNodeRowsForAdditional)
+  ).filter((c) => !nodeCandidates.some((n) => n.memory_name === c.memory_name));
+  const remainingNodeCandidates = [
+    ...nodeCandidates.filter((c) => !requestedNodes.includes(c.memory_name) && !proposals.some((p) => p.memory === c.memory_name)),
+    ...literalCandidates,
+  ];
+  if (remainingNodeCandidates.length > 0) {
+    const additional = await classifyAdditionalMemories(args.claim, requestedNodes.join(', '), remainingNodeCandidates);
+    for (const item of additional) {
+      if (item.confidence < NODE_CONFIDENCE_THRESHOLD) continue;
+      proposals.push({ memory: item.node, kind: 'additional', confidence: item.confidence, reasoning: item.reasoning });
+    }
   }
 }
 
-// --aliases (2026-09-02): un recuerdo nuevo nacía siempre con aliases vacío --
-// el mismo hueco que forzó el backfill guiado de 24 recuerdos (ver PLAN-recuerdos.md,
-// Etapa 6, registro #497: un `name` kebab-case casi nunca aparece literal en
-// prosa natural, así que detect-memory-mentions.mjs no podía reconocer
-// menciones futuras sin alias). Solo aplica junto con --create-memory, y solo
-// si esta llamada crea exactamente UN recuerdo nuevo -- con varios a la vez, una
-// sola lista de alias sería ambigua (¿de cuál de todos?). Mismo chequeo de
-// colisión que set-memory-aliases.mjs (lib/check-alias-collision.mjs): un
-// alias que ya es name/alias de otro recuerdo bloquea, no se crea nada.
-let aliasesForNewNode = null;
-if (args.aliases) {
-  if (!args['create-memory']) {
-    console.error('--aliases solo aplica junto con --create-memory.');
-    await client.end();
-    process.exit(1);
-  }
-  const { rows: existing } = await client.query(`select name from memories where name = any($1::text[])`, [requestedNodes]);
-  const existingNames = new Set(existing.map((r) => r.name));
-  const toCreate = requestedNodes.filter((n) => !existingNames.has(n));
-  if (toCreate.length !== 1) {
-    console.error(
-      `--aliases solo aplica si esta llamada crea exactamente un recuerdo nuevo (crearía ${toCreate.length}: ${toCreate.join(', ') || 'ninguno'}). Créalos por separado, o aplica alias después con set-memory-aliases.mjs.`,
-    );
-    await client.end();
-    process.exit(1);
-  }
-  const newAliases = args.aliases.split(',').map((a) => a.trim()).filter(Boolean);
-  const conflicts = await findAliasCollisions(client, toCreate[0], newAliases);
-  if (conflicts.length > 0) {
-    console.error(`Colisión -- no se crea el recuerdo. Los siguientes alias ya pertenecen a otro recuerdo:`);
-    for (const c of conflicts) console.error(`  "${c.alias}" ya es name/alias de "${c.node}"`);
-    await client.end();
-    process.exit(1);
-  }
-  aliasesForNewNode = { name: toCreate[0], aliases: newAliases };
-}
-
-// Resuelve cada recuerdo: debe existir en `memories` (fail-closed contra typos que
-// crearían un recuerdo fantasma), salvo --create-memory explícito. Si un recuerdo fue
-// fusionado a otro (merged_into), sigue la cadena al vigente: nadie que
-// llame remember.mjs necesita saber que un recuerdo cambió de nombre.
+// Resuelve cada recuerdo: solo se ligan los que existen. Uno que no existe no se crea
+// (fail-closed contra typos y contra recuerdos nuevos sin aprobación): queda como
+// propuesta de recuerdo nuevo. Si un recuerdo fue fusionado a otro (merged_into),
+// sigue la cadena al vigente: nadie que llame remember.mjs necesita saber que un
+// recuerdo cambió de nombre.
 const resolvedNodes = [];
 for (const name of requestedNodes) {
   let current = name;
@@ -456,37 +454,20 @@ for (const name of requestedNodes) {
   }
   if (row) {
     resolvedNodes.push(row.name);
-  } else if (args['create-memory']) {
-    const baseAliases = aliasesForNewNode?.name === name ? aliasesForNewNode.aliases : [];
-    let finalAliases = baseAliases;
-    if (!args['no-suggest-aliases']) {
-      const suggested = await suggestAliases(name, baseAliases);
-      if (suggested && suggested.length > 0) {
-        const suggestedCollisions = await findAliasCollisions(client, name, suggested);
-        const collidingLower = new Set(suggestedCollisions.map((c) => c.alias.toLowerCase()));
-        const accepted = suggested.filter((a) => !collidingLower.has(a.toLowerCase()));
-        if (accepted.length > 0) {
-          finalAliases = [...baseAliases, ...accepted];
-          console.error(`  Alias propuesto(s) automáticamente para "${name}" (${SUGGESTER_MODEL}): ${accepted.join(', ')}`);
-        }
-      }
-    }
-    if (finalAliases.length > 0) {
-      await client.query(
-        `insert into memories (name, aliases) values ($1, $2) on conflict (name) do nothing`,
-        [name, finalAliases],
-      );
-    } else {
-      await client.query(`insert into memories (name) values ($1) on conflict (name) do nothing`, [name]);
-    }
-    resolvedNodes.push(name);
-  } else {
-    console.error(
-      `recuerdo "${name}" no existe en la tabla memories. Pasa --create-memory si es genuinamente uno nuevo, o revisa el nombre con list-memories.mjs.`,
-    );
-    await client.end();
-    process.exit(1);
+  } else if (!proposals.some((p) => p.memory === name)) {
+    proposals.push({ memory: name, kind: 'new', confidence: null, reasoning: 'pedido en --memory, todavía no existe' });
   }
+}
+if (args['create-memory']) {
+  console.error('(--create-memory ya no crea recuerdos: un recuerdo pedido que no existe queda como propuesta pendiente)');
+}
+if (resolvedNodes.length === 0) {
+  console.error(
+    `No se guardó: ninguno de los recuerdos pedidos existe (${requestedNodes.map((n) => `"${n}"`).join(', ')}). ` +
+      'Un registro necesita al menos uno existente; agrega uno en --memory y el nuevo quedará como propuesta pendiente.',
+  );
+  await client.end();
+  process.exit(1);
 }
 
 // Aviso de fusión de contexto cruzado (portado desde D:\MyBrain, caso #872,
@@ -541,6 +522,10 @@ for (const memoryName of resolvedNodes) {
 }
 if (resolvedNodes.length > 0) {
   console.log(`recuerdo(s): ${resolvedNodes.join(', ')}`);
+}
+if (proposals.length > 0) {
+  const queued = await queueProposals(client, newId, proposals, NODE_CLASSIFIER_MODEL);
+  console.log(proposalQueuedText(queued, proposals));
 }
 
 // Auto-enlace entre recuerdos co-etiquetados (portado desde D:\MyBrain,

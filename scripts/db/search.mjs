@@ -4,16 +4,13 @@ import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { embed, toVectorLiteral, rerank } from './lib/embed.mjs';
 
-// Excluye por defecto projects/segundo-cerebro-dashboard-log (bitácora de
-// construcción del dashboard, 28-ago-2026): registros meta que citan preguntas
-// de prueba textuales pueden rankear más alto que el contenido real sobre
-// ese tema (hallazgo en vivo, ver registro #264 en esa misma bitácora).
-// --include-dashboard-log la trae de vuelta, para cuando de verdad se
-// quiere consultar la bitácora de construcción. `pages` sigue usando el
-// slug (no migrado todavía, ver PLAN-recuerdos.md Etapa 4); `records` ya usa el
-// nombre de recuerdo (record_memories, sin el prefijo de carpeta que sí tiene el slug).
+// Excluye por defecto la página projects/segundo-cerebro-dashboard-log
+// (bitácora de construcción del dashboard, 28-ago-2026): texto meta que cita
+// preguntas de prueba textuales puede rankear más alto que el contenido real
+// sobre ese tema. --include-dashboard-log la trae de vuelta. Solo la página:
+// desde v0.11.0 los registros ya no se excluyen por recuerdo, porque esa
+// exclusión ocultaba de la búsqueda cualquier registro mal etiquetado con él.
 const EXCLUDE_SLUG = 'projects/segundo-cerebro-dashboard-log';
-const EXCLUDE_NODE = 'segundo-cerebro-dashboard-log';
 
 // Un flag inventado que no existe (por ejemplo "--limit 15", nunca fue una opción
 // real de este script) no daba ningún error: se colaba silenciosamente como texto
@@ -33,7 +30,6 @@ if (unknownFlags.length > 0) {
 
 const includeDashboardLog = rawArgs.includes('--include-dashboard-log');
 const excludeSlug = includeDashboardLog ? null : EXCLUDE_SLUG;
-const excludeMemory = includeDashboardLog ? null : EXCLUDE_NODE;
 // --full: imprime el contenido completo de cada página en vez de los primeros 200 caracteres.
 const fullContent = rawArgs.includes('--full');
 
@@ -114,7 +110,7 @@ const matchedLiveNodes = new Set();
 for (const n of allNodes) {
   if (!nodeIsMatched(n)) continue;
   const live = resolveLiveMemory(n.name);
-  if (live && live !== excludeMemory) matchedLiveNodes.add(live);
+  if (live) matchedLiveNodes.add(live);
 }
 
 // Matching por identidad semántica: complementa el alias exacto de arriba, no
@@ -134,7 +130,7 @@ if (semanticCandidates.length > 0) {
   for (const m of semanticCandidates) {
     if (m.similarity < top - MATCH_MARGIN) continue;
     const live = resolveLiveMemory(m.memory_name);
-    if (live && live !== excludeMemory) matchedLiveNodes.add(live);
+    if (live) matchedLiveNodes.add(live);
   }
 }
 
@@ -167,7 +163,7 @@ const nodeMatchTruncated = nodeMatchTotal > nodeMatchFacts.length;
 // Trae un pool más grande (10) para que el reranker tenga sobre qué
 // trabajar, luego se reordena y se muestran los 5 más relevantes de verdad.
 const { rows: pageCandidates } = await client.query(`select * from search_pages($1, $2, $3, $4)`, [vectorLiteral, query, 10, excludeSlug]);
-const { rows: factCandidates } = await client.query(`select * from records_search($1, $2, $3, $4)`, [vectorLiteral, query, 10, excludeMemory]);
+const { rows: factCandidates } = await client.query(`select * from records_search($1, $2, $3)`, [vectorLiteral, query, 10]);
 
 async function rerankTop(candidates, toDoc, topN) {
   if (candidates.length === 0) return [];

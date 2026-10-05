@@ -274,11 +274,22 @@ app.post('/api/remember', async (c) => {
   if (!body?.claim || !body?.date || !body?.source) {
     return c.json({ ok: false, error: 'faltan claim/date/source' }, 400);
   }
+  // Desde v0.11.0 remember.mjs no crea recuerdos (lo que pide un modelo queda
+  // como propuesta). Aquí quien marca "Crear recuerdo nuevo" es el usuario en su
+  // dashboard, así que se crean antes con create-memory.mjs, que además frena nombres
+  // parecidos a uno existente; si alguno falla, no se guarda el registro.
+  if (body.createNode && body.memory) {
+    const names = String(body.memory).split(',').map((s) => s.trim()).filter(Boolean);
+    for (const name of names) {
+      const createArgs = ['--name', name];
+      if (body.aliases) createArgs.push('--aliases', body.aliases);
+      const created = runScript('create-memory.mjs', createArgs);
+      if (!created.ok) return respond(c, { ...created, stderr: `No se creó el recuerdo "${name}", el registro no se guardó.\n${created.stderr ?? ''}` });
+    }
+  }
   const args = ['--claim', body.claim, '--date', body.date, '--source', body.source];
   if (body.kind) args.push('--kind', body.kind);
   if (body.memory) args.push('--memory', body.memory);
-  if (body.createNode) args.push('--create-memory');
-  if (body.aliases) args.push('--aliases', body.aliases);
   if (body.confidence) args.push('--confidence', String(body.confidence));
   if (body.supersedes) args.push('--supersedes', String(body.supersedes));
   if (body.distinct) args.push('--distinct');
@@ -286,9 +297,31 @@ app.post('/api/remember', async (c) => {
   return respond(c, runScript('remember.mjs', args));
 });
 
+// Desde v0.11.0 remember-batch.mjs no crea recuerdos (createMemory deja una propuesta):
+// lo que pide un modelo no puede crear uno solo. En el dashboard, quien marca un
+// registro para crear su recuerdo es el usuario, así que estos endpoints los crean
+// antes con create-memory.mjs (idempotente si ya existe, y frena nombres parecidos a
+// uno existente). Devuelve null si todo salió bien, o el resultado que falló.
+function createApprovedMemories(records) {
+  const names = new Set();
+  for (const r of records ?? []) {
+    if (!(r?.createMemory || r?.createNode)) continue;
+    const raw = r.memory ?? r.node;
+    const list = Array.isArray(raw) ? raw : String(raw ?? '').split(',');
+    for (const n of list) if (String(n).trim()) names.add(String(n).trim());
+  }
+  for (const name of names) {
+    const created = runScript('create-memory.mjs', ['--name', name]);
+    if (!created.ok) return { ...created, stderr: `No se creó el recuerdo "${name}", no se guardó ningún registro del lote.\n${created.stderr ?? ''}` };
+  }
+  return null;
+}
+
 app.post('/api/remember-batch', async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body?.records) return c.json({ ok: false, error: 'falta {records: [...]}' }, 400);
+  const failed = createApprovedMemories(body.records);
+  if (failed) return respond(c, failed);
   const args = body.confirmDate ? ['--confirm-date'] : [];
   return respond(c, runScript('remember-batch.mjs', args, { input: JSON.stringify(body) }));
 });
@@ -308,6 +341,11 @@ app.post('/api/remember-batch/stream', async (c) => {
   const streamArgs = body.confirmDate ? ['--confirm-date'] : [];
   c.header('Content-Type', 'text/plain; charset=utf-8');
   return stream(c, async (s) => {
+    const failed = createApprovedMemories(body.records);
+    if (failed) {
+      await s.write(`${failed.stdout ?? ''}${failed.stderr ?? ''}\n[EXIT:1]`);
+      return;
+    }
     await new Promise((resolve) => {
       const child = spawn(process.execPath, [join(DB_DIR, 'remember-batch.mjs'), ...streamArgs], { cwd: DB_DIR, windowsHide: true });
       child.stdout.on('data', (chunk) => s.write(chunk));
@@ -708,6 +746,15 @@ const gardenNum = (v, d, max) => { const n = Number(v); return Number.isInteger(
 app.get('/api/garden/sample', (c) => gardenJson(c, ['--sample', gardenNum(c.req.query('n'), 3, 20), '--since', gardenNum(c.req.query('since'), 3, 60)]));
 app.get('/api/garden/signals', (c) => gardenJson(c, ['--since', gardenNum(c.req.query('since'), 3, 60), '--limit', gardenNum(c.req.query('limit'), 10, 50)]));
 app.get('/api/garden/stats', (c) => gardenJson(c, ['--stats']));
+app.get('/api/garden/proposals', (c) => gardenJson(c, ['--proposals', gardenNum(c.req.query('limit'), 20, 100)]));
+app.get('/api/garden/proposals/decided', (c) => gardenJson(c, ['--decided', gardenNum(c.req.query('hours'), 24, 720)]));
+app.post('/api/garden/proposal', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!Number.isInteger(Number(body?.id)) || !['accept', 'reject', 'undo'].includes(body?.decision)) {
+    return c.json({ ok: false, error: 'faltan id (numero) y decision (accept|reject|undo)' }, 400);
+  }
+  return respond(c, runScript('garden.mjs', ['--proposal', String(Number(body.id)), body.decision]));
+});
 app.post('/api/garden/verdict', async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!Number.isInteger(Number(body?.record)) || !['ok', 'corrected'].includes(body?.verdict)) {

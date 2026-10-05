@@ -16,13 +16,19 @@
 //
 // Rediseño 2026-08-29: slug -> memory (string o array de strings, record_memories
 // many-to-many). Mismo criterio fail-closed que remember.mjs: un recuerdo debe
-// existir de antemano salvo que el registro traiga createMemory: true.
+// existir de antemano; desde v0.11.0 uno que no existe (aunque traiga
+// createMemory: true) queda como propuesta de recuerdo nuevo, no se crea.
 // Etapa 2 (2026-08-30): memory ya es opcional por registro: si se omite, se
 // desambigua por búsqueda vectorial (memories_similar()) + clasificador
 // (lib/classify-memory.mjs), igual que remember.mjs. Sin humano presente para
 // resolver un bloqueo, un registro ambiguo se salta (nodeAmbiguous) y el lote
 // sigue con el resto, nunca aborta. Con memory explícito, la desambiguación
 // corre igual pero solo avisa, nunca sobreescribe.
+// Propuestas de etiqueta (v0.11.0, ver memory_proposals en
+// schema.sql): sin humano presente durante el lote, un recuerdo adicional o uno
+// sugerido en vez del pedido ya no se agrega solo: el registro se guarda con lo
+// pedido (o el primario auto-resuelto si no trae memory) y cada propuesta queda
+// pendiente para revisarla en el dashboard (Revisión de etiquetas).
 // Formato esperado del JSON: {"records": [{claim, date, source, kind?, memory?, createMemory?, confidence?}, ...]}
 // memory acepta string ("cabd-2026-2") o array (["cabd-2026-2", "coil-2026-2"]).
 import { readFileSync } from 'node:fs';
@@ -35,6 +41,7 @@ import { detectNodeMentions } from './lib/detect-memory-mentions.mjs';
 import { classifyMentionRelationHybrid, CLASSIFIER_CONFIDENCE_THRESHOLD as MENTION_CONFIDENCE_THRESHOLD } from './lib/classify-mention-relation.mjs';
 import { formatFactsBlock } from './lib/format-records.mjs';
 import { createLink } from './lib/create-link.mjs';
+import { queueProposals } from './lib/memory-proposals.mjs';
 
 const SIMILARITY_THRESHOLD = 0.6;
 
@@ -132,7 +139,7 @@ const client = new pg.Client({
 });
 await client.connect();
 
-const results = { inserted: [], autoResolved: [], redundant: [], blocked: [], invalid: [], nodeMissing: [], nodeAmbiguous: [], mentions: [] };
+const results = { inserted: [], autoResolved: [], redundant: [], blocked: [], invalid: [], nodeMissing: [], nodeAmbiguous: [], mentions: [], proposals: [] };
 
 // Etapa 6 (PLAN-recuerdos.md, 2026-09-02, registro #487): mismo detector de
 // co-ocurrencia que remember.mjs -- una sola carga por lote, no cambia
@@ -280,16 +287,20 @@ for (let i = 0; i < records.length; i++) {
     }
     requestedNodes = [nodeVerdict.node];
     console.error(`  (recuerdo auto-resuelto por ${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}: ${nodeVerdict.reasoning})`);
-  } else if (
+  }
+  const proposals = [];
+  if (
+    (f.memory ?? f.node) != null &&
     nodeVerdict &&
     nodeVerdict.confidence >= NODE_CONFIDENCE_THRESHOLD &&
     (nodeVerdict.verdict === 'new' || !requestedNodes.includes(nodeVerdict.node))
   ) {
-    console.error(
-      `  (aviso: desambiguación (confianza ${nodeVerdict.confidence.toFixed(2)}) sugiere ` +
-        `${nodeVerdict.verdict === 'new' ? `un recuerdo nuevo distinto: "${nodeVerdict.node}"` : `el recuerdo existente "${nodeVerdict.node}"`}` +
-        ` en vez de ${requestedNodes.map((n) => `"${n}"`).join(', ')}, se respeta el recuerdo explícito del JSON.)`,
-    );
+    proposals.push({
+      memory: nodeVerdict.node,
+      kind: nodeVerdict.verdict === 'new' ? 'new' : 'instead',
+      confidence: nodeVerdict.confidence,
+      reasoning: nodeVerdict.reasoning,
+    });
   }
 
   // Recuerdos adicionales (portado desde D:\MyBrain): mismo mecanismo que
@@ -304,16 +315,18 @@ for (let i = 0; i < records.length; i++) {
     await literalMentionCandidates(client, f.claim, requestedNodes, allNodeRowsForAdditional)
   ).filter((c) => !nodeCandidates.some((n) => n.memory_name === c.memory_name));
   const remainingNodeCandidates = [
-    ...nodeCandidates.filter((c) => !requestedNodes.includes(c.memory_name)),
+    ...nodeCandidates.filter((c) => !requestedNodes.includes(c.memory_name) && !proposals.some((p) => p.memory === c.memory_name)),
     ...literalCandidates,
   ];
   if (remainingNodeCandidates.length > 0) {
     const additional = await classifyAdditionalMemories(f.claim, requestedNodes.join(', '), remainingNodeCandidates);
     for (const item of additional) {
       if (item.confidence < NODE_CONFIDENCE_THRESHOLD) continue;
-      requestedNodes.push(item.node);
-      console.error(`  (recuerdo adicional auto-detectado por ${NODE_CLASSIFIER_MODEL}, confianza ${item.confidence.toFixed(2)}: "${item.node}" -- ${item.reasoning})`);
+      proposals.push({ memory: item.node, kind: 'additional', confidence: item.confidence, reasoning: item.reasoning });
     }
+  }
+  for (const p of proposals) {
+    console.error(`  (propuesta en cola para revisión: "${p.memory}" (${p.kind}), confianza ${p.confidence.toFixed(2)}: ${p.reasoning})`);
   }
 
   const resolvedNodes = [];
@@ -322,15 +335,16 @@ for (let i = 0; i < records.length; i++) {
     const resolved = await resolveNode(name);
     if (resolved) {
       resolvedNodes.push(resolved);
-    } else if (f.createMemory) {
-      await client.query(`insert into memories (name) values ($1) on conflict (name) do nothing`, [name]);
-      resolvedNodes.push(name);
-    } else {
-      console.error(`  recuerdo "${name}" no existe (pasa createMemory: true en el JSON si es genuinamente nuevo), bloqueado.`);
-      results.nodeMissing.push({ fact: f, missingNode: name });
-      nodeFailed = true;
-      break;
+    } else if (!proposals.some((p) => p.memory === name)) {
+      // Desde v0.11.0 un recuerdo que no existe no se crea (ni con createMemory):
+      // queda como propuesta de recuerdo nuevo, igual que en remember.mjs y MyMCP.
+      proposals.push({ memory: name, kind: 'new', confidence: null, reasoning: 'pedido en memory, todavía no existe' });
     }
+  }
+  if (resolvedNodes.length === 0) {
+    console.error(`  ninguno de los recuerdos pedidos existe (${requestedNodes.join(', ')}), bloqueado: hace falta al menos uno existente.`);
+    results.nodeMissing.push({ fact: f, missingNode: requestedNodes.join(', ') });
+    nodeFailed = true;
   }
   if (nodeFailed) continue;
 
@@ -380,6 +394,10 @@ for (let i = 0; i < records.length; i++) {
       newId,
       memoryName,
     ]);
+  }
+  if (proposals.length > 0) {
+    await queueProposals(client, newId, proposals, NODE_CLASSIFIER_MODEL);
+    results.proposals.push({ id: newId, proposals });
   }
 
   // Auto-enlace entre recuerdos co-etiquetados en el mismo registro (portado
@@ -477,10 +495,11 @@ console.log(`Insertados: ${results.inserted.length}`);
 console.log(`  de los cuales auto-resueltos (duplicado/contradicción): ${results.autoResolved.length}`);
 console.log(`Redundantes (ya cubiertos por un registro vigente, no se insertaron): ${results.redundant.length}`);
 console.log(`Bloqueados (requieren remember.mjs manual con --supersedes o --distinct): ${results.blocked.length}`);
-console.log(`recuerdo inexistente (falta createMemory: true o corregir el nombre): ${results.nodeMissing.length}`);
+console.log(`sin ningún recuerdo existente (corrige el nombre o agrega uno existente): ${results.nodeMissing.length}`);
 console.log(`recuerdo ambiguo (sin memory en el JSON, desambiguación sin confianza o propuso recuerdo nuevo): ${results.nodeAmbiguous.length}`);
 console.log(`Inválidos (faltaba claim/date/source o fecha mal formada): ${results.invalid.length}`);
 console.log(`Mencionan otro recuerdo (posible relación, revisión manual): ${results.mentions.length}`);
+console.log(`Con propuestas de etiqueta en cola (revísalas en el dashboard, Revisión de etiquetas > Propuestas pendientes): ${results.proposals.length}`);
 
 if (results.blocked.length > 0) {
   console.log('\nregistros bloqueados:');
@@ -500,7 +519,7 @@ if (results.nodeMissing.length > 0) {
 }
 
 if (results.nodeAmbiguous.length > 0) {
-  console.log('\nregistros con recuerdo ambiguo (resuélvelos a mano con remember.mjs, pasando --memory o --memory ... --create-memory):');
+  console.log('\nregistros con recuerdo ambiguo (resuélvelos a mano con remember.mjs, pasando --memory con un recuerdo existente):');
   for (const { fact, nodeCandidates, nodeVerdict } of results.nodeAmbiguous) {
     console.log(`  - "${truncateClaim(fact.claim)}"`);
     if (nodeVerdict?.verdict === 'new') {

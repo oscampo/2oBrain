@@ -345,6 +345,37 @@ create table if not exists record_reviews (
 );
 alter table record_reviews enable row level security;
 
+-- Propuestas de etiqueta pendientes de confirmación (v0.11.0): el clasificador de recuerdos ya no etiqueta solo.
+-- Con alguien presente (remember.mjs, MyMCP remember) la propuesta bloquea el
+-- registro hasta que se confirme; sin nadie mirando (extract-records.mjs,
+-- remember-batch.mjs) el registro se guarda solo con lo pedido o el primario
+-- auto-resuelto, y cada propuesta queda aquí para aceptarla o descartarla en el
+-- dashboard (Revisión de etiquetas > Propuestas pendientes). Caso que lo motivó:
+-- recuerdos adicionales puestos solos contaminaron un recuerdo ajeno y, como el
+-- clasificador usa los registros del recuerdo como ejemplos, el error se
+-- reforzaba con cada registro nuevo.
+--   additional  recuerdo existente además de los que tiene
+--   instead     recuerdo existente sugerido en vez del que se pidió
+--   new         recuerdo nuevo sugerido (aceptarlo lo crea)
+create table if not exists memory_proposals (
+  id bigserial primary key,
+  record_id bigint not null references records(id) on delete cascade,
+  memory_name text not null,
+  kind text not null check (kind in ('additional', 'instead', 'new')),
+  confidence real,
+  reasoning text,
+  model text,
+  status text not null default 'pending' check (status in ('pending', 'accepted', 'rejected')),
+  created_at timestamptz not null default now(),
+  decided_at timestamptz,
+  unique (record_id, memory_name)
+);
+alter table memory_proposals enable row level security;
+-- Recuerdo que la aceptación ligó de verdad (null si el registro ya lo tenía): deshacer
+-- solo quita esa etiqueta, nunca una que existía antes de aceptar.
+alter table memory_proposals add column if not exists linked_memory text;
+create index if not exists memory_proposals_pending_idx on memory_proposals (created_at) where status = 'pending';
+
 do $$
 declare
   current_type text;
@@ -436,45 +467,21 @@ language sql stable as $$
       ))
     limit 50
   ),
-  memory_ranked as (
-    select id, row_number() over (order by best_rank desc) as rnk
-    from (
-      select rm.record_id as id,
-             max(ts_rank(
-               to_tsvector('spanish', replace(m.name, '-', ' ') || ' ' || coalesce(array_to_string(m.aliases, ' '), '')),
-               -- OR entre terminos, no AND: plainto_tsquery exige los DOS
-               -- terminos ("proyecto" Y "coil"), pero el nombre/alias de una
-               -- recuerdo nunca va a contener palabras genericas como
-               -- "proyecto", basta con que UNO matchee (ver hallazgo
-               -- 2026-08-31 arriba).
-               to_tsquery('spanish', replace(plainto_tsquery('spanish', query_text)::text, ' & ', ' | '))
-             )) as best_rank
-      from record_memories rm
-      join memories m on m.name = rm.memory_name
-      join records r on r.id = rm.record_id
-      where r.valid_until is null
-        and to_tsvector('spanish', replace(m.name, '-', ' ') || ' ' || coalesce(array_to_string(m.aliases, ' '), ''))
-              @@ to_tsquery('spanish', replace(plainto_tsquery('spanish', query_text)::text, ' & ', ' | '))
-        and (exclude_memory is null or not exists (
-          select 1 from record_memories rm2 where rm2.record_id = rm.record_id and rm2.memory_name = exclude_memory
-        ))
-      group by rm.record_id
-    ) best
-    limit 50
-  ),
+  -- v0.11.0: se retira la rama memory_ranked (nombre/alias del recuerdo
+  -- contra la consulta, con peso 1/rnk). Bastaba UNA palabra en comun,
+  -- tambien generica ("proyecto" -> cualquier recuerdo proyecto-*, "iniciar"
+  -- -> "iniciativa" por raiz), y con ese peso unas 30 veces mayor que las
+  -- otras ramas, los registros de esos recuerdos desplazaban del pool al
+  -- resultado correcto. Lo que la rama cubria (un proyecto nombrado cuyos
+  -- registros no dicen su nombre) ya lo resuelve aparte el router de
+  -- recuerdos de search.mjs y del MCP (alias exacto por palabra completa +
+  -- identidad semantica, memory_match_records): para que funcione, el
+  -- recuerdo necesita como alias la palabra corta con que se lo nombra.
   fused as (
-    -- memory_ranked usa 1/rnk (no 1/(60+rnk) como las otras dos): un match
-    -- literal de nombre/alias de recuerdo es una senal mucho mas fuerte y
-    -- confiable que similitud de vector o de texto generico (mismo criterio
-    -- de prioridad lexica que classify-memory.mjs, Etapa 2), con la
-    -- constante 60 quedaba diluido casi a cero (0.016 vs ~0.03-0.05 de los
-    -- matches genuinos) y nunca entraba en el pool de match_count antes del
-    -- rerank, aunque si aparecia si se pedian cientos de candidatos.
-    select coalesce(v.id, t.id, n.id) as id,
-           coalesce(1.0 / (60 + v.rnk), 0) + coalesce(1.0 / (60 + t.rnk), 0) + coalesce(1.0 / n.rnk, 0) as score
+    select coalesce(v.id, t.id) as id,
+           coalesce(1.0 / (60 + v.rnk), 0) + coalesce(1.0 / (60 + t.rnk), 0) as score
     from vector_ranked v
     full outer join text_ranked t on v.id = t.id
-    full outer join memory_ranked n on coalesce(v.id, t.id) = n.id
   ),
   winners as (
     select r.id, r.claim, r.date, r.source, r.kind,

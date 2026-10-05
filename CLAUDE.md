@@ -114,7 +114,13 @@ cerrada, una corrección, un registro con fecha); lo rutinario de esa ventana
 ya lo cubre la extracción en segundo plano, esto es sobre lo que ella no
 puede ver o resolver. Guarda cada uno con `node scripts/db/remember.mjs
 --claim "..." --date YYYY-MM-DD --source "..."`, sin narrar la revisión
-aparte. Si el bloque que mandó el hook trae pendientes, resuélvelos también (a
+aparte. Ninguna etiqueta se aplica sin que el usuario la acepte (desde v0.11.0,
+ver `memory_proposals` en `scripts/db/schema.sql`): `remember.mjs` liga solo los
+recuerdos de `--memory` que existen y deja como propuesta pendiente lo demás (un
+recuerdo que no existe, o lo que sugiera el clasificador). Si la respuesta trae
+"PROPUESTAS DE ETIQUETA PENDIENTES", rompe el silencio y muéstraselas tal cual;
+nunca las aceptes tú (`garden.mjs --proposal <id> accept` es para que lo corra
+el usuario, o el dashboard). Si el bloque que mandó el hook trae pendientes, resuélvelos también (a
 mano con `remember.mjs` si valen la pena, o decide que no). Al final, suma lo
 que guardaste tú a mano más lo que la extracción ya insertó sola (si el hook lo
 reportó); si ese total es mayor que 0, antepón "(N🧠) " -- con N ese total
@@ -126,8 +132,8 @@ continúa normal.
 decisión cerrada, una corrección o un registro con fecha que valga la pena
 recordar, captúralo ahora con `node scripts/db/remember.mjs --claim "..."
 --date YYYY-MM-DD --source "..."` (agrega `--memory nombre-de-recuerdo` si
-aplica, ver `scripts/db/list-memories.mjs`; `--create-memory` si es
-genuinamente nuevo). Si no hay nada capturable, dilo explícitamente y
+aplica, ver `scripts/db/list-memories.mjs`; un recuerdo nuevo se pide en
+`--memory` y queda como propuesta para que el usuario la acepte). Si no hay nada capturable, dilo explícitamente y
 continúa.
 
 **Chequeo de skill** (aplica en ambos modos, además de lo anterior): evalúa
@@ -396,9 +402,11 @@ quieras, nunca queda fijo."*
 
 **PREGUNTA**: ¿Cómo te llamas, y a qué te dedicas (tu rol o profesión, no
 tus proyectos actuales, esos van en la Fase 6)?
-→ Crea la categoría y guarda el registro tú mismo:
+→ Crea la categoría y guarda el registro tú mismo, en dos pasos (`remember.mjs`
+no crea recuerdos, ver "Protocolo del hook Stop"):
 ```bash
-node scripts/db/remember.mjs --claim "El usuario se llama <nombre>, <rol/profesión>." --date YYYY-MM-DD --source "entrevista de instalación, Fase 5" --memory usuario --create-memory
+node scripts/db/create-memory.mjs --name usuario
+node scripts/db/remember.mjs --claim "El usuario se llama <nombre>, <rol/profesión>." --date YYYY-MM-DD --source "entrevista de instalación, Fase 5" --memory usuario
 ```
 
 No le preguntes por proyectos, notas dispersas, ni correo en esta fase
@@ -646,8 +654,8 @@ Si el usuario da algo (a mano, vía documento, o vía correo), por cada registro
    --parent`: quien construye el recuerdo ya sabe a qué grupo pertenece).
 2. Créalo y ligalo en un solo paso:
    `node scripts/db/create-memory.mjs --name <nombre-recuerdo> --parent <subcategoría> --date YYYY-MM-DD --reason "..."`
-3. Guarda el registro en el recuerdo ya creado (sin `--create-memory`, ya existe del
-   paso anterior):
+3. Guarda el registro en el recuerdo ya creado en el paso anterior (`remember.mjs`
+   no crea recuerdos):
    `node scripts/db/remember.mjs --claim "..." --date YYYY-MM-DD --source "..." --memory <nombre-recuerdo>`
 
 Muéstrale cada registro candidato antes de guardarlo -- nunca inventes,

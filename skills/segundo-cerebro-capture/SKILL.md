@@ -49,9 +49,11 @@ formato `YYYY-MM-DD`. No hay forma de guardar un registro sin ambos.
 
 `--memory` es opcional (uno o varios separados por coma), agrupa el registro
 bajo un recuerdo existente en la tabla `memories` (ver `node scripts/db/list-memories.mjs`
-para la lista vigente). Fail-closed: si el recuerdo no existe, `remember.mjs` se
-niega a insertar salvo que se pase también `--create-memory` (solo cuando el
-recuerdo es genuinamente nuevo, no un typo del existente). Si el registro no
+para la lista vigente). Desde v0.11.0 `remember.mjs` liga solo los recuerdos
+que existen: uno que no existe queda como propuesta de recuerdo nuevo (igual que lo
+que sugiera el clasificador), y solo el usuario la acepta, en el dashboard o con
+`garden.mjs --proposal <id> accept`. Si la respuesta trae propuestas pendientes,
+muéstraselas tal cual; nunca las aceptes por tu cuenta. Si el registro no
 pertenece a ningún proyecto/persona específico, se omite `--memory` por
 completo, no es obligatorio a nivel de esquema.
 

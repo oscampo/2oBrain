@@ -3368,13 +3368,15 @@ function section(id, title, hint, bodyHtml) {
 
 // --- Revisión de etiquetas ---
 {
-  const sec = section('tag-garden', 'Revisión de etiquetas', 'Revisa a mano si los registros recientes quedaron en el recuerdo correcto ("garden.mjs"). "Muestrear" trae registros al azar de la extracción automática que nadie ha revisado: no detecta errores por sí mismo, mide qué tan seguido el etiquetado se equivoca. "Señales de texto" trae registros con un indicio concreto (solo recuerdo paraguas, menciona otro recuerdo sin tenerlo, recuerdo de 2 registros o menos). Cada revisión se guarda y el registro no vuelve a salir. Cada etiqueta actual se decide por separado: Correcto, Mover (a otro recuerdo) o Quitar; además puedes añadir etiquetas nuevas. Todo se aplica junto con "Aplicar" y un solo motivo; el registro nunca queda sin etiquetas.',
+  const sec = section('tag-garden', 'Revisión de etiquetas', 'Revisa a mano si los registros recientes quedaron en el recuerdo correcto ("garden.mjs"). "Muestrear" trae registros al azar de la extracción automática que nadie ha revisado: no detecta errores por sí mismo, mide qué tan seguido el etiquetado se equivoca. "Señales de texto" trae registros con un indicio concreto (solo recuerdo paraguas, menciona otro recuerdo sin tenerlo, recuerdo de 2 registros o menos). Cada revisión se guarda y el registro no vuelve a salir. Cada etiqueta actual se decide por separado: Correcto, Mover (a otro recuerdo) o Quitar; además puedes añadir etiquetas nuevas. Todo se aplica junto con "Aplicar" y un solo motivo; el registro nunca queda sin etiquetas. "Propuestas pendientes" trae las etiquetas que el clasificador sugirió en la extracción automática o en un lote y que nadie confirmó: ninguna se aplica sola, cada una se acepta o se descarta aquí. Después de decidir aparece "Deshacer": la propuesta vuelve a pendiente y, si la aceptaste, se quita la etiqueta que puso (nunca una que el registro ya tenía). "Decididas recientemente" trae lo aceptado o descartado en las últimas 24 horas, para deshacerlo aunque ya no esté en la lista de pendientes.',
     `<div class="row">
        <div><label>Cuántos</label><input type="number" id="tg-n" value="3" min="1" max="20"></div>
        <div><label>Últimos días</label><input type="number" id="tg-days" value="3" min="1" max="60"></div>
      </div>
      <button class="run" id="tg-sample">Muestrear registros automáticos</button>
      <button class="run secondary" id="tg-signals" style="margin-left:8px">Señales de texto</button>
+     <button class="run secondary" id="tg-proposals" style="margin-left:8px">Propuestas pendientes</button>
+     <button class="run secondary" id="tg-decided" style="margin-left:8px">Decididas recientemente</button>
      <div class="status" id="tg-stats"></div>
      <div class="status" id="tg-info"></div>
      <datalist id="tg-memories-list"></datalist>
@@ -3532,6 +3534,99 @@ function section(id, title, hint, bodyHtml) {
     return card;
   }
 
+  const KIND_LABEL = { additional: 'además de las que tiene', instead: 'en vez de la pedida', new: 'recuerdo nuevo (aceptar lo crea)' };
+  function renderProposalItem(it) {
+    const card = document.createElement('div');
+    card.className = 'fact-card';
+    card.innerHTML = `
+      <div class="fc-top"><label>Registro #${it.id}</label></div>
+      <div class="fc-fragment">${escapeHtml(it.claim)}</div>
+      <div class="hint">Etiquetas actuales: ${it.tags.length ? it.tags.map((t) => `<code>${escapeHtml(t)}</code>`).join(', ') : 'ninguna'}</div>
+      <div class="tg-props"></div>`;
+    const list = card.querySelector('.tg-props');
+    for (const p of it.proposals) {
+      const row = document.createElement('div');
+      row.style.marginTop = '10px';
+      // Dos estados: pendiente (Aceptar / Descartar) y decidida (Deshacer). Deshacer vuelve
+      // la propuesta a pendiente y, si se había aceptado, quita la etiqueta que puso.
+      const showPending = () => {
+        row.innerHTML = `
+          <div><strong>Propuesta ${p.id}</strong>: <code>${escapeHtml(p.memory)}</code> <span class="hint">(${KIND_LABEL[p.kind] ?? p.kind}${p.confidence == null ? '' : `, confianza ${Number(p.confidence).toFixed(2)}`})</span></div>
+          <div class="hint">${escapeHtml(p.reasoning ?? '')}</div>
+          <button class="run tg-accept" style="margin-top:6px">Aceptar</button>
+          <button class="run secondary tg-reject" style="margin-top:6px; margin-left:8px">Descartar</button>`;
+        row.querySelector('.tg-accept').addEventListener('click', () => send('accept'));
+        row.querySelector('.tg-reject').addEventListener('click', () => send('reject'));
+      };
+      const showDecided = (decision, detail) => {
+        row.innerHTML = `
+          <div class="hint"><strong>Propuesta ${p.id}</strong> (<code>${escapeHtml(p.memory)}</code>): ${decision === 'accept' ? 'aceptada, el registro ya la tiene' : 'descartada'}.</div>
+          ${detail ? `<div class="hint">${escapeHtml(detail)}</div>` : ''}
+          <button class="run secondary tg-undo" style="margin-top:6px">Deshacer</button>`;
+        row.querySelector('.tg-undo').addEventListener('click', () => send('undo'));
+      };
+      const send = async (decision) => {
+        row.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+        const r = await call('POST', '/api/garden/proposal', { id: p.id, decision });
+        if (!r.ok) {
+          out(row, { ok: false, stdout: '', stderr: r.stderr || r.error || 'no se guardó' });
+          row.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+          return;
+        }
+        if (decision === 'undo') {
+          showPending();
+          const msg = document.createElement('div');
+          msg.className = 'hint';
+          msg.textContent = (r.stdout || '').trim();
+          row.appendChild(msg);
+        } else {
+          showDecided(decision, '');
+        }
+      };
+      if (p.status === 'accepted' || p.status === 'rejected') {
+        const when = p.decided_at ? new Date(p.decided_at).toLocaleString('es-CO') : '';
+        showDecided(p.status === 'accepted' ? 'accept' : 'reject', when ? `Decidida el ${when}.` : '');
+      } else {
+        showPending();
+      }
+      list.appendChild(row);
+    }
+    return card;
+  }
+
+  async function loadProposals(button) {
+    cardsEl.innerHTML = '';
+    button.disabled = true;
+    infoEl.textContent = 'Buscando…';
+    try {
+      const r = await call('GET', `/api/garden/proposals?limit=${encodeURIComponent(sec.querySelector('#tg-n').value)}`);
+      if (!r.ok) { infoEl.textContent = 'Error: ' + (r.error ?? r.stderr ?? 'sin detalle'); return; }
+      infoEl.textContent = r.items.length
+        ? `${r.total} registro(s) con propuestas pendientes; se muestran ${r.items.length}.`
+        : 'Propuestas pendientes: nada por revisar.';
+      r.items.forEach((it) => cardsEl.appendChild(renderProposalItem(it)));
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function loadDecided(button) {
+    cardsEl.innerHTML = '';
+    button.disabled = true;
+    infoEl.textContent = 'Buscando…';
+    try {
+      const r = await call('GET', '/api/garden/proposals/decided?hours=24');
+      if (!r.ok) { infoEl.textContent = 'Error: ' + (r.error ?? r.stderr ?? 'sin detalle'); return; }
+      const n = r.items.reduce((acc, it) => acc + it.proposals.length, 0);
+      infoEl.textContent = n
+        ? `${n} propuesta(s) decidida(s) en las últimas ${r.hours} horas; cualquiera se puede deshacer.`
+        : `Decididas recientemente: nada en las últimas ${r.hours} horas.`;
+      r.items.forEach((it) => cardsEl.appendChild(renderProposalItem(it)));
+    } finally {
+      button.disabled = false;
+    }
+  }
+
   async function load(path, button, label) {
     cardsEl.innerHTML = '';
     button.disabled = true;
@@ -3554,6 +3649,10 @@ function section(id, title, hint, bodyHtml) {
   const signalsBtn = sec.querySelector('#tg-signals');
   sampleBtn.addEventListener('click', () => load(`/api/garden/sample?n=${nVal()}&since=${dVal()}`, sampleBtn, 'Muestreo'));
   signalsBtn.addEventListener('click', () => load(`/api/garden/signals?limit=${nVal()}&since=${dVal()}`, signalsBtn, 'Señales de texto'));
+  const proposalsBtn = sec.querySelector('#tg-proposals');
+  proposalsBtn.addEventListener('click', () => loadProposals(proposalsBtn));
+  const decidedBtn = sec.querySelector('#tg-decided');
+  decidedBtn.addEventListener('click', () => loadDecided(decidedBtn));
   refreshStats();
 }
 
@@ -4034,7 +4133,7 @@ function section(id, title, hint, bodyHtml) {
      <label>Recuerdo(s) (opcional, separados por coma, empieza a escribir para ver sugerencias)</label>
      <input type="text" id="rm-memory" placeholder="ej. segundo-cerebro" list="rm-memories-list">
      <datalist id="rm-memories-list"></datalist>
-     <div class="checkline"><input type="checkbox" id="rm-create-memory"><label for="rm-create-memory">Crear recuerdo nuevo, requiere escribir el nombre arriba en "Recuerdo(s)" (--create-memory)</label></div>
+     <div class="checkline"><input type="checkbox" id="rm-create-memory"><label for="rm-create-memory">Crear recuerdo nuevo, requiere escribir el nombre arriba en "Recuerdo(s)" (se crea con create-memory.mjs antes de guardar)</label></div>
      <label style="margin-top:10px">Alias del recuerdo nuevo (opcional, separados por coma, solo aplica con "Crear recuerdo nuevo" y un único recuerdo)</label>
      <input type="text" id="rm-aliases" placeholder="ej. Pedro Pérez, jefe">
      <div class="row">

@@ -621,6 +621,9 @@ if (rawResponse == null) {
       const cliArgs = [REMEMBER_SCRIPT, '--claim', f.claim, '--date', f.date, '--kind', f.kind, '--source', source];
       const sourceAt = resolveSourceAt(f.sourceTime);
       if (sourceAt) cliArgs.push('--source-at', sourceAt);
+      // Propuestas de etiqueta (v0.11.0): nadie confirma en mitad de una extracción,
+      // así que van a la cola de revisión del dashboard en vez de bloquear o aplicarse solas.
+      cliArgs.push('--queue-proposals');
       if (args.auto) {
         // windowsHide: sin esto, cada llamada abre una consola visible en
         // Windows aunque stdio esté redirigido; --auto no espera que nadie la mire.

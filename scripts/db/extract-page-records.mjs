@@ -637,15 +637,33 @@ if (rawResponse == null) {
         const batch = {
           records: approved.map(({ node, ...f }) => ({ ...f, source, memory: node, createMemory: true })),
         };
-        const result = spawnSync(process.execPath, [REMEMBER_BATCH_SCRIPT], {
-          input: JSON.stringify(batch),
-          stdio: ['pipe', 'inherit', 'inherit'],
-        });
-        if (result.status !== 0) {
-          console.error('\nremember-batch.mjs terminó con errores -- revisa la salida arriba.');
+        // Desde v0.11.0 remember-batch.mjs no crea recuerdos (createMemory deja una
+        // propuesta). Aquí el usuario acaba de aprobar cada registro en la terminal,
+        // así que los recuerdos que falten se crean antes con create-memory.mjs
+        // (idempotente si ya existe); si uno falla, no se inserta el lote.
+        const memoriesToCreate = [...new Set(approved.map((f) => f.node).filter(Boolean))];
+        let createFailed = false;
+        for (const name of memoriesToCreate) {
+          const created = spawnSync(process.execPath, [join(SCRIPT_DIR, 'create-memory.mjs'), '--name', name], { stdio: 'inherit' });
+          if (created.status !== 0) {
+            console.error(`\nNo se creó el recuerdo "${name}": no se inserta el lote.`);
+            createFailed = true;
+            break;
+          }
+        }
+        if (createFailed) {
           process.exitCode = 1;
         } else {
-          console.log(`\nCerrando "${page.slug}": decide ahora el destino del .md (referencia / redundante) -- no es automático, ver PLAN-recuerdos.md paso 5.`);
+          const result = spawnSync(process.execPath, [REMEMBER_BATCH_SCRIPT], {
+            input: JSON.stringify(batch),
+            stdio: ['pipe', 'inherit', 'inherit'],
+          });
+          if (result.status !== 0) {
+            console.error('\nremember-batch.mjs terminó con errores -- revisa la salida arriba.');
+            process.exitCode = 1;
+          } else {
+            console.log(`\nCerrando "${page.slug}": decide ahora el destino del .md (referencia / redundante) -- no es automático, ver PLAN-recuerdos.md paso 5.`);
+          }
         }
       }
     }

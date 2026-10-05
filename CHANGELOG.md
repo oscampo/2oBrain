@@ -5,6 +5,73 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.11.0 (2026-10-04)
+
+**Cambio incompatible:** `remember.mjs` ya no crea recuerdos ni acepta
+`--create-memory` para crearlos, `--aliases`, `--no-suggest-aliases` ni
+`--memories-confirmed`. Si tienes scripts propios o instrucciones que los usan,
+crea antes el recuerdo con `create-memory.mjs` (ver la Fase 5 de `CLAUDE.md`).
+
+Hay cuatro pasos, en este orden:
+
+1. `node scripts/db/apply-schema.mjs` (crea la tabla `memory_proposals`, con RLS
+   activo, y cambia la función de búsqueda `records_search`; es idempotente).
+2. Redespliega la Edge Function `mcp-server` con el `index.ts` nuevo: `remember`
+   cambia de comportamiento y hay dos herramientas nuevas, y sin redesplegar el
+   servidor MCP sigue aplicando etiquetas solo.
+3. Reinicia el servidor del dashboard.
+4. `CLAUDE.md` cambia en dos lugares fuera de "Cómo trabajar con el usuario":
+   el "Protocolo del hook Stop" y la Fase 5 de la instalación. Aplícalos a mano.
+
+- **Ninguna etiqueta se aplica sin que la aceptes.** Antes el clasificador de
+  recuerdos podía agregar solo un recuerdo adicional a un registro, o crear uno
+  nuevo. Una etiqueta equivocada puesta así se reforzaba sola: el clasificador usa
+  los registros de cada recuerdo como ejemplos, así que un recuerdo contaminado
+  atraía cada vez más registros ajenos. Ahora el registro se guarda con los
+  recuerdos que pediste y existen, y todo lo demás (un recuerdo que no existe, o
+  lo que sugiera el clasificador) queda como **propuesta pendiente** en la tabla
+  nueva `memory_proposals`, con su número.
+- **Dónde se deciden las propuestas:** en el dashboard, Revisión de etiquetas >
+  Propuestas pendientes (Aceptar / Descartar, y Deshacer en "Decididas
+  recientemente"), o con `garden.mjs --proposals`, `--proposal <id>
+  accept|reject|undo` y `--decided`. Aceptar una propuesta de recuerdo nuevo lo
+  crea.
+- **Servidor MCP:** `remember` ya no crea recuerdos ni aplica etiquetas no
+  pedidas, y lista las propuestas en su respuesta. Herramientas nuevas:
+  `list_memory_proposals` (solo lee) y `decide_memory_proposal` (acepta o
+  descarta). **Deja `decide_memory_proposal` en "Needs approval" en tu cliente
+  MCP**: el servidor no puede saber si una decisión la tomaste tú o el modelo, así
+  que esa aprobación es la única que de verdad espera tu clic. `remember` además
+  corre sus clasificadores en paralelo y responde más rápido.
+- **Claude Code:** `.claude/settings.json` nuevo con reglas `ask` para que Claude
+  pida permiso antes de correr `garden.mjs --proposal`, `recategorize-record.mjs`
+  y `edit-record.mjs ... --memory`. Son un respaldo, no una barrera: otra forma de
+  escribir el comando las evita, por eso la regla principal sigue en `CLAUDE.md`.
+  `create-memory.mjs` queda fuera a propósito: la instalación lo corre muchas
+  veces seguidas.
+- **El dashboard y la extracción de páginas siguen creando recuerdos cuando tú
+  lo marcas:** como ahí decide el usuario, crean el recuerdo con `create-memory.mjs`
+  antes de guardar (Guardar registro con "Crear recuerdo", Extraer con
+  `createMemory`, y `extract-page-records.mjs --review`).
+- **Búsqueda más precisa:** `records_search` ya no premia los registros de un
+  recuerdo solo porque su nombre o alias comparta una palabra con la pregunta.
+  Bastaba una palabra genérica ("proyecto", o "iniciar" que coincide con
+  "iniciativa" por raíz) para que esos registros desplazaran al resultado
+  correcto. Los recuerdos nombrados en la pregunta los sigue trayendo aparte el
+  detector de recuerdos de `search.mjs` y del servidor MCP, por alias exacto: si
+  sueles nombrar un recuerdo con una palabra corta (una sigla, por ejemplo),
+  agrégala como alias con `set-memory-aliases.mjs`.
+- **Fix propio**: la copia de `segundo-cerebro-capture` en `.claude/skills/` (la
+  que Claude Code carga) se había quedado atrás de la de `skills/`; ahora son
+  iguales.
+- **Cómo se verificó**: `node --check` sobre todos los `.mjs` tocados y
+  `deno check` sobre `index.ts`, sin errores. El sistema de propuestas y el cambio
+  de búsqueda se probaron primero en la instancia de desarrollo contra una base
+  real (cola desde la extracción y desde MCP, aceptar, descartar, deshacer, y
+  búsquedas con y sin palabras genéricas). Esta copia de 2oBrain no se probó
+  contra una base: el port se hizo fusionando los mismos cambios sobre los
+  archivos de 2oBrain.
+
 ## v0.10.9 (2026-10-03)
 
 Hay tres pasos, en este orden:

@@ -1,5 +1,6 @@
-// Crea un recuerdo standalone, sin necesidad de adjuntarlo a un registro (a
-// diferencia de remember.mjs --memory X --create-memory, que exige --claim).
+// Crea un recuerdo standalone, sin necesidad de adjuntarlo a un registro.
+// Desde el 5-oct-2026 es la única vía de línea de comandos para crear uno
+// (remember.mjs ya no crea, deja un recuerdo inexistente como propuesta).
 // Pensado para el caso de diseño top-down de grafo (armar la jerarquía de
 // antemano, ej. registro #555-#556: plan-de-trabajo/ptp-2026-N/evidencias-*),
 // antes de esto no existía, se usaba un INSERT SQL crudo sin ningún chequeo.

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "ask": [
+      "Bash(node scripts/db/garden.mjs --proposal *)",
+      "Bash(node garden.mjs --proposal *)",
+      "Bash(node scripts/db/recategorize-record.mjs *)",
+      "Bash(node recategorize-record.mjs *)",
+      "Bash(node scripts/db/edit-record.mjs *--memory*)",
+      "Bash(node edit-record.mjs *--memory*)"
+    ]
+  }
+}
