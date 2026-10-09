@@ -20,9 +20,8 @@
 // consume cuota del proveedor elegido (Gemini u Ollama Cloud) y, con
 // --review, la de Voyage AI que ya gasta remember.mjs por cada inserción.
 //
-// Proveedor por defecto: Gemini (sin suscripción de Ollama Cloud al momento
-// de escribir esto; gpt-oss:120b-cloud gratuito de Ollama quedó por debajo
-// de la calidad necesaria en pruebas comparativas: ver sesión 2026-08-26).
+// Proveedor por defecto: el del grupo "extraction" en el dashboard (Modelos por
+// tarea). Gemini sigue disponible con --provider gemini.
 // Prompt por defecto: scripts/db/prompts/gemini-extractor-system-prompt.md
 // (el que en pruebas retuvo más detalle específico: cifras, nombres, más
 // que el prompt genérico embebido de respaldo).
@@ -32,7 +31,7 @@
 //
 // --review                    Entra en revisión interactiva e inserta los
 //                              registros aprobados vía remember.mjs.
-// --provider gemini|ollama    Default: gemini.
+// --provider gemini|ollama|openrouter    Default: el proveedor del grupo "extraction" en el dashboard.
 // --model <id>                Override del modelo (un solo intento, sin
 //                              fallback). Sin esto, prueba en orden la lista
 //                              de config/gemini-models.json o
@@ -55,7 +54,11 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { listSessions, sessionFilePath } from './lib/session-files.mjs';
-import { getTaskModel } from './lib/task-models.mjs';
+import { getTaskProviderModel } from './lib/task-models.mjs';
+
+// Fuente de verdad: dashboard "Modelos por tarea" (grupo extraction). Gemini
+// no es seleccionable allí, solo queda como --provider gemini explícito.
+const TASK = getTaskProviderModel('extraction');
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REMEMBER_SCRIPT = join(SCRIPT_DIR, 'remember.mjs');
@@ -128,7 +131,7 @@ if (!args.date || !args.from || !args.to) {
   process.exit(1);
 }
 
-const provider = args.provider ?? 'gemini';
+const provider = args.provider ?? TASK.provider;
 if (provider !== 'gemini' && provider !== 'ollama' && provider !== 'openrouter') {
   console.error(`--provider inválido: "${provider}". Debe ser "gemini", "ollama" u "openrouter".`);
   process.exit(1);
@@ -173,8 +176,8 @@ if (args.review && args.auto) {
 // Sin --model, se prueba en orden la lista de config/gemini-models.json o
 // config/ollama-models.json según el proveedor.
 const geminiCandidates = args.model ? [args.model] : provider === 'gemini' ? loadGeminiFallbackOrder() : [];
-const ollamaCandidates = args.model ? [args.model] : provider === 'ollama' ? [getTaskModel('extraction')] : [];
-const openrouterCandidates = args.model ? [args.model] : provider === 'openrouter' ? loadOpenRouterFallbackOrder() : [];
+const ollamaCandidates = args.model ? [args.model] : provider === 'ollama' ? [TASK.provider === 'ollama' ? TASK.model : 'gemma4:31b-cloud'] : [];
+const openrouterCandidates = args.model ? [args.model] : provider === 'openrouter' ? (TASK.provider === 'openrouter' ? [TASK.model] : loadOpenRouterFallbackOrder()) : [];
 let model = provider === 'gemini' ? geminiCandidates[0] : provider === 'openrouter' ? openrouterCandidates[0] : ollamaCandidates[0];
 
 const tzOffset = args['tz-offset'] ? Number(args['tz-offset']) : -5;
@@ -278,39 +281,49 @@ if (turns.length === 0 && alreadyRegistered.length === 0) {
   process.exit(0);
 }
 
-let transcript = turns
-  .map((t) => `[${t.time.slice(11, 16)}] ${t.speaker}: ${t.text}`)
-  .join('\n\n');
+const turnLines = turns.map((t) => `[${t.time.slice(11, 16)}] ${t.speaker}: ${t.text}`);
 
-// Trunca la CONVERSACIÓN antes de agregar el bloque "ya registrado", nunca
-// después: agregarlo antes de truncar dejaba que slice(0, maxChars) se lo
-// comiera entero en cualquier ventana larga (justo el caso que este bloque
-// cubre), silenciando la regla sin ningún aviso. El bloque nunca cuenta contra
-// el límite, siempre va completo: es corto (una línea por registro) y es la
-// única defensa real contra reinsertar lo que ya se guardó en la misma ventana.
-let truncated = false;
+// Ventanas más largas que el límite del proveedor (2026-10-09): en vez de
+// cortar el final (se perdían justo las decisiones más recientes, bug visto
+// con gemma4), se parte en trozos de turnos completos, cada trozo se extrae
+// por separado y los candidatos se unen al final. Un solo turno más largo que
+// el límite sí se recorta: no hay forma de partirlo sin perder su sentido.
+// El bloque "ya registrado" (2026-09-18) va completo en CADA trozo y nunca
+// cuenta contra el límite: es la única defensa contra reinsertar lo ya guardado.
 const maxChars = MAX_TRANSCRIPT_CHARS[provider];
-if (transcript.length > maxChars) {
-  transcript = transcript.slice(0, maxChars);
-  truncated = true;
+const transcriptChunks = [];
+{
+  let current = [];
+  let currentLen = 0;
+  for (const line of turnLines) {
+    const piece = line.length > maxChars ? line.slice(0, maxChars) : line;
+    if (current.length > 0 && currentLen + piece.length + 2 > maxChars) {
+      transcriptChunks.push(current.join('\n\n'));
+      current = [];
+      currentLen = 0;
+    }
+    current.push(piece);
+    currentLen += piece.length + 2;
+  }
+  if (current.length > 0) transcriptChunks.push(current.join('\n\n'));
 }
+const registeredBlock = alreadyRegistered.length > 0
+  ? `\n\n--- Ya registrado en esta ventana, NO lo vuelvas a proponer ---\n${alreadyRegistered.join('\n')}`
+  : '';
 
-if (alreadyRegistered.length > 0) {
-  transcript += `\n\n--- Ya registrado en esta ventana, NO lo vuelvas a proponer ---\n${alreadyRegistered.join('\n')}`;
-}
-
-console.error(`${turns.length} turnos de texto, ${transcript.length} caracteres${truncated ? ' (TRUNCADO)' : ''}.`);
+console.error(
+  `${turns.length} turnos de texto, ${transcriptChunks.reduce((n, c) => n + c.length, 0)} caracteres${transcriptChunks.length > 1 ? ` (partidos en ${transcriptChunks.length} trozos)` : ''}.`,
+);
 
 let systemPrompt;
-let userPrompt;
 
 const systemPromptFile = args['system-prompt-file'] ?? (existsSync(DEFAULT_SYSTEM_PROMPT_FILE) ? DEFAULT_SYSTEM_PROMPT_FILE : null);
 
-if (systemPromptFile) {
-  systemPrompt = readFileSync(systemPromptFile, 'utf8');
-  userPrompt = `Transcripción (fecha del día: ${args.date}):\n${transcript}`;
-} else {
-  userPrompt = `Eres un extractor de registros atómicos a partir de una transcripción de conversación en español entre el usuario y su asistente Claude. Lee la transcripción y devuelve CON LA MAYOR CANTIDAD DE DETALLES POSIBLE SOLO los registros que valgan la pena recordar a largo plazo, incluyendo datos e información de contexto que enriquezca informativamente cada uno de esos registros : decisiones cerradas, correcciones, compromisos con fecha, hallazgos con fecha. Ignora saludos, preguntas sin resolver, y contenido puramente exploratorio sin conclusión.
+if (systemPromptFile) systemPrompt = readFileSync(systemPromptFile, 'utf8');
+
+function buildUserPrompt(transcript) {
+  if (systemPromptFile) return `Transcripción (fecha del día: ${args.date}):\n${transcript}`;
+  return `Eres un extractor de registros atómicos a partir de una transcripción de conversación en español entre el usuario y su asistente Claude. Lee la transcripción y devuelve CON LA MAYOR CANTIDAD DE DETALLES POSIBLE SOLO los registros que valgan la pena recordar a largo plazo, incluyendo datos e información de contexto que enriquezca informativamente cada uno de esos registros : decisiones cerradas, correcciones, compromisos con fecha, hallazgos con fecha. Ignora saludos, preguntas sin resolver, contenido puramente exploratorio sin conclusión, y subproductos operativos que ya quedan escritos en otro lado (commits y pushes, que un script corrió o qué imprimió, cambios de código o configuración que se entienden leyendo el archivo, resultados de chequeos rutinarios, reuniones y citas que ya están en el calendario, resúmenes de registros que ya existen). Ante la duda, omite.
 
 Transcripción (fecha del día: ${args.date}):
 ${transcript}
@@ -325,6 +338,8 @@ donde el hecho quedó confirmado o cerrado (no el primero que lo menciona, si hu
 posterior). No inventes ni calcules una hora. Si no hay un turno único al que anclarlo, omite el \
 campo o usa null.`;
 }
+
+let userPrompt = buildUserPrompt(transcriptChunks[0] + registeredBlock);
 
 if (args['dump-prompt']) {
   const dumped = systemPrompt ? `--- SYSTEM ---\n${systemPrompt}\n\n--- USER ---\n${userPrompt}` : userPrompt;
@@ -567,28 +582,43 @@ async function callOpenRouterWithFallback(candidates) {
   return null;
 }
 
-const rawResponse =
-  provider === 'gemini'
-    ? await callGeminiWithFallback(geminiCandidates)
-    : provider === 'openrouter'
-      ? await callOpenRouterWithFallback(openrouterCandidates)
-      : await callOllamaWithFallback(ollamaCandidates);
-
-if (rawResponse == null) {
-  // el error ya se imprimió y process.exitCode ya quedó en 1
-} else {
+// Una llamada por trozo (ver transcriptChunks); basta que un trozo falle
+// para abortar sin insertar nada parcial: el error ya se imprimió y
+// process.exitCode ya quedó en 1.
+let parsed = { records: [] };
+let rawResponse = '';
+const seenClaims = new Set();
+for (let i = 0; i < transcriptChunks.length; i++) {
+  if (transcriptChunks.length > 1) console.error(`Trozo ${i + 1}/${transcriptChunks.length}...`);
+  userPrompt = buildUserPrompt(transcriptChunks[i] + registeredBlock);
+  rawResponse =
+    provider === 'gemini'
+      ? await callGeminiWithFallback(geminiCandidates)
+      : provider === 'openrouter'
+        ? await callOpenRouterWithFallback(openrouterCandidates)
+        : await callOllamaWithFallback(ollamaCandidates);
+  if (rawResponse == null) {
+    parsed = null;
+    break;
+  }
   const cleaned = rawResponse.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
-
-  let parsed;
   try {
-    parsed = JSON.parse(cleaned);
+    const chunkParsed = JSON.parse(cleaned);
+    for (const r of chunkParsed.records ?? []) {
+      if (seenClaims.has(r.claim)) continue;
+      seenClaims.add(r.claim);
+      parsed.records.push(r);
+    }
   } catch (err) {
     console.error(`Respuesta no es JSON válido: ${err.message}`);
     console.error(rawResponse);
     process.exitCode = 1;
     parsed = null;
+    break;
   }
+}
 
+{
   if (parsed) {
     const records = parsed.records ?? [];
 

@@ -55,7 +55,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import pg from 'pg';
 import { embed, toVectorLiteral } from './lib/embed.mjs';
-import { getTaskModel } from './lib/task-models.mjs';
+import { getTaskProviderModel } from './lib/task-models.mjs';// Fuente de verdad: dashboard "Modelos por tarea" (grupo extraction). Gemini// no es seleccionable allí, solo queda como --provider gemini explícito.const TASK = getTaskProviderModel('extraction');
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(SCRIPT_DIR, '..', '..');
@@ -87,7 +87,7 @@ if (!args.page) {
   process.exit(1);
 }
 
-const provider = args.provider ?? 'gemini';
+const provider = args.provider ?? TASK.provider;
 if (provider !== 'gemini' && provider !== 'ollama' && provider !== 'openrouter') {
   console.error(`--provider inválido: "${provider}". Debe ser "gemini", "ollama" u "openrouter".`);
   process.exit(1);
@@ -132,8 +132,8 @@ const loadGeminiFallbackOrder = () => loadFallbackOrder(GEMINI_MODELS_CONFIG_FIL
 const loadOpenRouterFallbackOrder = () => loadFallbackOrder(OPENROUTER_MODELS_CONFIG_FILE, MODELS.openrouter);
 
 const geminiCandidates = args.model ? [args.model] : provider === 'gemini' ? loadGeminiFallbackOrder() : [];
-const ollamaCandidates = args.model ? [args.model] : provider === 'ollama' ? [getTaskModel('extraction')] : [];
-const openrouterCandidates = args.model ? [args.model] : provider === 'openrouter' ? loadOpenRouterFallbackOrder() : [];
+const ollamaCandidates = args.model ? [args.model] : provider === 'ollama' ? [TASK.provider === 'ollama' ? TASK.model : 'gemma4:31b-cloud'] : [];
+const openrouterCandidates = args.model ? [args.model] : provider === 'openrouter' ? (TASK.provider === 'openrouter' ? [TASK.model] : loadOpenRouterFallbackOrder()) : [];
 let model = provider === 'gemini' ? geminiCandidates[0] : provider === 'openrouter' ? openrouterCandidates[0] : ollamaCandidates[0];
 
 const client = new pg.Client({ connectionString: env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });

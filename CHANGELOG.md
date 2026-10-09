@@ -5,6 +5,39 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.12.2 (2026-10-09)
+
+Mejoras al extractor de registros (`extract-records.mjs`, el que corre el hook
+`Stop` en segundo plano, y `extract-page-records.mjs`). No hay pasos
+obligatorios: no cambia el esquema ni el servidor MCP.
+
+- **Las ventanas largas ya no pierden el final.** Si la conversación supera el
+  límite del proveedor (20.000 caracteres en Ollama), antes se cortaba el final,
+  justo donde están las decisiones más recientes. Ahora se parte en trozos de
+  turnos completos, cada trozo se extrae por separado y los candidatos se unen,
+  sin repetir un mismo texto. El bloque "Ya registrado en esta ventana" va
+  completo en cada trozo. Un solo turno más largo que el límite sigue
+  recortándose. Con `--dump-prompt` se ve solo el primer trozo.
+- **El prompt del extractor excluye lo que ya queda escrito en otro lado.** No se
+  registran los commits y su contenido, que un script se ejecutó o qué imprimió,
+  cambios de configuración que se explican al leer el archivo, resultados de
+  chequeos rutinarios sin novedad, citas de registros que ya existen,
+  explicaciones del asistente sobre cómo funciona el sistema de memoria,
+  advertencias que el usuario no adoptó, reuniones que ya están en el calendario
+  ni ecos mecánicos de la propia captura. Se mantienen las excepciones: una
+  decisión del usuario, un hallazgo no obvio, un compromiso con fecha o un
+  cambio de estado que el repositorio no conserva. Se quitó del ejemplo del
+  prompt una cita de calendario.
+- **El prompt ahora le dice al modelo que no repita lo ya registrado.** El código
+  del extractor ya agregaba el bloque "Ya registrado en esta ventana", pero el
+  prompt por defecto no tenía la regla que le indica al modelo qué hacer con él.
+- **Proveedor por defecto.** Sin `--provider`, ambos extractores usan el
+  proveedor del grupo "extraction" del dashboard (Modelos por tarea) en vez de
+  Gemini fijo. El hook `Stop` ya pasaba `--provider ollama`, así que su
+  comportamiento no cambia. Gemini sigue disponible con `--provider gemini`.
+- **Gemini:** `gemini-2.5-flash` pasa al inicio del orden de respaldo en
+  `config/gemini-models.json`.
+
 ## v0.12.1 (2026-10-09)
 
 **Retira de v0.12.0 todo lo relacionado con la jardinería de etiquetas.** Esa
