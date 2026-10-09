@@ -62,7 +62,14 @@ async function callOnce(apiKey, model, prompt, { systemPrompt, timeoutMs = 30_00
  */
 export async function generateWithGeminiFallback(apiKey, prompt, opts = {}) {
   if (!apiKey) throw new Error('Falta GEMINI_API_KEY.');
-  const candidates = opts.model ? [opts.model] : loadGeminiFallbackOrder();
+  // `preferred` = modelo elegido en el dashboard ("Modelos por tarea"): va
+  // primero y el resto de la lista de respaldo queda detrás para fallos
+  // transitorios. `model` sigue siendo un solo intento sin respaldo.
+  const candidates = opts.model
+    ? [opts.model]
+    : opts.preferred
+      ? [opts.preferred, ...loadGeminiFallbackOrder().filter((m) => m !== opts.preferred)]
+      : loadGeminiFallbackOrder();
 
   let lastError = '(sin intentos)';
   for (let i = 0; i < candidates.length; i++) {

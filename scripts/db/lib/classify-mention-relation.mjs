@@ -40,12 +40,15 @@ import { callOpenRouter, OPENROUTER_ENABLED } from './openrouter.mjs';
 // (abajo) sigue probando ollama primero, gemini después -- ese orden es
 // empírico y no cambia con esto.
 const { provider: CLASSIFIERS_PROVIDER, model: CLASSIFIERS_MODEL } = getTaskProviderModel('classifiers');
+// Segunda opinión (antes Gemini fijo en código): grupo mentionSecondOpinion,
+// editable en el dashboard.
+const SECOND = getTaskProviderModel('mentionSecondOpinion');
 const MODELS = {
-  ollama: CLASSIFIERS_PROVIDER === 'ollama' ? CLASSIFIERS_MODEL : 'gpt-oss:20b-cloud',
-  openrouter: CLASSIFIERS_PROVIDER === 'openrouter' ? CLASSIFIERS_MODEL : 'openai/gpt-oss-20b',
-  gemini: 'gemini-flash-latest',
+  ollama: CLASSIFIERS_PROVIDER === 'ollama' ? CLASSIFIERS_MODEL : SECOND.provider === 'ollama' ? SECOND.model : 'gpt-oss:20b-cloud',
+  openrouter: CLASSIFIERS_PROVIDER === 'openrouter' ? CLASSIFIERS_MODEL : SECOND.provider === 'openrouter' ? SECOND.model : 'openai/gpt-oss-20b',
+  gemini: SECOND.provider === 'gemini' ? SECOND.model : 'gemini-flash-latest',
 };
-const DEFAULT_PROVIDER = 'ollama';
+const DEFAULT_PROVIDER = CLASSIFIERS_PROVIDER;
 const CONFIDENCE_THRESHOLD = 0.85;
 
 function loadEnv() {
@@ -112,9 +115,9 @@ async function callOllama(prompt, model) {
   return response;
 }
 
-async function callGemini(prompt) {
+async function callGemini(prompt, model) {
   try {
-    return await generateWithGeminiFallback(env.GEMINI_API_KEY, prompt);
+    return await generateWithGeminiFallback(env.GEMINI_API_KEY, prompt, { preferred: model ?? MODELS.gemini });
   } catch (err) {
     console.error(`  (clasificador de menciones Gemini falló: ${err.message})`);
     return null;
@@ -147,7 +150,7 @@ export async function classifyMentionRelation(claim, memoryA, memoryB, factsText
   const prompt = buildPrompt(claim, memoryA, memoryB, factsTextB);
   const rawResponse =
     provider === 'gemini'
-      ? await callGemini(prompt)
+      ? await callGemini(prompt, model)
       : provider === 'openrouter'
         ? await callOpenRouterProvider(prompt, model)
         : await callOllama(prompt, model);
@@ -199,13 +202,13 @@ export async function classifyMentionRelation(claim, memoryA, memoryB, factsText
 // segunda opinión antes de decidir -- especialmente importante justo cuando
 // se está por auto-crear un enlace.
 export async function classifyMentionRelationHybrid(claim, memoryA, memoryB, factsTextB) {
-  const ollamaResult = await classifyMentionRelation(claim, memoryA, memoryB, factsTextB, 'ollama');
+  const ollamaResult = await classifyMentionRelation(claim, memoryA, memoryB, factsTextB, CLASSIFIERS_PROVIDER, CLASSIFIERS_MODEL);
 
   if (ollamaResult?.verdict === 'no_relation' && ollamaResult.confidence >= CONFIDENCE_THRESHOLD) {
     return ollamaResult;
   }
 
-  const geminiResult = await classifyMentionRelation(claim, memoryA, memoryB, factsTextB, 'gemini');
+  const geminiResult = await classifyMentionRelation(claim, memoryA, memoryB, factsTextB, SECOND.provider, SECOND.model);
   return geminiResult ?? ollamaResult;
 }
 

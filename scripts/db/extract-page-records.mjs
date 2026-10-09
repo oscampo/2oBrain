@@ -55,7 +55,11 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import pg from 'pg';
 import { embed, toVectorLiteral } from './lib/embed.mjs';
-import { getTaskProviderModel } from './lib/task-models.mjs';// Fuente de verdad: dashboard "Modelos por tarea" (grupo extraction). Gemini// no es seleccionable allí, solo queda como --provider gemini explícito.const TASK = getTaskProviderModel('extraction');
+import { getTaskProviderModel } from './lib/task-models.mjs';
+
+// Fuente de verdad: dashboard "Modelos por tarea" (grupo extraction). --provider
+// fuerza otro proveedor para una sola corrida.
+const TASK = getTaskProviderModel('extraction');
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(SCRIPT_DIR, '..', '..');
@@ -131,7 +135,7 @@ function loadFallbackOrder(configFile, fallbackDefault) {
 const loadGeminiFallbackOrder = () => loadFallbackOrder(GEMINI_MODELS_CONFIG_FILE, MODELS.gemini);
 const loadOpenRouterFallbackOrder = () => loadFallbackOrder(OPENROUTER_MODELS_CONFIG_FILE, MODELS.openrouter);
 
-const geminiCandidates = args.model ? [args.model] : provider === 'gemini' ? loadGeminiFallbackOrder() : [];
+const geminiCandidates = args.model ? [args.model] : provider === 'gemini' ? (TASK.provider === 'gemini' ? [TASK.model, ...loadGeminiFallbackOrder().filter((m) => m !== TASK.model)] : loadGeminiFallbackOrder()) : [];
 const ollamaCandidates = args.model ? [args.model] : provider === 'ollama' ? [TASK.provider === 'ollama' ? TASK.model : 'gemma4:31b-cloud'] : [];
 const openrouterCandidates = args.model ? [args.model] : provider === 'openrouter' ? (TASK.provider === 'openrouter' ? [TASK.model] : loadOpenRouterFallbackOrder()) : [];
 let model = provider === 'gemini' ? geminiCandidates[0] : provider === 'openrouter' ? openrouterCandidates[0] : ollamaCandidates[0];

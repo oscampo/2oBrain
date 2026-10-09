@@ -9,14 +9,14 @@
 // o una respuesta inválida como "distinct": fallar hacia el lado seguro es
 // bloquear, no insertar.
 import { readFileSync } from 'node:fs';
-import { getTaskProviderModel } from './task-models.mjs';
-import { callOpenRouter, OPENROUTER_ENABLED } from './openrouter.mjs';
+import { getTaskLlm } from './llm-call.mjs';
 
 // Proveedor elegible (2026-09-15): "ollama" (default,
 // gratis, sin prefijo en config/task-models.json) u "openrouter" (mismas
 // familias de modelo -- gpt-oss, Nemotron -- por infraestructura distinta,
 // útil de respaldo cuando Ollama Cloud aborta bajo carga).
-const { provider: PROVIDER, model: MODEL } = getTaskProviderModel('classifiers');
+const LLM = getTaskLlm('classifiers');
+const { provider: PROVIDER, model: MODEL } = LLM;
 const CONFIDENCE_THRESHOLD = 0.85;
 
 // 2026-09-21: un candidato generado por extract-records.mjs --auto (extracción
@@ -49,7 +49,7 @@ function loadEnv() {
 
 const env = loadEnv();
 
-export const classifierEnabled = PROVIDER === 'openrouter' ? OPENROUTER_ENABLED : Boolean(env.OLLAMA_API_KEY);
+export const classifierEnabled = LLM.enabled;
 
 function buildPrompt(newClaim, candidates, newSource, newSourceAt) {
   const candidateList = candidates
@@ -149,21 +149,7 @@ export async function classifyDuplicate(newClaim, candidates, newSource, newSour
   const prompt = buildPrompt(newClaim, candidates, newSource, newSourceAt);
   let responseText;
   try {
-    if (PROVIDER === 'openrouter') {
-      responseText = await callOpenRouter(prompt, MODEL, { timeoutMs: 20_000 });
-    } else {
-      const res = await fetch('https://ollama.com/api/generate', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.OLLAMA_API_KEY}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({ model: MODEL, prompt, format: 'json', stream: false }),
-        signal: AbortSignal.timeout(20_000),
-      });
-      if (!res.ok) throw new Error(`Ollama Cloud falló: ${res.status}`);
-      responseText = (await res.json()).response;
-    }
+    responseText = await LLM.call(prompt, { timeoutMs: 20_000 });
   } catch (err) {
     console.error(`  (clasificador ${PROVIDER} no disponible: ${err.message}, cae a bloqueo manual)`);
     return null;

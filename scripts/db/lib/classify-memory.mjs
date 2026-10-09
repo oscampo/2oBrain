@@ -8,10 +8,10 @@
 // candidatos) devuelve null: el llamador (remember.mjs) nunca inserta con
 // recuerdo nulo o placeholder, bloquea y deja que un humano decida.
 import { readFileSync } from 'node:fs';
-import { getTaskProviderModel } from './task-models.mjs';
-import { callOpenRouter, OPENROUTER_ENABLED } from './openrouter.mjs';
+import { getTaskLlm } from './llm-call.mjs';
 
-const { provider: PROVIDER, model: MODEL } = getTaskProviderModel('classifiers');
+const LLM = getTaskLlm('classifiers');
+const { provider: PROVIDER, model: MODEL } = LLM;
 const CONFIDENCE_THRESHOLD = 0.85;
 
 function loadEnv() {
@@ -29,7 +29,7 @@ function loadEnv() {
 
 const env = loadEnv();
 
-export const classifierEnabled = PROVIDER === 'openrouter' ? OPENROUTER_ENABLED : Boolean(env.OLLAMA_API_KEY);
+export const classifierEnabled = LLM.enabled;
 
 function buildPrompt(newClaim, candidates) {
   const candidateList = candidates
@@ -87,21 +87,7 @@ export async function classifyNode(newClaim, candidates) {
   const prompt = buildPrompt(newClaim, candidates);
   let responseText;
   try {
-    if (PROVIDER === 'openrouter') {
-      responseText = await callOpenRouter(prompt, MODEL, { timeoutMs: 20_000 });
-    } else {
-      const res = await fetch('https://ollama.com/api/generate', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.OLLAMA_API_KEY}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({ model: MODEL, prompt, format: 'json', stream: false }),
-        signal: AbortSignal.timeout(20_000),
-      });
-      if (!res.ok) throw new Error(`Ollama Cloud falló: ${res.status}`);
-      responseText = (await res.json()).response;
-    }
+    responseText = await LLM.call(prompt, { timeoutMs: 20_000 });
   } catch (err) {
     console.error(`  (clasificador de recuerdos ${PROVIDER} no disponible: ${err.message}, cae a bloqueo manual)`);
     return null;
@@ -214,21 +200,7 @@ export async function classifyAdditionalMemories(newClaim, primaryNodes, candida
   const prompt = buildAdditionalPrompt(newClaim, primaryNodes, candidates);
   let responseText;
   try {
-    if (PROVIDER === 'openrouter') {
-      responseText = await callOpenRouter(prompt, MODEL, { timeoutMs: 20_000 });
-    } else {
-      const res = await fetch('https://ollama.com/api/generate', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.OLLAMA_API_KEY}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({ model: MODEL, prompt, format: 'json', stream: false }),
-        signal: AbortSignal.timeout(20_000),
-      });
-      if (!res.ok) throw new Error(`Ollama Cloud falló: ${res.status}`);
-      responseText = (await res.json()).response;
-    }
+    responseText = await LLM.call(prompt, { timeoutMs: 20_000 });
   } catch (err) {
     console.error(`  (clasificador de recuerdos adicionales ${PROVIDER} no disponible: ${err.message}, se omite)`);
     return [];

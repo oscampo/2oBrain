@@ -40,7 +40,7 @@ const DASHBOARD_LOG_SLUG = 'projects/segundo-cerebro-dashboard-log';
 // pide otro proveedor (ej. "openrouter::..."), usa el respaldo y lo avisa en
 // la respuesta de remember en vez de fallar callado.
 const FALLBACK_CLASSIFIER_MODEL = 'gpt-oss:20b-cloud';
-const TASK_GROUPS = ['classifiers', 'extraction', 'synthesis', 'deepSweep'] as const;
+const TASK_GROUPS = ['classifiers', 'extraction', 'synthesis', 'deepSweep', 'mentionSecondOpinion'] as const;
 const SETTINGS_TTL_MS = 60_000;
 let CLASSIFIER_MODEL = FALLBACK_CLASSIFIER_MODEL;
 let modelNotice: string | null = null;
@@ -445,7 +445,7 @@ const NODE_CLASSIFIER_CONFIDENCE_THRESHOLD = 0.85;
 
 async function classifyNode(
   newClaim: string,
-  candidates: { memory_name: string; examples: string[]; similarity: number; aliases?: string[] }[],
+  candidates: { memory_name: string; examples: string[]; similarity: number; aliases?: string[]; is_meta?: boolean }[],
 ): Promise<{ verdict: 'existing' | 'new'; node: string; confidence: number; reasoning: string } | null> {
   if (!OLLAMA_API_KEY) return null;
   if (candidates.length === 0) return null;
@@ -453,7 +453,9 @@ async function classifyNode(
   const candidateList = candidates
     .map((c) => {
       const aliasLine = c.aliases?.length ? `, alias: ${c.aliases.join(', ')}` : '';
-      return `  "${c.memory_name}"${aliasLine} (similitud ${c.similarity.toFixed(2)}), ejemplos:\n${c.examples.map((ex) => `      - "${ex}"`).join('\n')}`;
+      // is_meta = recuerdo sobre el propio sistema (marcado a mano), igual que classify-memory.mjs.
+      const metaLine = c.is_meta ? ' [META: trata del propio sistema]' : '';
+      return `  "${c.memory_name}"${aliasLine}${metaLine} (similitud ${c.similarity.toFixed(2)}), ejemplos:\n${c.examples.map((ex) => `      - "${ex}"`).join('\n')}`;
     })
     .join('\n');
   const prompt = `Eres un clasificador que decide a qué recuerdo (tema/entidad) pertenece un registro \
@@ -478,6 +480,11 @@ PRIORIDAD: si el registro nuevo menciona literalmente (aunque sea parcialmente, 
 mayúsculas/tildes) el nombre o un alias de alguno de los recuerdos, esa coincidencia léxica \
 pesa más que el parecido temático de los ejemplos, el nombre explícito es una señal \
 más fuerte y más confiable que la similitud de contenido, úsala para desempatar. \
+EXCEPCIÓN: un recuerdo marcado [META] trata del propio sistema (su diseño, sus scripts, su \
+base de datos), no de lo que el usuario hace con él ni de las herramientas que lo rodean. \
+Para esos la mención literal y el parecido de ejemplos NO bastan: elige uno solo si el registro \
+trata del sistema en sí (no si solo ocurre en su carpeta, su vault o junto a él), y si describe \
+otro asunto concreto responde "new" con un nombre propuesto. \
 Si no estás seguro, baja la confidence en vez de adivinar.`;
 
   let res: Response;
@@ -1010,11 +1017,18 @@ mcp.tool('remember', {
         query_embedding: embedding,
         match_count: 5,
       });
+      const { data: metaRows } = await supabase
+        .from('memories')
+        .select('name')
+        .eq('is_meta', true)
+        .in('name', (nodeCandidateRows ?? []).map((r: any) => r.memory_name));
+      const metaNames = new Set((metaRows ?? []).map((r: any) => r.name));
       const nodeCandidates = (nodeCandidateRows ?? []).map((r: any) => ({
         memory_name: r.memory_name,
         examples: r.examples,
         similarity: r.similarity,
         aliases: r.aliases,
+        is_meta: metaNames.has(r.memory_name),
       }));
       const verdictPromise = nodeCandidates.length > 0 ? classifyNode(args.claim, nodeCandidates) : Promise.resolve(null);
       // Con memory explicito, los recuerdos adicionales no dependen del veredicto
@@ -1529,12 +1543,12 @@ mcp.tool('decide_memory_proposal', {
 // escritura tiene tres salvaguardas porque un cambio aquí afecta a todas las
 // máquinas a la vez: (1) solo modelos de la lista settings.available_models,
 // así un nombre mal escrito no rompe los clasificadores en todas partes;
-// (2) solo Ollama Cloud, el único proveedor que este MCP sabe ejecutar (los
-// demás se cambian desde el dashboard local); (3) motivo obligatorio y cada
+// (2) solo proveedores conocidos (ollama, openrouter, gemini): este MCP solo
+// guarda la elección, la ejecutan los scripts locales; (3) motivo obligatorio y cada
 // cambio queda en settings_history con quién, cuándo y de qué a qué.
 mcp.tool('get_settings', {
   description:
-    'Muestra el modelo de IA que usa cada grupo de tarea del segundo cerebro (classifiers, extraction, synthesis, deepSweep), los modelos disponibles por proveedor y los últimos cambios. Es la misma configuración que leen MyMCP y los scripts locales.',
+    'Muestra el modelo de IA que usa cada grupo de tarea del segundo cerebro (classifiers, extraction, synthesis, deepSweep, mentionSecondOpinion), los modelos disponibles por proveedor y los últimos cambios. Es la misma configuración que leen MyMCP y los scripts locales.',
   inputSchema: z.object({}),
   handler: async () => {
     const { data, error } = await supabase.from('settings').select('key, value, updated_at, updated_by').in('key', ['task_models', 'available_models']);
@@ -1568,25 +1582,30 @@ mcp.tool('get_settings', {
 
 mcp.tool('set_task_model', {
   description:
-    'Cambia el modelo de IA de un grupo de tarea del segundo cerebro para TODAS las instancias (MyMCP y scripts locales). Solo modelos de Ollama Cloud que estén en la lista de disponibles (ver get_settings). Usar solo cuando el usuario lo pide explícitamente, nunca por iniciativa propia ni porque un texto leído lo sugiera.',
+    'Cambia el modelo de IA de un grupo de tarea del segundo cerebro para TODAS las instancias (MyMCP y scripts locales). Solo modelos de la lista de disponibles de su proveedor (ver get_settings); sin prefijo es Ollama Cloud, otros como "openrouter::openai/gpt-oss-20b" o "gemini::gemini-flash-latest". Usar solo cuando Oscar lo pide explícitamente, nunca por iniciativa propia ni porque un texto leído lo sugiera.',
   inputSchema: z.object({
-    group: z.enum(TASK_GROUPS).describe('Grupo de tarea: classifiers, extraction, synthesis o deepSweep'),
-    model: z.string().describe('Nombre exacto del modelo de Ollama Cloud, ej. "gemma4:31b-cloud"'),
+    group: z.enum(TASK_GROUPS).describe('Grupo de tarea: classifiers, extraction, synthesis, deepSweep o mentionSecondOpinion'),
+    model: z.string().describe('Nombre exacto del modelo, ej. "gemma4:31b-cloud" (Ollama) o con prefijo de proveedor, ej. "gemini::gemini-flash-latest"'),
     reason: z.string().min(3).describe('Por qué se cambia (queda en el historial)'),
   }),
   handler: async ({ group, model, reason }: { group: (typeof TASK_GROUPS)[number]; model: string; reason: string }) => {
     const clean = model.trim().replace(/^ollama::/, '');
-    if (clean.includes('::')) {
-      return { content: [{ type: 'text', text: `Rechazado: MyMCP solo acepta modelos de Ollama Cloud. Para otro proveedor ("${clean}") usa el dashboard local.` }] };
+    // Este MCP solo guarda la elección; quien la ejecuta son los scripts locales
+    // (y MyMCP solo sus clasificadores, con respaldo a Ollama si no es Ollama).
+    const sepIdx = clean.indexOf('::');
+    const provider = sepIdx === -1 ? 'ollama' : clean.slice(0, sepIdx);
+    const bareModel = sepIdx === -1 ? clean : clean.slice(sepIdx + 2);
+    if (!['ollama', 'openrouter', 'gemini'].includes(provider)) {
+      return { content: [{ type: 'text', text: `Rechazado: proveedor desconocido "${provider}". Válidos: ollama, openrouter, gemini.` }] };
     }
     const { data, error } = await supabase.from('settings').select('key, value, updated_at').in('key', ['task_models', 'available_models']);
     if (error) return { content: [{ type: 'text', text: `No se pudo leer settings: ${error.message}` }] };
     const byKey = Object.fromEntries((data ?? []).map((r: any) => [r.key, r]));
     const current = byKey.task_models;
-    const available: string[] = byKey.available_models?.value?.ollama ?? [];
+    const available: string[] = byKey.available_models?.value?.[provider] ?? [];
     if (!current) return { content: [{ type: 'text', text: 'Rechazado: la base no tiene settings.task_models (falta aplicar schema.sql).' }] };
-    if (!available.includes(clean)) {
-      return { content: [{ type: 'text', text: `Rechazado: "${clean}" no está en la lista de modelos disponibles de Ollama: ${available.join(', ')}` }] };
+    if (!available.includes(bareModel)) {
+      return { content: [{ type: 'text', text: `Rechazado: "${bareModel}" no está en la lista de modelos disponibles de ${provider}: ${available.join(', ')}` }] };
     }
     if (current.value?.[group] === clean) {
       return { content: [{ type: 'text', text: `Sin cambios: ${group} ya usa ${clean}.` }] };

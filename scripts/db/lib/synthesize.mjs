@@ -13,10 +13,18 @@
 // configurada. Si se agrega después, va aquí mismo como un cuarto 'case'.
 import { readFileSync } from 'node:fs';
 import { generateWithGeminiFallback } from './gemini-fallback.mjs';
-import { getTaskModel } from './task-models.mjs';
+import { getTaskProviderModel } from './task-models.mjs';
 import { callOpenRouter, AVAILABLE_OPENROUTER_MODELS } from './openrouter.mjs';
 
-const MODELS = { ollama: getTaskModel('synthesis'), openrouter: AVAILABLE_OPENROUTER_MODELS[0] };
+// El valor de la tarea 'synthesis' puede venir con prefijo de proveedor
+// ("openrouter::openai/gpt-oss-20b", ver task-models.mjs). Antes se mandaba
+// entero a Ollama y devolvia 404; ahora cada proveedor toma solo el modelo
+// que le corresponde, y defaultSynthesisProvider() dice cual es el elegido.
+const TASK = getTaskProviderModel('synthesis');
+const MODELS = {
+  ollama: TASK.provider === 'ollama' ? TASK.model : 'gpt-oss:20b-cloud',
+  openrouter: TASK.provider === 'openrouter' ? TASK.model : AVAILABLE_OPENROUTER_MODELS[0],
+};
 const SYNTHESIS_PROVIDER_LIST = ['ollama', 'gemini', 'openrouter'];
 
 function loadEnv() {
@@ -35,6 +43,11 @@ function loadEnv() {
 const env = loadEnv();
 
 export const SYNTHESIS_PROVIDERS = SYNTHESIS_PROVIDER_LIST;
+
+/** Proveedor elegido para la tarea 'synthesis' (ollama si no es uno conocido). */
+export function defaultSynthesisProvider() {
+  return SYNTHESIS_PROVIDER_LIST.includes(TASK.provider) ? TASK.provider : 'ollama';
+}
 
 function buildPrompt(query, rawResults) {
   return `Eres un asistente que responde preguntas usando SOLO la información \
@@ -105,7 +118,7 @@ async function generate(prompt, provider, model) {
     // Sin `model` explícito, prueba en orden config/gemini-models.json (el
     // mismo mecanismo de extract-records.mjs): reintenta el siguiente modelo
     // solo en fallos transitorios (503/UNAVAILABLE, timeout/red).
-    return generateWithGeminiFallback(env.GEMINI_API_KEY, prompt, { model });
+    return generateWithGeminiFallback(env.GEMINI_API_KEY, prompt, { model, preferred: TASK.provider === 'gemini' ? TASK.model : undefined });
   }
   if (provider === 'openrouter') {
     // Sin fallback automático entre modelos de OpenRouter acá (a diferencia

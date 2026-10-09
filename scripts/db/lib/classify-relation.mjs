@@ -38,9 +38,12 @@ const { provider: DEEPSWEEP_PROVIDER, model: DEEPSWEEP_MODEL } = getTaskProvider
 const MODELS = {
   ollama: DEEPSWEEP_PROVIDER === 'ollama' ? DEEPSWEEP_MODEL : 'gemma4:31b-cloud',
   openrouter: DEEPSWEEP_PROVIDER === 'openrouter' ? DEEPSWEEP_MODEL : 'openai/gpt-oss-20b',
-  gemini: 'gemini-flash-latest',
+  gemini: DEEPSWEEP_PROVIDER === 'gemini' ? DEEPSWEEP_MODEL : 'gemini-flash-latest',
 };
-const DEFAULT_PROVIDER = 'gemini';
+// Sigue lo elegido en el dashboard ("Modelos por tarea" -> deepSweep). Antes
+// estaba fijo en gemini aquí, invisible para el usuario; el valor del
+// dashboard se dejó en gemini::gemini-flash-latest para conservar ese comportamiento.
+const DEFAULT_PROVIDER = DEEPSWEEP_PROVIDER;
 
 function loadEnv() {
   const envPath = new URL('../../../.env', import.meta.url);
@@ -224,7 +227,7 @@ async function callGemini(prompt) {
     // (mismo mecanismo que extract-records.mjs/synthesize.mjs) -- pasar un
     // modelo fijo desactiva el fallback y deja el clasificador a merced de
     // un solo modelo sobrecargado (503 UNAVAILABLE, transitorio y frecuente).
-    return await generateWithGeminiFallback(env.GEMINI_API_KEY, prompt);
+    return await generateWithGeminiFallback(env.GEMINI_API_KEY, prompt, { preferred: MODELS.gemini });
   } catch (err) {
     console.error(`  (clasificador de relaciones Gemini falló: ${err.message})`);
     return null;

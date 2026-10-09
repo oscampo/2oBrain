@@ -48,13 +48,13 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv.slice(2));
 const provider = args.provider ?? CLASSIFIER_DEFAULT_PROVIDER;
-if (provider !== 'gemini' && provider !== 'ollama') {
-  console.error(`--provider inválido: "${provider}". Debe ser "gemini" u "ollama".`);
+if (provider !== 'gemini' && provider !== 'ollama' && provider !== 'openrouter') {
+  console.error(`--provider inválido: "${provider}". Debe ser "gemini", "ollama" u "openrouter".`);
   process.exit(1);
 }
 // --model solo aplica a provider ollama (gemini siempre usa su lista de
 // respaldo, ver classifyRelation()) -- ej. --provider ollama --model gemma4:31b-cloud
-const modelOverride = provider === 'ollama' ? args.model : undefined;
+const modelOverride = provider === 'ollama' || provider === 'openrouter' ? args.model : undefined;
 const modelLabel = modelOverride ?? CLASSIFIER_MODELS[provider];
 
 const envPath = new URL('../../.env', import.meta.url);

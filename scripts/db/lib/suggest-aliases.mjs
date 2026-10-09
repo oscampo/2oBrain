@@ -22,10 +22,10 @@
 // nada, nunca bloquea la creación del recuerdo (a diferencia de la colisión
 // de alias, que sigue siendo fail-closed en el llamador).
 import { readFileSync } from 'node:fs';
-import { getTaskProviderModel } from './task-models.mjs';
-import { callOpenRouter, OPENROUTER_ENABLED } from './openrouter.mjs';
+import { getTaskLlm } from './llm-call.mjs';
 
-const { provider: PROVIDER, model: MODEL } = getTaskProviderModel('classifiers');
+const LLM = getTaskLlm('classifiers');
+const { provider: PROVIDER, model: MODEL } = LLM;
 
 function loadEnv() {
   const envPath = new URL('../../../.env', import.meta.url);
@@ -42,7 +42,7 @@ function loadEnv() {
 
 const env = loadEnv();
 
-export const suggesterEnabled = PROVIDER === 'openrouter' ? OPENROUTER_ENABLED : Boolean(env.OLLAMA_API_KEY);
+export const suggesterEnabled = LLM.enabled;
 
 function buildPrompt(name, existingAliases) {
   const aliasLine = existingAliases.length
@@ -83,18 +83,7 @@ export async function suggestAliases(name, existingAliases = []) {
   const prompt = buildPrompt(name, existingAliases);
   let responseText;
   try {
-    if (PROVIDER === 'openrouter') {
-      responseText = await callOpenRouter(prompt, MODEL, { timeoutMs: 20_000 });
-    } else {
-      const res = await fetch('https://ollama.com/api/generate', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${env.OLLAMA_API_KEY}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ model: MODEL, prompt, format: 'json', stream: false }),
-        signal: AbortSignal.timeout(20_000),
-      });
-      if (!res.ok) throw new Error(`Ollama Cloud falló: ${res.status}`);
-      responseText = (await res.json()).response;
-    }
+    responseText = await LLM.call(prompt, { timeoutMs: 20_000 });
   } catch (err) {
     console.error(`  (sugeridor de alias (${PROVIDER}) no disponible: ${err.message})`);
     return null;

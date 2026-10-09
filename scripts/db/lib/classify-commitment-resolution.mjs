@@ -9,10 +9,10 @@
 // manda a juicio del clasificador sin filtrar antes por similitud (rara vez
 // hay más de 1-2 compromisos abiertos por recuerdo, es barato).
 import { readFileSync } from 'node:fs';
-import { getTaskProviderModel } from './task-models.mjs';
-import { callOpenRouter, OPENROUTER_ENABLED } from './openrouter.mjs';
+import { getTaskLlm } from './llm-call.mjs';
 
-const { provider: PROVIDER, model: MODEL } = getTaskProviderModel('classifiers');
+const LLM = getTaskLlm('classifiers');
+const { provider: PROVIDER, model: MODEL } = LLM;
 const CONFIDENCE_THRESHOLD = 0.85;
 
 function loadEnv() {
@@ -30,7 +30,7 @@ function loadEnv() {
 
 const env = loadEnv();
 
-export const classifierEnabled = PROVIDER === 'openrouter' ? OPENROUTER_ENABLED : Boolean(env.OLLAMA_API_KEY);
+export const classifierEnabled = LLM.enabled;
 
 function buildPrompt(newClaim, commitmentClaim) {
   return `Eres un clasificador que decide si un registro nuevo resuelve un \
@@ -68,21 +68,7 @@ export async function classifyCommitmentResolution(newClaim, commitmentClaim) {
   const prompt = buildPrompt(newClaim, commitmentClaim);
   let responseText;
   try {
-    if (PROVIDER === 'openrouter') {
-      responseText = await callOpenRouter(prompt, MODEL, { timeoutMs: 20_000 });
-    } else {
-      const res = await fetch('https://ollama.com/api/generate', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.OLLAMA_API_KEY}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({ model: MODEL, prompt, format: 'json', stream: false }),
-        signal: AbortSignal.timeout(20_000),
-      });
-      if (!res.ok) throw new Error(`Ollama Cloud falló: ${res.status}`);
-      responseText = (await res.json()).response;
-    }
+    responseText = await LLM.call(prompt, { timeoutMs: 20_000 });
   } catch (err) {
     console.error(`  (clasificador de compromisos (${PROVIDER}) no disponible: ${err.message}, se ignora)`);
     return null;

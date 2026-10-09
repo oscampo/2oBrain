@@ -9,7 +9,7 @@
 // Uso: node memory-status.mjs <nombre-de-recuerdo> [--provider ollama|gemini] [--model ...]
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
-import { synthesizeNodeStatus } from './lib/synthesize.mjs';
+import { synthesizeNodeStatus, defaultSynthesisProvider } from './lib/synthesize.mjs';
 
 function parseArgs(argv) {
   const out = {};
@@ -31,7 +31,7 @@ function parseArgs(argv) {
 const rawArgs = process.argv.slice(2);
 const node = rawArgs.find((a) => !a.startsWith('--'));
 const args = parseArgs(rawArgs);
-const provider = args.provider ?? 'ollama';
+const provider = args.provider ?? defaultSynthesisProvider();
 
 if (!node) {
   console.error('Uso: node memory-status.mjs <nombre-de-recuerdo> [--provider ollama|gemini] [--model ...]');

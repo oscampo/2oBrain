@@ -5,6 +5,56 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.12.3 (2026-10-09)
+
+**Corrige un error de v0.12.2:** `extract-page-records.mjs` fallaba con
+`ReferenceError` al ejecutarse sin `--provider`, porque la declaración de `TASK`
+quedó dentro de un comentario. `extract-records.mjs` no estaba afectado.
+
+Gemini elegible por tarea. Hay dos pasos para actualizar:
+
+1. Redespliega la Edge Function `mcp-server` con el `index.ts` nuevo.
+2. Reinicia el servidor del dashboard.
+
+No hace falta `apply-schema.mjs`: el esquema no cambia, solo la semilla de
+`settings`, que nunca pisa lo que ya tienes (`on conflict do nothing`). Una
+instalación existente conserva su fila `available_models` sin la lista de Gemini:
+los scripts y el dashboard la completan solos desde `config/gemini-models.json`,
+pero `set_task_model` del servidor MCP rechazará `gemini::...` hasta que la
+agregues. Solo si quieres elegir Gemini desde el MCP, corre en el editor SQL:
+
+```sql
+update settings
+set value = value || '{"gemini": ["gemini-2.5-flash", "gemini-flash-latest", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"]}'::jsonb
+where key = 'available_models';
+```
+
+- **Gemini en los cinco grupos de "Modelos por tarea".** El dashboard ofrece
+  Gemini además de Ollama Cloud y OpenRouter para `classifiers`, `extraction`,
+  `synthesis` y `deepSweep`, con el mismo selector `proveedor::modelo`.
+- **Grupo nuevo `mentionSecondOpinion`.** La segunda opinión del clasificador de
+  menciones escalaba a Gemini escrito a mano en el código, sin que el usuario lo
+  viera. Ahora es un grupo editable, con `gemini::gemini-flash-latest` por
+  defecto, que es lo que hacía antes.
+- **`lib/llm-call.mjs`.** Una sola función, `getTaskLlm(grupo)`, llama al modelo
+  del grupo sea cual sea el proveedor. Los clasificadores (duplicados, memoria,
+  alias, compromisos, menciones, sugerencia de alias y de nombre de categoría)
+  dejan de repetir cada uno su propio `if (openrouter) ... else fetch(ollama)`, que
+  era la razón por la que `classifiers` no podía ofrecer Gemini: bastaba un
+  archivo olvidado para mandar un modelo de Gemini a Ollama.
+- **`synthesize.mjs` y `memory-status.mjs`** respetan el prefijo `proveedor::`
+  del modelo del grupo `synthesis`.
+- **Los extractores** usan el modelo de Gemini del grupo `extraction` como primero
+  de su lista de respaldo cuando ese grupo apunta a Gemini.
+- **Servidor MCP:** `set_task_model` acepta `proveedor::modelo` (ollama,
+  openrouter o gemini) y lo valida contra la lista de modelos disponibles de ese
+  proveedor; `get_settings` muestra el grupo nuevo. MyMCP solo guarda la elección:
+  quien llama a Gemini son los scripts locales, y los clasificadores del propio
+  MCP siguen corriendo en Ollama aunque el grupo apunte a otro proveedor, con un
+  aviso en su respuesta. El servidor MCP también pasa la marca `is_meta`
+  al clasificador de recuerdos, igual que `remember.mjs` y `remember-batch.mjs`
+  desde v0.12.0.
+
 ## v0.12.2 (2026-10-09)
 
 Mejoras al extractor de registros (`extract-records.mjs`, el que corre el hook

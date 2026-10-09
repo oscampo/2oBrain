@@ -45,6 +45,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import pg from 'pg';
 import { AVAILABLE_OPENROUTER_MODELS } from './openrouter.mjs';
+import { loadGeminiFallbackOrder } from './gemini-fallback.mjs';
 
 const CONFIG_PATH = new URL('../config/task-models.json', import.meta.url);
 const ENV_PATH = new URL('../../../.env', import.meta.url);
@@ -58,6 +59,9 @@ const DEFAULTS = {
   extraction: 'gpt-oss:120b-cloud',
   synthesis: 'gpt-oss:20b-cloud',
   deepSweep: 'gemma4:31b-cloud',
+  // Segunda opinión del clasificador de menciones (classifyMentionRelationHybrid):
+  // antes escalaba a Gemini hardcodeado, invisible para el usuario.
+  mentionSecondOpinion: 'gemini::gemini-flash-latest',
 };
 
 // Lista de respaldo de modelos de Ollama Cloud (los seis comparados en la
@@ -73,7 +77,18 @@ const FALLBACK_OLLAMA_MODELS = [
 ];
 
 export const TASK_GROUPS = Object.keys(DEFAULTS);
-export const KNOWN_PROVIDERS = ['ollama', 'openrouter'];
+export const KNOWN_PROVIDERS = ['ollama', 'openrouter', 'gemini'];
+
+// Proveedores que cada grupo sabe llamar. Los clasificadores pasan por
+// lib/llm-call.mjs (una sola ramificación por proveedor), por eso todos los
+// grupos aceptan los tres.
+export const GROUP_PROVIDERS = {
+  classifiers: ['ollama', 'openrouter', 'gemini'],
+  extraction: ['ollama', 'openrouter', 'gemini'],
+  synthesis: ['ollama', 'openrouter', 'gemini'],
+  deepSweep: ['ollama', 'openrouter', 'gemini'],
+  mentionSecondOpinion: ['ollama', 'openrouter', 'gemini'],
+};
 
 function readJson(url) {
   try {
@@ -167,6 +182,10 @@ export const AVAILABLE_OLLAMA_MODELS = Array.isArray(cache?.availableModels?.oll
 const AVAILABLE_BY_PROVIDER = {
   ollama: AVAILABLE_OLLAMA_MODELS,
   openrouter: Array.isArray(cache?.availableModels?.openrouter) ? cache.availableModels.openrouter : AVAILABLE_OPENROUTER_MODELS,
+  // Gemini: los mismos modelos de config/gemini-models.json (lista editable en
+  // el dashboard, sección "Modelos"). El elegido va primero; el resto de esa
+  // lista queda de respaldo para fallos transitorios (ver gemini-fallback.mjs).
+  gemini: Array.isArray(cache?.availableModels?.gemini) ? cache.availableModels.gemini : loadGeminiFallbackOrder(),
 };
 
 export function getTaskModel(group) {
@@ -201,11 +220,14 @@ export function getTaskProviderModel(group) {
 // Modelos disponibles por proveedor, para el selector del dashboard -- un
 // solo <select> por grupo, con valores "proveedor::modelo" (o el modelo
 // pelado para ollama, que sigue siendo el default sin prefijo).
-export function getAvailableModelsByProvider() {
-  return {
+export function getAvailableModelsByProvider(group) {
+  const all = {
     ollama: AVAILABLE_OLLAMA_MODELS,
     openrouter: AVAILABLE_BY_PROVIDER.openrouter.map((m) => `openrouter::${m}`),
+    gemini: AVAILABLE_BY_PROVIDER.gemini.map((m) => `gemini::${m}`),
   };
+  if (!group) return all;
+  return Object.fromEntries(Object.entries(all).filter(([p]) => (GROUP_PROVIDERS[group] ?? []).includes(p)));
 }
 
 export const TASK_MODEL_DEFAULTS = DEFAULTS;
@@ -227,6 +249,9 @@ export async function setTaskModel(group, value, { by, reason } = {}) {
   const clean = cleanValue(value);
   if (!clean) throw new Error('falta el modelo');
   const { provider, model } = parseProviderModel(clean);
+  if (!(GROUP_PROVIDERS[group] ?? []).includes(provider)) {
+    throw new Error(`El grupo "${group}" todavía no soporta el proveedor "${provider}". Soportados: ${GROUP_PROVIDERS[group].join(', ')}.`);
+  }
   if (!(AVAILABLE_BY_PROVIDER[provider] ?? []).includes(model)) {
     throw new Error(`"${model}" no está en la lista de modelos disponibles de ${provider}: ${(AVAILABLE_BY_PROVIDER[provider] ?? []).join(', ')}`);
   }

@@ -822,6 +822,6 @@ alter table settings_history enable row level security;
 -- "on conflict do nothing": re-aplicar el esquema nunca pisa un valor ya
 -- editado desde el dashboard o el servidor MCP.
 insert into settings (key, value, updated_by) values
-  ('task_models', '{"classifiers": "gpt-oss:20b-cloud", "extraction": "gpt-oss:120b-cloud", "synthesis": "gpt-oss:20b-cloud", "deepSweep": "gemma4:31b-cloud"}'::jsonb, 'semilla schema.sql'),
-  ('available_models', '{"ollama": ["gpt-oss:20b-cloud", "gpt-oss:120b-cloud", "gemma4:31b-cloud", "nemotron-3-nano:30b-cloud", "nemotron-3-super:cloud", "nemotron-3-ultra:cloud"], "openrouter": ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "nvidia/nemotron-3-super-120b-a12b:free", "nvidia/nemotron-3-ultra-550b-a55b:free"]}'::jsonb, 'semilla schema.sql')
+  ('task_models', '{"classifiers": "gpt-oss:20b-cloud", "extraction": "gpt-oss:120b-cloud", "synthesis": "gpt-oss:20b-cloud", "deepSweep": "gemma4:31b-cloud", "mentionSecondOpinion": "gemini::gemini-flash-latest"}'::jsonb, 'semilla schema.sql'),
+  ('available_models', '{"ollama": ["gpt-oss:20b-cloud", "gpt-oss:120b-cloud", "gemma4:31b-cloud", "nemotron-3-nano:30b-cloud", "nemotron-3-super:cloud", "nemotron-3-ultra:cloud"], "openrouter": ["openai/gpt-oss-20b", "openai/gpt-oss-120b", "nvidia/nemotron-3-super-120b-a12b:free", "nvidia/nemotron-3-ultra-550b-a55b:free"], "gemini": ["gemini-2.5-flash", "gemini-flash-latest", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"]}'::jsonb, 'semilla schema.sql')
 on conflict (key) do nothing;

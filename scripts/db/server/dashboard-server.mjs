@@ -448,6 +448,8 @@ app.get('/api/task-models', (c) => {
     groups: TASK_GROUPS,
     availableModels: AVAILABLE_OLLAMA_MODELS, // compat: sigue existiendo para quien no haya migrado el frontend
     modelsByProvider: getAvailableModelsByProvider(),
+    // Por grupo: cada grupo solo ofrece los proveedores que sabe llamar (ver GROUP_PROVIDERS).
+    modelsByGroup: Object.fromEntries(TASK_GROUPS.map((g) => [g, getAvailableModelsByProvider(g)])),
     models: getAllTaskModels(),
   });
 });

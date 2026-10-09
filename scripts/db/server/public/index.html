@@ -4422,7 +4422,7 @@ function section(id, title, hint, bodyHtml) {
 // fijar un modelo distinto por grupo y comparar calidad en vivo durante la
 // tarde, no un fallback automático.
 {
-  const sec = section('task-models', 'Modelos por tarea', 'Elige qué modelo, y de qué proveedor, usa cada grupo de tareas del sistema. classifiers: duplicados, memoria, alias, resolución de compromisos, relaciones de mención. extraction: extraer de sesión/página. synthesis: síntesis de búsqueda y estado de recuerdo. deepSweep: candidatos de relación profundos. Ollama Cloud es gratis pero puede abortar bajo carga; OpenRouter (mismas familias de modelo, gpt-oss/Nemotron, por otra infraestructura) es una alternativa, útil también si prefieres no depender de Ollama.',
+  const sec = section('task-models', 'Modelos por tarea', 'Elige qué modelo, y de qué proveedor, usa cada grupo de tareas del sistema. classifiers: duplicados, memoria, alias, resolución de compromisos, relaciones de mención. extraction: extraer de sesión/página. synthesis: síntesis de búsqueda y estado de recuerdo. deepSweep: candidatos de relación profundos. mentionSecondOpinion: segunda opinión del clasificador de menciones. Gemini (Google) está disponible en todos los grupos. Ollama Cloud es gratis pero puede abortar bajo carga; OpenRouter (mismas familias de modelo, gpt-oss/Nemotron, por otra infraestructura) es una alternativa, útil también si prefieres no depender de Ollama.',
     `<div id="tm-groups"></div>`);
 
   async function loadTaskModels() {
@@ -4433,14 +4433,21 @@ function section(id, title, hint, bodyHtml) {
     // prefijo "openrouter::"]} -- el valor "pelado" (sin prefijo) de ollama
     // sigue siendo compatible con config/task-models.json existentes.
     const byProvider = r.modelsByProvider ?? { ollama: r.availableModels ?? [] };
-    const providerLabels = { ollama: 'Ollama Cloud', openrouter: 'OpenRouter' };
+    const providerLabels = { ollama: 'Ollama Cloud', openrouter: 'OpenRouter', gemini: 'Gemini (Google)' };
+    const groupHelp = {
+      classifiers: 'Duplicados, memoria, alias, compromisos, menciones (primera opinión).',
+      extraction: 'Extraer registros de sesión o página (hook Stop y extract-records).',
+      synthesis: 'Síntesis de búsqueda y estado de recuerdo.',
+      deepSweep: 'Barrido profundo de relaciones entre recuerdos.',
+      mentionSecondOpinion: 'Segunda opinión cuando el clasificador de menciones duda de una relación.',
+    };
     for (const group of r.groups ?? []) {
       const row = document.createElement('div');
       row.style.marginBottom = '16px';
       const label = document.createElement('label');
-      label.textContent = group;
+      label.textContent = group + (groupHelp[group] ? ' , ' + groupHelp[group] : '');
       const select = document.createElement('select');
-      for (const [provider, models] of Object.entries(byProvider)) {
+      for (const [provider, models] of Object.entries(r.modelsByGroup?.[group] ?? byProvider)) {
         const optgroup = document.createElement('optgroup');
         optgroup.label = providerLabels[provider] ?? provider;
         for (const m of models) {
