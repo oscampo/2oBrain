@@ -22,11 +22,15 @@
 //   node garden.mjs --proposal <id> accept|reject   acepta (liga el recuerdo, lo crea si es nuevo) o descarta
 //   node garden.mjs --proposal <id> undo            vuelve una propuesta decidida a pendiente (si fue aceptada, quita la etiqueta que puso)
 //   node garden.mjs --decided [H]                   propuestas decididas en las ultimas H horas (24), para poder deshacerlas
+//   node garden.mjs --parent-proposals [--limit N]  propuestas de padre pendientes (parent_proposals): recuerdo y tres candidatos
+//   node garden.mjs --parent-proposal <id> accept [1|2|3|nombre]   crea el enlace pertenece_a (y el recuerdo, si es nuevo)
+//   node garden.mjs --parent-proposal <id> reject|undo
 //   node garden.mjs --volume D                  items con senal de texto por dia, ultimos D dias
 //   --json en --sample, --stats o el modo por defecto: salida JSON (la usa el dashboard)
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { detectNodeMentions } from './lib/detect-memory-mentions.mjs';
+import { createLink } from './lib/create-link.mjs';
 
 // Recuerdos paraguas (muy amplios: no dicen de que asunto trata un registro). Cada instalacion
 // pone aqui los suyos; vacio = la senal "paraguas" no se usa.
@@ -138,7 +142,10 @@ if (args.includes('--decided')) {
 
 if (args.includes('--proposals')) {
   const limit = Number(opt('--proposals', null) ?? opt('--limit', 20)) || 20;
-  const total = Number((await c.query(`select count(distinct record_id) n from memory_proposals where status = 'pending'`)).rows[0].n);
+  // Mismo filtro que la lista de abajo (r.valid_until is null): sin el join, las propuestas
+  // de registros ya reemplazados inflaban el total pero nunca aparecían en la lista ni en
+  // el dashboard (el caso típico: una propuesta sobre un registro luego reemplazado).
+  const total = Number((await c.query(`select count(distinct p.record_id) n from memory_proposals p join records r on r.id = p.record_id where p.status = 'pending' and r.valid_until is null`)).rows[0].n);
   const rows = (await c.query(`
     select r.id, r.claim,
            coalesce((select array_agg(rm.memory_name order by rm.memory_name) from record_memories rm where rm.record_id = r.id), '{}') tags,
@@ -155,6 +162,84 @@ if (args.includes('--proposals')) {
   }
   if (rows.length) console.log('\nPara cada propuesta: node garden.mjs --proposal <id> accept|reject');
   await done();
+}
+
+// Propuestas de padre (v0.12.0, ver parent_proposals en schema.sql): dónde colgar un
+// recuerdo en la jerarquía pertenece_a, con tres candidatos. Mismo principio que las de
+// etiqueta: nada se aplica solo, las acepta el usuario. Aceptar crea el enlace
+// hijo -> padre (y, si el recuerdo es nuevo, lo crea y etiqueta los registros que lo
+// originaron); `accept 2` elige el segundo candidato, `accept nombre` cualquier otro.
+if (args.includes('--parent-proposals')) {
+  const limit = Number(opt('--parent-proposals', null) ?? opt('--limit', 20)) || 20;
+  const total = Number((await c.query(`select count(*) n from parent_proposals where status = 'pending'`)).rows[0].n);
+  const rows = (await c.query(
+    `select id, memory_name, is_new, record_ids, candidates, reasoning, model from parent_proposals where status = 'pending' order by id limit $1`,
+    [limit],
+  )).rows.map((r) => ({ id: Number(r.id), memory: r.memory_name, isNew: r.is_new, recordIds: (r.record_ids ?? []).map(Number), candidates: r.candidates.map((x) => x.parent), reasoning: r.reasoning ?? '', model: r.model }));
+  if (asJson) { console.log(JSON.stringify({ total, items: rows })); await done(); }
+  console.log(`Propuestas de padre pendientes: ${total}; se muestran ${rows.length}.`);
+  for (const r of rows) {
+    console.log(`\npropuesta ${r.id}: "${r.memory}"${r.isNew ? ` (recuerdo NUEVO desde ${r.recordIds.map((x) => '#' + x).join(', ')}; aceptarla lo crea)` : ''}`);
+    r.candidates.forEach((p, i) => console.log(`   ${i + 1}. ${p}`));
+    if (r.reasoning) console.log(`   razón: ${short(r.reasoning, 220)}`);
+  }
+  if (rows.length) console.log('\nPara decidir: node garden.mjs --parent-proposal <id> accept [1|2|3|nombre] | reject | undo');
+  await done();
+}
+
+if (args.includes('--parent-proposal')) {
+  const i = args.indexOf('--parent-proposal'); const id = Number(args[i + 1]); const decision = args[i + 2]; const choice = args[i + 3] && !args[i + 3].startsWith('--') ? args[i + 3] : null;
+  if (!Number.isInteger(id) || !['accept', 'reject', 'undo'].includes(decision)) { console.error('uso: --parent-proposal <id> accept [1|2|3|nombre] | reject | undo'); await done(1); }
+  const hoy = (() => { const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: env.TIMEZONE?.trim() || 'America/Bogota', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()).map((x) => [x.type, x.value])); return `${p.year}-${p.month}-${p.day}`; })();
+  await c.query('begin');
+  try {
+    const p = (await c.query(`select * from parent_proposals where id = $1 for update`, [id])).rows[0];
+    if (!p) throw new Error(`No existe la propuesta de padre #${id}.`);
+    const marker = `propuesta de padre #${id}`;
+    if (decision === 'undo') {
+      if (p.status === 'pending') throw new Error(`La propuesta #${id} ya está pendiente.`);
+      let note = '';
+      if (p.status === 'accepted' && p.chosen_parent) {
+        const del = await c.query(`delete from memory_links where from_memory = $1 and to_memory = $2 and relation = 'pertenece_a' and source like $3`, [p.memory_name, p.chosen_parent, `%${marker}%`]);
+        note = del.rowCount ? ` y se quitó el enlace ${p.memory_name} -> ${p.chosen_parent}` : ' (no se quitó ningún enlace: el que existe no consta como creado por esta propuesta)';
+        if (p.is_new) note += `; el recuerdo "${p.memory_name}" y sus etiquetas creados al aceptar se conservan`;
+      }
+      await c.query(`update parent_proposals set status = 'pending', chosen_parent = null, decided_at = null where id = $1`, [id]);
+      await c.query('commit');
+      console.log(`Propuesta de padre #${id} otra vez pendiente${note}.`);
+      await done();
+    }
+    if (p.status !== 'pending') throw new Error(`La propuesta de padre #${id} ya está ${p.status === 'accepted' ? 'aceptada' : 'descartada'}.`);
+    if (decision === 'reject') {
+      await c.query(`update parent_proposals set status = 'rejected', decided_at = now() where id = $1`, [id]);
+      await c.query('commit');
+      console.log(`Propuesta de padre #${id} descartada.`);
+      await done();
+    }
+    // accept
+    const cands = p.candidates.map((x) => x.parent);
+    const parent = choice === null ? cands[0] : /^[1-9]$/.test(choice) ? cands[Number(choice) - 1] : choice;
+    if (!parent) throw new Error(`No hay candidato "${choice}" en la propuesta #${id} (hay ${cands.length}).`);
+    // el padre no puede ser el propio recuerdo ni uno de sus descendientes (ciclo)
+    const { rows: ed } = await c.query(`select from_memory ch, to_memory pa from memory_links where relation = 'pertenece_a'`);
+    const kids = new Map(); for (const e of ed) { if (!kids.has(e.pa)) kids.set(e.pa, []); kids.get(e.pa).push(e.ch); }
+    const desc = new Set(); const st = [p.memory_name]; while (st.length) for (const y of kids.get(st.pop()) ?? []) if (!desc.has(y)) { desc.add(y); st.push(y); }
+    if (parent === p.memory_name || desc.has(parent)) throw new Error(`"${parent}" cuelga de "${p.memory_name}" (o es el mismo): crearía un ciclo.`);
+    if (p.is_new) {
+      await c.query(`insert into memories (name) values ($1) on conflict (name) do nothing`, [p.memory_name]);
+      for (const rid of p.record_ids ?? []) await c.query(`insert into record_memories (record_id, memory_name) values ($1, $2) on conflict do nothing`, [rid, p.memory_name]);
+    }
+    const link = await createLink(c, p.memory_name, parent, 'pertenece_a', `ubicación aprobada por el usuario (${marker}, modelo ${p.model ?? 'desconocido'})`, hoy);
+    if (!link.ok) throw new Error(link.error);
+    await c.query(`update parent_proposals set status = 'accepted', chosen_parent = $2, decided_at = now() where id = $1`, [id, link.toMemory]);
+    await c.query('commit');
+    console.log(`Propuesta de padre #${id} aceptada: ${link.fromMemory} -> ${link.toMemory} (pertenece_a)${p.is_new ? `; recuerdo nuevo creado y ${(p.record_ids ?? []).length} registro(s) etiquetado(s)` : ''}.`);
+    await done();
+  } catch (err) {
+    await c.query('rollback').catch(() => {});
+    console.error(err.message);
+    await done(1);
+  }
 }
 
 if (args.includes('--stats')) {

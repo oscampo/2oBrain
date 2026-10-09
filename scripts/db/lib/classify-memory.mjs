@@ -36,7 +36,9 @@ function buildPrompt(newClaim, candidates) {
     .map((c) => {
       const examples = c.examples.map((ex) => `      - "${ex}"`).join('\n');
       const aliasLine = c.aliases?.length ? `, alias: ${c.aliases.join(', ')}` : '';
-      return `  "${c.memory_name}"${aliasLine} (similitud ${c.similarity.toFixed(2)}), ejemplos:\n${examples}`;
+      // is_meta (opcional, lo pasa remember.mjs): recuerdo sobre el propio sistema, marcado a mano.
+      const metaLine = c.is_meta ? ' [META: trata del propio sistema]' : '';
+      return `  "${c.memory_name}"${aliasLine}${metaLine} (similitud ${c.similarity.toFixed(2)}), ejemplos:\n${examples}`;
     })
     .join('\n');
   return `Eres un clasificador que decide a qué recuerdo (tema/entidad) pertenece un registro \
@@ -61,6 +63,11 @@ PRIORIDAD: si el registro nuevo menciona literalmente (aunque sea parcialmente, 
 mayúsculas/tildes) el nombre o un alias de alguno de los recuerdos, esa coincidencia léxica \
 pesa más que el parecido temático de los ejemplos, el nombre explícito es una señal \
 más fuerte y más confiable que la similitud de contenido, úsala para desempatar. \
+EXCEPCIÓN: un recuerdo marcado [META] trata del propio sistema (su diseño, sus scripts, su \
+base de datos), no de lo que el usuario hace con él ni de las herramientas que lo rodean. \
+Para esos la mención literal y el parecido de ejemplos NO bastan: elige uno solo si el registro \
+trata del sistema en sí (no si solo ocurre en su carpeta, su vault o junto a él), y si describe \
+otro asunto concreto responde "new" con un nombre propuesto. \
 Si no estás seguro, baja la confidence en vez de adivinar.`;
 }
 

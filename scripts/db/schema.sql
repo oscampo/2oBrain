@@ -161,6 +161,13 @@ create table if not exists memories (
 -- lo excluyen siempre. Se marca a mano, nunca se infiere.
 alter table memories add column if not exists is_meta boolean not null default false;
 
+-- Ficha de definición (v0.12.0): una o dos frases de qué trata el recuerdo y qué cabe
+-- en él, escritas por el usuario. Existe porque un recuerdo recién creado a mano no tiene
+-- registros ni hijos que lo definan, y sin eso ningún clasificador puede saber para qué
+-- era. Por ahora
+-- solo la lee lib/propose-parent.mjs; classify-memory.mjs no la usa todavía.
+alter table memories add column if not exists description text;
+
 -- Tabla de union many-to-many: un registro puede pertenecer a varias
 -- recuerdos (ej. algo sobre Jane Doe que tambien es sobre atlas-2026),
 -- decision 2026-08-29 tras notar que un recuerdo de columna unica forzaria
@@ -375,6 +382,47 @@ alter table memory_proposals enable row level security;
 -- solo quita esa etiqueta, nunca una que existía antes de aceptar.
 alter table memory_proposals add column if not exists linked_memory text;
 create index if not exists memory_proposals_pending_idx on memory_proposals (created_at) where status = 'pending';
+
+-- Propuestas de padre (v0.12.0; ubicación de
+-- recuerdos en la jerarquía pertenece_a): memory_proposals es por REGISTRO y solo
+-- etiqueta; esto es por RECUERDO y dice dónde colgarlo. Un recuerdo ya existente sin
+-- lugar en la jerarquía, o uno NUEVO (is_new) que nace de un cúmulo de registros, llega
+-- con los tres padres candidatos de más a menos probable (candidates = [{"parent": ...}]).
+-- Nada se aplica solo: aceptarla (garden.mjs --parent-proposal <id> accept [padre]) crea
+-- el enlace pertenece_a hijo -> padre y, si es nuevo, el recuerdo y las etiquetas de
+-- record_ids. Sin FK a memories a propósito: un recuerdo nuevo todavía no existe.
+create table if not exists parent_proposals (
+  id bigserial primary key,
+  memory_name text not null,
+  is_new boolean not null default false,
+  record_ids bigint[] not null default '{}',
+  candidates jsonb not null,
+  reasoning text,
+  model text,
+  status text not null default 'pending' check (status in ('pending', 'accepted', 'rejected')),
+  chosen_parent text,
+  created_at timestamptz not null default now(),
+  decided_at timestamptz
+);
+alter table parent_proposals enable row level security;
+-- Una sola propuesta pendiente por recuerdo: volver a correr el generador no duplica.
+create unique index if not exists parent_proposals_pending_uniq on parent_proposals (memory_name) where status = 'pending';
+
+-- Memoria de nombres ciegos (v0.12.0): propose-categories.mjs exige que 2 registros converjan
+-- en el mismo nombre, pero el heartbeat mira ventanas de 1 a 2 días y descartaba los nombres de
+-- un solo registro, así que dos registros de días distintos nunca se juntaban. Cada registro que
+-- pasa el apoyo y el juez deja aquí su (nombre, registro); la convergencia cuenta también los de
+-- los últimos --memory-days días. Solo se escribe con --queue. Nada se aplica solo.
+create table if not exists blind_name_sightings (
+  memory_name text not null,
+  record_id bigint not null references records(id) on delete cascade,
+  apoyo int not null,
+  juez text not null,
+  seen_at timestamptz not null default now(),
+  primary key (memory_name, record_id)
+);
+alter table blind_name_sightings enable row level security;
+create index if not exists blind_name_sightings_seen_idx on blind_name_sightings (seen_at);
 
 do $$
 declare

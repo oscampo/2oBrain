@@ -119,7 +119,7 @@ ver `memory_proposals` en `scripts/db/schema.sql`): `remember.mjs` liga solo los
 recuerdos de `--memory` que existen y deja como propuesta pendiente lo demás (un
 recuerdo que no existe, o lo que sugiera el clasificador). Si la respuesta trae
 "PROPUESTAS DE ETIQUETA PENDIENTES", rompe el silencio y muéstraselas tal cual;
-nunca las aceptes tú (`garden.mjs --proposal <id> accept` es para que lo corra
+nunca las aceptes tú (`garden.mjs --proposal <id> accept` y `--parent-proposal <id> accept` son para que los corra
 el usuario, o el dashboard). Si el bloque que mandó el hook trae pendientes, resuélvelos también (a
 mano con `remember.mjs` si valen la pena, o decide que no). Al final, suma lo
 que guardaste tú a mano más lo que la extracción ya insertó sola (si el hook lo

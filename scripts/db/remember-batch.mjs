@@ -116,7 +116,12 @@ const env = Object.fromEntries(
 // Zona horaria configurable (TIMEZONE en .env, registro #691) -- ver
 // remember.mjs para el razonamiento completo.
 const TIMEZONE = env.TIMEZONE?.trim() || 'America/Bogota';
-const todayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(new Date());
+// formatToParts en vez de format(): con ICU reducido (Node en iSH/iPad solo trae
+// en-US) 'en-CA' cae a M/D/YYYY y la fecha de hoy nunca coincide con --date.
+const todayLocal = (() => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}`;
+})();
 const mismatchedDates = records.filter((f) => f.date && f.date !== todayLocal);
 if (mismatchedDates.length > 0 && !args['confirm-date']) {
   console.error(
@@ -264,11 +269,18 @@ for (let i = 0; i < records.length; i++) {
   // criterio que remember.mjs pero sin humano presente para el bloqueo: un
   // registro ambiguo se salta y se reporta al final, nunca detiene el lote.
   const { rows: nodeCandidateRows } = await client.query(`select * from memories_similar($1, 5)`, [vectorLiteral]);
+  // Marca los recuerdos is_meta (sobre el propio sistema) para el clasificador, igual que
+  // remember.mjs (ver el comentario allá).
+  const { rows: metaRows } = await client.query(`select name from memories where is_meta and name = any($1)`, [
+    nodeCandidateRows.map((r) => r.memory_name),
+  ]);
+  const metaNames = new Set(metaRows.map((r) => r.name));
   const nodeCandidates = nodeCandidateRows.map((r) => ({
     memory_name: r.memory_name,
     examples: r.examples,
     similarity: r.similarity,
     aliases: r.aliases,
+    is_meta: metaNames.has(r.memory_name),
   }));
   let nodeVerdict = nodeCandidates.length > 0 ? await classifyNode(f.claim, nodeCandidates) : null;
 

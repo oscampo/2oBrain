@@ -1,74 +1,34 @@
-// Fase 3: registra un registro atómico con fecha y fuente obligatorias.
-// Fase 4: antes de insertar, busca registros vivos parecidos por embedding.
-// Si hay candidatos por encima del umbral, se niega a insertar salvo que
-// se pase --supersedes <id>[,<id>...], --complements <id>, o --distinct
-// explícitamente: no hay ruta silenciosa para que una contradicción quede
-// sin resolver.
-//
-// --complements <id> (2026-09-15, portado desde D:\MyBrain): el registro
-// nuevo agrega información real sobre el mismo asunto de <id>, pero no
-// repite todo lo que <id> ya decía, así que NO lo reemplaza (a diferencia
-// de --supersedes). Queda como fila propia, ligada a <id> vía la columna
-// `complements`, para que records_search/memory_match_records lo anexen
-// siempre al resultado de <id>, sin competir por ranking ni mutar su
-// texto (evita reproducir, registro por registro, el mismo problema de
-// dilución semántica que ya se documentó a nivel de recuerdo).
-//
-// Rediseño 2026-08-29 (ver PLAN-recuerdos.md): --slug (page_slug, columna
-// única) reemplazado por --memory (record_memories, many-to-many). Etapa 2
-// (2026-08-29): --memory ya es opcional: sin él, se busca por embedding entre
-// registros existentes agrupados por recuerdo (memories_similar()) y un clasificador
-// (lib/classify-memory.mjs) decide el recuerdo, o bloquea si no hay confianza
-// suficiente (fail-closed, nunca inserta con recuerdo nulo o placeholder). Con
-// --memory explícito, la desambiguación igual corre pero solo como aviso, la
-// elección del humano nunca se sobreescribe. Recuerdos adicionales: además del
-// recuerdo primario (con o sin --memory), se le pregunta aparte al mismo
-// clasificador si el registro pertenece TAMBIÉN a otro de los candidatos que
-// memories_similar() ya trajo (mismo umbral de confianza, fail-open), ver
-// lib/classify-memory.mjs (classifyAdditionalMemories). Desde v0.11.0 todo eso son
-// propuestas, ver abajo. Si un recuerdo fue fusionado a otro (`merged_into`), se
-// resuelve solo al recuerdo vigente. (--create-memory, --aliases y la sugerencia
-// automática de alias al crear se retiraron en v0.11.0: este script ya no crea
-// recuerdos, para eso está create-memory.mjs.)
+// Registra un registro atómico con fecha y fuente obligatorias en la base de registros.
 //
 // Uso:
-//   node remember.mjs --claim "texto del registro" --date 2026-08-22 --source "conversación Claude Code" [--kind fact|event|commitment] [--memory recuerdo1,recuerdo2] [--confidence 0.9] [--supersedes 12,15] [--complements 12] [--distinct] [--confirm-date] [--source-at ISO8601] [--queue-proposals]
+//   node remember.mjs --claim "..." --date YYYY-MM-DD --source "..." [--kind fact|event|commitment]
+//     [--memory recuerdo1,recuerdo2] [--confidence 0.9] [--supersedes 12,15] [--complements 12]
+//     [--distinct] [--confirm-date] [--source-at ISO8601] [--queue-proposals] [--suggest-labels]
 //
-// --confirm-date: obligatorio si --date no es la fecha real de hoy (America/
-// Bogota): confirma que un registro con fecha distinta es intencional
-// (histórico, backfill), no un error de no verificar la fecha antes de llamar.
+// Flujo:
+//   1. Valida argumentos antes de gastar embedding o modelo.
+//   2. Busca registros vivos parecidos. Texto idéntico nunca se inserta. Con
+//      parecidos y sin --supersedes/--complements/--distinct, decide el clasificador de
+//      duplicados; si no alcanza confianza, bloquea. "redundant" nunca inserta.
+//   3. Recuerdos: liga solo los de --memory que existen (siguiendo merged_into). Lo demás es
+//      PROPUESTA en memory_proposals, nunca etiqueta: un recuerdo pedido que
+//      no existe, y lo que sugiera el clasificador. Sin --memory no se guarda y se imprime la
+//      sugerencia, salvo con --queue-proposals (extract-records.mjs, sin nadie mirando), que
+//      usa el primario auto-resuelto. Con --memory explícito el clasificador no corre, salvo
+//      --suggest-labels (en pruebas, la confianza del clasificador no discriminaba las propuestas buenas).
+//   4. Inserta en una transacción: registro, sus recuerdos y el cierre de --supersedes.
+//   5. Después, a mejor esfuerzo: propuestas, enlaces entre recuerdos co-etiquetados,
+//      cierre de compromisos resueltos (nunca el complementado) y
+//      enlaces por mención literal de otro recuerdo (Etapa 6).
 //
-// Sin --memory, deja que la desambiguación automática lo resuelva (bloquea si no hay confianza suficiente).
-//
-// --source-at: instante real (ISO 8601, con hora) del mensaje o evento fuente
-// que generó este registro, NO cuándo se corre este script. Sin esto, dos
-// registros del mismo día (misma --date, granularidad de solo el día) son
-// indistinguibles en el tiempo aunque describan estados a horas distintas, y un
-// registro insertado TARDE pero sobre un estado más VIEJO puede terminar
-// superando (supersede) a uno insertado antes pero sobre un estado más nuevo.
-// lib/classify-duplicate.mjs usa este instante para bloquear ese caso de forma
-// determinista. Opcional: sin --source-at, el candado de cronología simplemente
-// no aplica para este registro.
-//
-// Propuestas de etiqueta (v0.11.0, ver memory_proposals en schema.sql): este
-// script nunca aplica una etiqueta que no se pidió ni crea un recuerdo. Liga solo
-// los recuerdos de --memory que existen; un recuerdo pedido que no existe, o lo
-// que sugiera el clasificador (adicional, en vez del pedido, nuevo), queda
-// pendiente en memory_proposals y se imprime con su número. Solo se aplica desde
-// el dashboard (Revisión de etiquetas > Propuestas pendientes) o con
-// `garden.mjs --proposal <id> accept`, que corre el usuario. Mismo diseño que el
-// servidor MCP: un parámetro de confirmación lo puede poner el propio modelo, así
-// que no sirve como confirmación del usuario.
-//   - sin --memory no se guarda: se imprime el recuerdo que sugiere el clasificador
-//     para que la llamada lo diga explícito.
-//   - con --queue-proposals (sin nadie mirando: extract-records.mjs) sin --memory se
-//     usa el primario auto-resuelto, porque un registro necesita algún recuerdo.
-//   - --create-memory ya no crea: el recuerdo nuevo queda como propuesta.
+// --confirm-date: obligatorio si --date no es hoy en TIMEZONE.
+// --source-at: instante real del hecho, no de la captura; classify-duplicate.mjs lo usa para que
+// un hecho más viejo nunca reemplace a uno más nuevo.
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { embed, toVectorLiteral } from './lib/embed.mjs';
 import { classifyDuplicate, CLASSIFIER_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL, CLASSIFIER_PROVIDER } from './lib/classify-duplicate.mjs';
-import { classifyNode, classifyAdditionalMemories, CLASSIFIER_CONFIDENCE_THRESHOLD as NODE_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL as NODE_CLASSIFIER_MODEL, CLASSIFIER_PROVIDER as NODE_CLASSIFIER_PROVIDER } from './lib/classify-memory.mjs';
+import { classifyNode, classifyAdditionalMemories, CLASSIFIER_CONFIDENCE_THRESHOLD as NODE_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL as NODE_CLASSIFIER_MODEL } from './lib/classify-memory.mjs';
 import { literalMentionCandidates } from './lib/literal-mention-candidates.mjs';
 import { detectNodeMentions } from './lib/detect-memory-mentions.mjs';
 import { classifyMentionRelationHybrid, CLASSIFIER_CONFIDENCE_THRESHOLD as MENTION_CONFIDENCE_THRESHOLD } from './lib/classify-mention-relation.mjs';
@@ -78,108 +38,113 @@ import { classifyCommitmentResolution, CLASSIFIER_CONFIDENCE_THRESHOLD as COMMIT
 import { proposalQueuedText, queueProposals } from './lib/memory-proposals.mjs';
 
 const SIMILARITY_THRESHOLD = 0.6;
+const KINDS = ['fact', 'event', 'commitment'];
+const USAGE =
+  'Uso:\n  node remember.mjs --claim "..." --date YYYY-MM-DD --source "..." [--kind fact|event|commitment] ' +
+  '[--memory recuerdo1,recuerdo2] [--confidence 1.0] [--supersedes id,id] [--complements id] [--distinct] ' +
+  '[--confirm-date] [--source-at ISO8601] [--queue-proposals] [--suggest-labels]';
 
-// Nombre legible del proveedor para los mensajes de auto-resolución
-// (2026-09-15, portado desde D:\MyBrain): antes decían "Ollama Cloud" fijo,
-// ahora el clasificador puede correr en OpenRouter también (ver
-// lib/openrouter.mjs y lib/task-models.mjs).
-function providerLabel(provider) {
-  return provider === 'openrouter' ? 'OpenRouter' : 'Ollama Cloud';
-}
-
-function truncateClaim(claim, maxWords = 15) {
-  const words = claim.split(/\s+/);
-  if (words.length <= maxWords) return claim;
-  return `${words.slice(0, maxWords).join(' ')}…`;
-}
+const providerLabel = (p) => (p === 'openrouter' ? 'OpenRouter' : p === 'gemini' ? 'Gemini' : 'Ollama Cloud');
+const truncateClaim = (claim, max = 15) => {
+  const w = claim.split(/\s+/);
+  return w.length <= max ? claim : `${w.slice(0, max).join(' ')}…`;
+};
+const splitList = (v) => (v && v !== true ? String(v).split(',').map((s) => s.trim()).filter(Boolean) : []);
+const normClaim = (x) => String(x).replace(/\s+/g, ' ').trim().toLowerCase();
 
 function parseArgs(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i].startsWith('--')) {
-      const key = argv[i].slice(2);
-      const next = argv[i + 1];
-      if (next === undefined || next.startsWith('--')) {
-        out[key] = true; // flags sin valor, ej. --distinct
-      } else {
-        out[key] = next;
-        i++;
-      }
-    }
+    if (!argv[i].startsWith('--')) continue;
+    const key = argv[i].slice(2);
+    const next = argv[i + 1];
+    if (next === undefined || next.startsWith('--')) out[key] = true;
+    else { out[key] = next; i++; }
   }
   return out;
 }
 
+// --- 1. Validación, sin red ni base -------------------------------------------------------
 const args = parseArgs(process.argv.slice(2));
+const die = (msg) => { console.error(msg); process.exit(1); };
 
-if (!args.claim || !args.date || !args.source) {
-  console.error(
-    'Faltan campos obligatorios. Uso:\n' +
-      '  node remember.mjs --claim "..." --date YYYY-MM-DD --source "..." [--kind fact] [--memory recuerdo1,recuerdo2] [--confidence 1.0] [--supersedes id,id] [--complements id] [--distinct] [--confirm-date] [--source-at ISO8601] [--queue-proposals]',
-  );
-  process.exit(1);
+if (!args.claim || !args.date || !args.source || [args.claim, args.date, args.source].includes(true)) {
+  die(`Faltan campos obligatorios. ${USAGE}`);
 }
+if (!/^\d{4}-\d{2}-\d{2}$/.test(args.date)) die(`Fecha inválida: "${args.date}". Debe ser YYYY-MM-DD, no se infiere.`);
+if (args['memories-confirmed']) {
+  die('--memories-confirmed ya no existe: remember.mjs guarda con los recuerdos pedidos que existen y deja todo lo demás ' +
+    'como propuesta pendiente. Las propuestas las acepta el usuario en el dashboard o con garden.mjs --proposal <id> accept.');
+}
+if (args.aliases) die('--aliases ya no aplica: remember.mjs no crea recuerdos. Los alias se ponen al aceptar la propuesta o con set-memory-aliases.mjs.');
 
-if (!/^\d{4}-\d{2}-\d{2}$/.test(args.date)) {
-  console.error(`Fecha inválida: "${args.date}". Debe ser YYYY-MM-DD, no se infiere.`);
-  process.exit(1);
-}
+const kind = args.kind ?? 'fact';
+if (!KINDS.includes(kind)) die(`--kind inválido: "${kind}". Debe ser ${KINDS.join(', ')}.`);
+const confidence = args.confidence ? Number(args.confidence) : 1.0;
+if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) die(`--confidence inválido: "${args.confidence}". Debe ser un número entre 0 y 1.`);
 
 let sourceAt = null;
 if (args['source-at'] && args['source-at'] !== true) {
   const parsed = new Date(args['source-at']);
-  if (Number.isNaN(parsed.getTime())) {
-    console.error(`--source-at inválido: "${args['source-at']}". Debe ser un instante ISO 8601 parseable (ej. 2026-09-21T18:07:00Z).`);
-    process.exit(1);
-  }
+  if (Number.isNaN(parsed.getTime())) die(`--source-at inválido: "${args['source-at']}". Debe ser un instante ISO 8601 parseable (ej. 2026-09-21T18:07:00Z).`);
   sourceAt = parsed.toISOString();
 }
 
-const envPath = new URL('../../.env', import.meta.url);
+let supersedesIds = splitList(args.supersedes).map(Number);
+if (supersedesIds.some((n) => !Number.isInteger(n))) die(`--supersedes inválido: "${args.supersedes}". Debe ser una lista de ids.`);
+let complementsId = args.complements && args.complements !== true ? Number(args.complements) : null;
+if (complementsId !== null && !Number.isInteger(complementsId)) die(`--complements inválido: "${args.complements}". Debe ser un id.`);
+
+const requestedInput = splitList(args.memory);
+const queueMode = Boolean(args['queue-proposals']);
+const wantSuggestions = requestedInput.length === 0 || Boolean(args['suggest-labels']);
+let distinct = Boolean(args.distinct);
+let source = args.source;
+
 const env = Object.fromEntries(
-  readFileSync(envPath, 'utf8')
+  readFileSync(new URL('../../.env', import.meta.url), 'utf8')
     .split(/\r?\n/)
     .filter((l) => l.includes('='))
-    .map((l) => {
-      const i = l.indexOf('=');
-      return [l.slice(0, i).trim(), l.slice(i + 1).trim()];
-    }),
+    .map((l) => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()]),
 );
-
-// --date distinto de hoy es legítimo a propósito (registros históricos,
-// backfill de extract-records.mjs sobre una sesión pasada, timelines de
-// proyectos armados en retrospectiva): nunca debe bloquearse por defecto
-// solo por eso. Pero un aviso que solo se imprime y sigue de largo es
-// exactamente el tipo de fallo silencioso que causó el error real del
-// 2026-09-03 (registro #525 quedó fechado 2026-09-01 por no verificar la fecha
-// antes de llamar esto): fácil de no leer entre el resto del output. Fix:
-// bloquea salvo que se pase --confirm-date explícito, mismo patrón que
-// --distinct/--create-memory en este mismo script: no es fricción para el
-// caso histórico legítimo (un flag, no una re-ejecución completa), y hace
-// imposible que el desfase pase desapercibido en el caso accidental.
-// Zona horaria configurable (TIMEZONE en .env, registro #691): estaba fija
-// en America/Bogota, lo que hacía a 2oBrain inutilizable para alguien fuera
-// de esa zona (--date de hoy real le bloqueaba siempre). Default preservado
-// para no romper instalaciones existentes que no la hayan puesto.
 const TIMEZONE = env.TIMEZONE?.trim() || 'America/Bogota';
-const todayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: TIMEZONE }).format(new Date());
+// formatToParts: con ICU reducido (Node en iSH/iPad) 'en-CA' cae a M/D/YYYY.
+const today = Object.fromEntries(
+  new Intl.DateTimeFormat('en-US', { timeZone: TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' })
+    .formatToParts(new Date()).map((x) => [x.type, x.value]),
+);
+const todayLocal = `${today.year}-${today.month}-${today.day}`;
 if (args.date !== todayLocal && !args['confirm-date']) {
-  console.error(
-    `--date ${args.date} es distinto de hoy (${todayLocal} en ${TIMEZONE}).\n` +
-      'Si es un registro histórico o backfill intencional, agrega --confirm-date para confirmarlo.\n' +
-      'Si fue sin querer, corrige --date y vuelve a intentar.',
-  );
-  process.exit(1);
+  die(`--date ${args.date} es distinto de hoy (${todayLocal} en ${TIMEZONE}).\n` +
+    'Si es un registro histórico o backfill intencional, agrega --confirm-date para confirmarlo.\n' +
+    'Si fue sin querer, corrige --date y vuelve a intentar.');
 }
 
-const client = new pg.Client({
-  connectionString: env.SUPABASE_DB_URL,
-  ssl: { rejectUnauthorized: false },
-});
+// --- 2. Parecidos y duplicados -------------------------------------------------------------
+const client = new pg.Client({ connectionString: env.SUPABASE_DB_URL, ssl: { rejectUnauthorized: false } });
 await client.connect();
+const stop = async (msg, code = 1) => {
+  if (code === 0) console.log(msg); else console.error(msg);
+  await client.end();
+  process.exit(code);
+};
 
-const embedding = await embed(args.claim, 'document');
-const vectorLiteral = toVectorLiteral(embedding);
+const [vectorLiteral, { rows: memoryRows }] = await Promise.all([
+  embed(args.claim, 'document').then(toVectorLiteral),
+  client.query(`select name, aliases, merged_into, is_meta from memories`),
+]);
+const memByName = new Map(memoryRows.map((m) => [m.name, m]));
+// Filas vigentes y no meta: las que usan la detección por mención literal.
+const liveNonMeta = memoryRows.filter((m) => !m.merged_into && !m.is_meta).map(({ name, aliases }) => ({ name, aliases }));
+const resolveLive = (name) => {
+  const seen = new Set();
+  for (let cur = name; ; cur = memByName.get(cur).merged_into) {
+    if (!memByName.has(cur)) return { ok: false };
+    if (seen.has(cur)) return { ok: false, cycle: true };
+    seen.add(cur);
+    if (!memByName.get(cur).merged_into) return { ok: true, name: cur };
+  }
+};
 
 const { rows: candidates } = await client.query(
   `select f.id, f.claim, f.date, f.source, f.kind, f.source_at,
@@ -191,498 +156,254 @@ const { rows: candidates } = await client.query(
    limit 5`,
   [vectorLiteral],
 );
-
 const similar = candidates.filter((c) => c.similarity >= SIMILARITY_THRESHOLD);
 
-let supersedesIds = args.supersedes
-  ? String(args.supersedes)
-      .split(',')
-      .map((s) => Number(s.trim()))
-      .filter((n) => Number.isInteger(n))
-  : [];
-
-let complementsId = args.complements ? Number(args.complements) : null;
-if (complementsId !== null && !Number.isInteger(complementsId)) complementsId = null;
-
-let autoResolved = null;
-let redundantId = null;
-
-// Guarda determinista: un texto idéntico a un registro vivo nunca se inserta, ni con
-// --complements/--distinct explícitos (que se saltan el clasificador). Caso real:
-// un cliente llamó dos veces con el mismo claim y complements, y entró el duplicado.
-const normClaim = (x) => String(x).replace(/\s+/g, ' ').trim().toLowerCase();
 const identical = candidates.find((c) => normClaim(c.claim) === normClaim(args.claim) && !supersedesIds.includes(Number(c.id)));
-if (identical) {
-  console.log(`Ya existe un registro con el mismo texto: #${identical.id}, no se inserta (duplicado exacto).`);
-  await client.end();
-  process.exit(0);
-}
+if (identical) await stop(`Ya existe un registro con el mismo texto: #${identical.id}, no se inserta (duplicado exacto).`, 0);
 
-if (similar.length > 0 && supersedesIds.length === 0 && complementsId === null && !args.distinct) {
-  autoResolved = await classifyDuplicate(args.claim, similar, args.source, sourceAt);
-  if (autoResolved && autoResolved.confidence >= CLASSIFIER_CONFIDENCE_THRESHOLD) {
-    if (autoResolved.verdict === 'supersedes') {
-      supersedesIds = autoResolved.supersedesIds;
-    } else if (autoResolved.verdict === 'complements') {
-      complementsId = autoResolved.complementsId;
-    } else if (autoResolved.verdict === 'redundant') {
-      redundantId = autoResolved.redundantId;
-    } else {
-      args.distinct = true;
-    }
-    console.error(
-      `(auto-resuelto por ${providerLabel(CLASSIFIER_PROVIDER)}, ${CLASSIFIER_MODEL}, confianza ${autoResolved.confidence.toFixed(2)}: ${autoResolved.reasoning})`,
-    );
-  } else {
-    autoResolved = null; // confianza insuficiente o clasificador no disponible: no se usa como resolución
+// El clasificador de recuerdos no depende del de duplicados: arrancan juntos. Si una salida
+// temprana corta el flujo, ese trabajo sobra pero no escribe nada.
+const nodePipeline = wantSuggestions
+  ? (async () => {
+      const { rows } = await client.query(`select * from memories_similar($1, 5)`, [vectorLiteral]);
+      // is_meta marcado a mano: que el clasificador no elija un recuerdo del propio sistema solo
+      // porque el registro ocurre en él.
+      const nodeCandidates = rows.map((r) => ({
+        memory_name: r.memory_name, examples: r.examples, similarity: r.similarity, aliases: r.aliases,
+        is_meta: Boolean(memByName.get(r.memory_name)?.is_meta),
+      }));
+      const nodeVerdict = nodeCandidates.length > 0 ? await classifyNode(args.claim, nodeCandidates) : null;
+      return { nodeCandidates, nodeVerdict };
+    })().catch((err) => {
+      // Fail-open, igual que los clasificadores: si falla memories_similar, sin veredicto y con
+      // aviso. `failed` evita que el mensaje de la sección 3 diga que no hay recuerdos con embedding.
+      console.error(`(sugerencia de recuerdos no disponible: ${err.message})`);
+      return { nodeCandidates: [], nodeVerdict: null, failed: true };
+    })
+  : Promise.resolve({ nodeCandidates: [], nodeVerdict: null });
+
+const needsResolution = () => similar.length > 0 && supersedesIds.length === 0 && complementsId === null && !distinct;
+if (needsResolution()) {
+  const auto = await classifyDuplicate(args.claim, similar, args.source, sourceAt);
+  if (auto && auto.confidence >= CLASSIFIER_CONFIDENCE_THRESHOLD) {
+    console.error(`(auto-resuelto por ${providerLabel(CLASSIFIER_PROVIDER)}, ${CLASSIFIER_MODEL}, confianza ${auto.confidence.toFixed(2)}: ${auto.reasoning})`);
+    if (auto.verdict === 'redundant') await stop(`Ya cubierto por #${auto.redundantId}, no se inserta (redundante).`, 0);
+    if (auto.verdict === 'supersedes') supersedesIds = auto.supersedesIds;
+    else if (auto.verdict === 'complements') complementsId = auto.complementsId;
+    else distinct = true;
+    source = `${source} [auto-resuelto por ${providerLabel(CLASSIFIER_PROVIDER)} (${CLASSIFIER_MODEL}), confianza ${auto.confidence.toFixed(2)}: ${auto.reasoning}]`;
   }
 }
-
-// "redundant": el registro nuevo no aporta nada que #redundantId no tuviera ya.
-// A diferencia de "distinct" (que sí inserta una fila nueva), esto NUNCA debe
-// insertar, ni siquiera cuando un proceso automático (extract-records.mjs --auto)
-// llama a este script sin humano mirando. Sale con código 0 (decisión correcta,
-// no un error) para que el llamador lo cuente como "resuelto", no como
-// "pendiente de revisión manual".
-if (redundantId !== null) {
-  console.log(`Ya cubierto por #${redundantId}, no se inserta (redundante).`);
-  await client.end();
-  process.exit(0);
+if (needsResolution()) {
+  const lines = similar.map((c) =>
+    `  #${c.id} [${c.date.toISOString().slice(0, 10)}] (similitud ${c.similarity.toFixed(2)}) ${truncateClaim(c.claim)}\n` +
+    `     fuente: ${c.source}${c.memories ? ` · recuerdos: ${c.memories}` : ''}`);
+  await stop(`Hay ${similar.length} registro(s) vivo(s) parecido(s), resuélvelo antes de insertar:\n\n${lines.join('\n')}\n\n` +
+    'Si este registro reemplaza a alguno de los anteriores, pasa --supersedes <id>[,<id>...].\n' +
+    'Si agrega información real sobre UNO de ellos sin repetir todo lo que ya dice, pasa --complements <id>.\n' +
+    'Si es genuinamente distinto pese al parecido, pasa --distinct para confirmarlo explícitamente.\n' +
+    'Si NO aporta nada que alguno de ellos no tuviera ya, no lo insertes: no hace falta ningún flag, ese es justo el caso que el clasificador debería haber resuelto solo como "redundant".');
+}
+const candidateIds = new Set(candidates.map((c) => Number(c.id)));
+const invalid = supersedesIds.filter((id) => !candidateIds.has(id));
+if (invalid.length > 0) await stop(`--supersedes referencia id(s) que no aparecieron entre los parecidos vivos: ${invalid.join(', ')}. Verifica los ids con timeline.mjs.`);
+if (complementsId !== null && !candidateIds.has(complementsId)) {
+  await stop(`--complements referencia un id que no apareció entre los parecidos vivos: ${complementsId}. Verifica el id con timeline.mjs.`);
 }
 
-if (similar.length > 0 && supersedesIds.length === 0 && complementsId === null && !args.distinct) {
-  console.error(`Hay ${similar.length} registro(s) vivo(s) parecido(s), resuélvelo antes de insertar:\n`);
-  for (const c of similar) {
-    console.error(
-      `  #${c.id} [${c.date.toISOString().slice(0, 10)}] (similitud ${c.similarity.toFixed(2)}) ${truncateClaim(c.claim)}`,
-    );
-    console.error(`     fuente: ${c.source}${c.memories ? ` · recuerdos: ${c.memories}` : ''}`);
-  }
-  console.error(
-    '\nSi este registro reemplaza a alguno de los anteriores, pasa --supersedes <id>[,<id>...].\n' +
-      'Si agrega información real sobre UNO de ellos sin repetir todo lo que ya dice, pasa --complements <id>.\n' +
-      'Si es genuinamente distinto pese al parecido, pasa --distinct para confirmarlo explícitamente.\n' +
-      'Si NO aporta nada que alguno de ellos no tuviera ya, no lo insertes: no hace falta ningún flag, ese es justo el caso que el clasificador debería haber resuelto solo como "redundant".',
-  );
-  await client.end();
-  process.exit(1);
-}
-
-if (autoResolved) {
-  args.source = `${args.source} [auto-resuelto por ${providerLabel(CLASSIFIER_PROVIDER)} (${CLASSIFIER_MODEL}), confianza ${autoResolved.confidence.toFixed(2)}: ${autoResolved.reasoning}]`;
-}
-
-if (supersedesIds.length > 0) {
-  const invalid = supersedesIds.filter((id) => !candidates.some((c) => Number(c.id) === id));
-  if (invalid.length > 0) {
-    console.error(
-      `--supersedes referencia id(s) que no aparecieron entre los parecidos vivos: ${invalid.join(', ')}. Verifica los ids con timeline.mjs.`,
-    );
-    await client.end();
-    process.exit(1);
-  }
-}
-
-if (complementsId !== null && !candidates.some((c) => Number(c.id) === complementsId)) {
-  console.error(
-    `--complements referencia un id que no apareció entre los parecidos vivos: ${complementsId}. Verifica el id con timeline.mjs.`,
-  );
-  await client.end();
-  process.exit(1);
-}
-
-// Etapa 2 (PLAN-recuerdos.md, 2026-08-29): desambiguación por búsqueda vectorial
-// + clasificador. Corre SIEMPRE (Etapa 0: "siempre corre desambiguación
-// después, incluso si viene explícito"), pero solo bloquea cuando --memory no
-// vino: si el humano ya eligió explícitamente, la desambiguación es un
-// chequeo informativo (stderr), nunca sobreescribe una decisión explícita.
-const { rows: nodeCandidateRows } = await client.query(`select * from memories_similar($1, 5)`, [vectorLiteral]);
-const nodeCandidates = nodeCandidateRows.map((r) => ({
-  memory_name: r.memory_name,
-  examples: r.examples,
-  similarity: r.similarity,
-  aliases: r.aliases,
-}));
-
-let nodeVerdict = null;
-if (nodeCandidates.length > 0) {
-  nodeVerdict = await classifyNode(args.claim, nodeCandidates);
-}
-
-let requestedNodes = args.memory
-  ? String(args.memory)
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-  : [];
-
-const queueMode = Boolean(args['queue-proposals']);
-if (args['memories-confirmed']) {
-  console.error(
-    '--memories-confirmed ya no existe (v0.11.0): remember.mjs guarda con los recuerdos pedidos que existen y deja todo lo demás ' +
-      'como propuesta pendiente. Las propuestas las acepta el usuario en el dashboard o con garden.mjs --proposal <id> accept.',
-  );
-  await client.end();
-  process.exit(1);
-}
-if (args.aliases) {
-  console.error('--aliases ya no aplica: remember.mjs no crea recuerdos. Los alias se ponen al aceptar la propuesta o con set-memory-aliases.mjs.');
-  await client.end();
-  process.exit(1);
-}
-// Propuestas del clasificador: nunca se aplican solas (ver el comentario de cabecera).
+// --- 3. Recuerdos y propuestas -------------------------------------------------------------
+const { nodeCandidates, nodeVerdict, failed: suggestionsFailed } = await nodePipeline;
 const proposals = [];
+const propose = (p) => { if (!proposals.some((q) => q.memory === p.memory)) proposals.push(p); };
+let requested = requestedInput;
+const verdictText = () => `${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}`;
 
-if (requestedNodes.length === 0) {
-  // Sin --memory explícito: hace falta un primario con confianza suficiente.
+if (requested.length === 0) {
   if (!nodeVerdict || nodeVerdict.confidence < NODE_CONFIDENCE_THRESHOLD) {
-    console.error('No se pasó --memory y la desambiguación automática no alcanzó confianza suficiente.\n');
-    if (nodeCandidates.length > 0) {
-      console.error('recuerdos existentes más parecidos:');
-      for (const c of nodeCandidates) {
-        console.error(`  "${c.memory_name}" (similitud ${c.similarity.toFixed(2)}):`);
-        for (const ex of c.examples) console.error(`      - ${truncateClaim(ex)}`);
-      }
-    } else {
-      console.error('(no hay registros con embedding en ningún recuerdo todavía para comparar)');
-    }
-    console.error(
-      '\nPasa --memory <nombre existente>. Si hace falta uno nuevo, agrégalo también en --memory: quedará como propuesta pendiente.',
-    );
-    await client.end();
-    process.exit(1);
+    const near = nodeCandidates.length > 0
+      ? 'Recuerdos existentes más parecidos:\n' + nodeCandidates.map((c) =>
+          `  "${c.memory_name}" (similitud ${c.similarity.toFixed(2)}):\n` + c.examples.map((ex) => `      - ${truncateClaim(ex)}`).join('\n')).join('\n')
+      : suggestionsFailed
+        ? '(no se pudieron consultar los recuerdos parecidos: falló la consulta, ver el aviso de arriba)'
+        : '(no hay registros con embedding en ningún recuerdo todavía para comparar)';
+    await stop(`No se pasó --memory y la desambiguación automática no alcanzó confianza suficiente.\n\n${near}\n\n` +
+      'Pasa --memory <nombre existente>. Si hace falta uno nuevo, agrégalo también en --memory: quedará como propuesta pendiente.');
   }
   if (nodeVerdict.verdict === 'new') {
-    console.error(
-      `No se guardó. El clasificador (${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}) propone un recuerdo NUEVO: "${nodeVerdict.node}" (${nodeVerdict.reasoning})\n` +
-        `Un registro necesita al menos un recuerdo existente: vuelve a llamar con --memory <existente adecuado>,${nodeVerdict.node}. ` +
-        'El nuevo quedará como propuesta y solo se crea si el usuario la acepta.',
-    );
-    await client.end();
-    process.exit(1);
+    await stop(`No se guardó. El clasificador (${verdictText()}) propone un recuerdo NUEVO: "${nodeVerdict.node}" (${nodeVerdict.reasoning})\n` +
+      `Un registro necesita al menos un recuerdo existente: vuelve a llamar con --memory <existente adecuado>,${nodeVerdict.node}. ` +
+      'El nuevo quedará como propuesta y solo se crea si el usuario la acepta.');
   }
   if (!queueMode) {
-    console.error(
-      `No se guardó. Falta --memory. El clasificador (${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}) sugiere el recuerdo existente "${nodeVerdict.node}" (${nodeVerdict.reasoning}).\n` +
-        `Vuelve a llamar con --memory "${nodeVerdict.node}" (u otro que corresponda).`,
-    );
-    await client.end();
-    process.exit(1);
+    await stop(`No se guardó. Falta --memory. El clasificador (${verdictText()}) sugiere el recuerdo existente "${nodeVerdict.node}" (${nodeVerdict.reasoning}).\n` +
+      `Vuelve a llamar con --memory "${nodeVerdict.node}" (u otro que corresponda).`);
   }
-  // Sin nadie mirando, el registro necesita un recuerdo: el primario se auto-resuelve.
-  requestedNodes = [nodeVerdict.node];
-  console.error(
-    `(recuerdo auto-resuelto por ${NODE_CLASSIFIER_MODEL}, confianza ${nodeVerdict.confidence.toFixed(2)}: ${nodeVerdict.reasoning})`,
-  );
-} else if (
-  nodeVerdict &&
-  nodeVerdict.confidence >= NODE_CONFIDENCE_THRESHOLD &&
-  (nodeVerdict.verdict === 'new' || !requestedNodes.includes(nodeVerdict.node))
-) {
-  // --memory vino explícito pero la desambiguación sugiere algo distinto con
-  // confianza alta: es una propuesta, nunca sobreescribe lo pedido.
-  proposals.push({
-    memory: nodeVerdict.node,
-    kind: nodeVerdict.verdict === 'new' ? 'new' : 'instead',
-    confidence: nodeVerdict.confidence,
-    reasoning: nodeVerdict.reasoning,
-  });
+  requested = [nodeVerdict.node];
+  console.error(`(recuerdo auto-resuelto por ${verdictText()}: ${nodeVerdict.reasoning})`);
+} else if (nodeVerdict && nodeVerdict.confidence >= NODE_CONFIDENCE_THRESHOLD &&
+           (nodeVerdict.verdict === 'new' || !requested.includes(nodeVerdict.node))) {
+  propose({ memory: nodeVerdict.node, kind: nodeVerdict.verdict === 'new' ? 'new' : 'instead', confidence: nodeVerdict.confidence, reasoning: nodeVerdict.reasoning });
 }
 
-// Recuerdos adicionales: classifyNode (arriba) es de un solo recuerdo por diseño
-// -- un registro genuinamente sobre dos asuntos a la vez (ej. una persona Y la
-// institución de la que participa) quedaba tageado solo bajo el primero, aunque el
-// segundo ya estuviera entre los candidatos de memories_similar() con similitud
-// alta. Reusa el MISMO candidate-list que memories_similar() ya calculó arriba, sin
-// ninguna búsqueda nueva -- solo le pregunta al LLM, aparte, "¿el registro
-// pertenece TAMBIÉN a alguno de estos otros?". Mismo umbral de confianza que el
-// pick primario (NODE_CONFIDENCE_THRESHOLD). Fail-open: cualquier fallo del
-// clasificador no bloquea nada. Desde v0.11.0 lo que devuelve es una PROPUESTA
-// (ver cabecera), no una etiqueta: agregada sola, contaminaba recuerdos ajenos, y
-// esos recuerdos contaminados sesgaban después al propio clasificador.
-//
-// Candidatos por mención literal: memories_similar() es puramente por embedding, y
-// puede no traer un recuerdo que el texto SÍ nombra explícito si su contenido
-// existente es temáticamente lejano. Se suman los recuerdos que detectNodeMentions
-// encuentra por nombre/alias literal en el texto, aunque no hayan rankeado por
-// embedding.
-{
-  const { rows: allNodeRowsForAdditional } = await client.query(
-    `select name, aliases from memories where merged_into is null and not is_meta`,
-  );
-  const literalCandidates = (
-    await literalMentionCandidates(client, args.claim, requestedNodes, allNodeRowsForAdditional)
-  ).filter((c) => !nodeCandidates.some((n) => n.memory_name === c.memory_name));
-  const remainingNodeCandidates = [
-    ...nodeCandidates.filter((c) => !requestedNodes.includes(c.memory_name) && !proposals.some((p) => p.memory === c.memory_name)),
-    ...literalCandidates,
+// Recuerdos adicionales: los candidatos por embedding más los que el texto nombra literalmente
+// aunque no rankeen. Solo propuestas.
+if (wantSuggestions) {
+  const literal = (await literalMentionCandidates(client, args.claim, requested, liveNonMeta))
+    .filter((c) => !nodeCandidates.some((n) => n.memory_name === c.memory_name));
+  const remaining = [
+    ...nodeCandidates.filter((c) => !requested.includes(c.memory_name) && !proposals.some((p) => p.memory === c.memory_name)),
+    ...literal,
   ];
-  if (remainingNodeCandidates.length > 0) {
-    const additional = await classifyAdditionalMemories(args.claim, requestedNodes.join(', '), remainingNodeCandidates);
-    for (const item of additional) {
-      if (item.confidence < NODE_CONFIDENCE_THRESHOLD) continue;
-      proposals.push({ memory: item.node, kind: 'additional', confidence: item.confidence, reasoning: item.reasoning });
+  if (remaining.length > 0) {
+    for (const item of await classifyAdditionalMemories(args.claim, requested.join(', '), remaining)) {
+      if (item.confidence >= NODE_CONFIDENCE_THRESHOLD) propose({ memory: item.node, kind: 'additional', confidence: item.confidence, reasoning: item.reasoning });
     }
   }
 }
 
-// Resuelve cada recuerdo: solo se ligan los que existen. Uno que no existe no se crea
-// (fail-closed contra typos y contra recuerdos nuevos sin aprobación): queda como
-// propuesta de recuerdo nuevo. Si un recuerdo fue fusionado a otro (merged_into),
-// sigue la cadena al vigente: nadie que llame remember.mjs necesita saber que un
-// recuerdo cambió de nombre.
 const resolvedNodes = [];
-for (const name of requestedNodes) {
-  let current = name;
-  const seen = new Set();
-  let row = null;
-  while (true) {
-    if (seen.has(current)) {
-      console.error(`Ciclo de merged_into detectado en recuerdos empezando por "${name}".`);
-      await client.end();
-      process.exit(1);
-    }
-    seen.add(current);
-    const { rows: found } = await client.query(`select name, merged_into from memories where name = $1`, [current]);
-    if (found.length === 0) {
-      row = null;
-      break;
-    }
-    row = found[0];
-    if (!row.merged_into) break;
-    current = row.merged_into;
-  }
-  if (row) {
-    resolvedNodes.push(row.name);
-  } else if (!proposals.some((p) => p.memory === name)) {
-    proposals.push({ memory: name, kind: 'new', confidence: null, reasoning: 'pedido en --memory, todavía no existe' });
-  }
+for (const name of requested) {
+  const r = resolveLive(name);
+  if (r.cycle) await stop(`Ciclo de merged_into detectado en recuerdos empezando por "${name}".`);
+  if (r.ok) { if (!resolvedNodes.includes(r.name)) resolvedNodes.push(r.name); }
+  else propose({ memory: name, kind: 'new', confidence: null, reasoning: 'pedido en --memory, todavía no existe' });
 }
-if (args['create-memory']) {
-  console.error('(--create-memory ya no crea recuerdos: un recuerdo pedido que no existe queda como propuesta pendiente)');
-}
+if (args['create-memory']) console.error('(--create-memory ya no crea recuerdos: un recuerdo pedido que no existe queda como propuesta pendiente)');
 if (resolvedNodes.length === 0) {
-  console.error(
-    `No se guardó: ninguno de los recuerdos pedidos existe (${requestedNodes.map((n) => `"${n}"`).join(', ')}). ` +
-      'Un registro necesita al menos uno existente; agrega uno en --memory y el nuevo quedará como propuesta pendiente.',
-  );
-  await client.end();
-  process.exit(1);
+  await stop(`No se guardó: ninguno de los recuerdos pedidos existe (${requested.map((n) => `"${n}"`).join(', ')}). ` +
+    'Un registro necesita al menos uno existente; agrega uno en --memory y el nuevo quedará como propuesta pendiente.');
 }
 
-// Aviso de fusión de contexto cruzado (portado desde D:\MyBrain, caso #872,
-// ver MEMORY.md): si el claim menciona literalmente "#NNN" de un registro
-// vigente que no está cubierto por --supersedes/--complements, avisa
-// (nunca bloquea, hay citas legítimas como "...sobre el objetivo 1
-// (#872)"). memory-status.mjs ya sintetiza juntos los registros del mismo
-// recuerdo al leer, no hace falta repetir su contenido al escribir.
-const mentionedIds = [...new Set([...args.claim.matchAll(/#(\d+)/g)].map((m) => Number(m[1])))];
-if (mentionedIds.length > 0) {
-  const covered = new Set([...supersedesIds, ...(complementsId !== null ? [complementsId] : [])]);
-  const uncovered = mentionedIds.filter((id) => !covered.has(id));
-  if (uncovered.length > 0) {
-    const { rows: liveRows } = await client.query(
-      `select id from records where id = any($1::bigint[]) and valid_until is null`,
-      [uncovered],
-    );
-    const liveIds = liveRows.map((r) => Number(r.id));
-    if (liveIds.length > 0) {
-      console.error(
-        `(aviso: el claim menciona ${liveIds.map((id) => `#${id}`).join(', ')} -- si es solo una cita/referencia, ignora esto; ` +
-          `si trajiste contenido de ese registro hacia este texto, revisa si de verdad pertenece aquí, memory-status.mjs ya sintetiza juntos los registros del mismo recuerdo, no hace falta repetirlo. ` +
-          `Si es una relación real, --complements <id> lo deja trazable en vez de fundido en la prosa.)`,
-      );
-    }
+// Aviso de fusión de contexto: el claim cita ids vigentes sin --supersedes/--complements.
+const covered = new Set([...supersedesIds, ...(complementsId !== null ? [complementsId] : [])]);
+const uncovered = [...new Set([...args.claim.matchAll(/#(\d+)/g)].map((m) => Number(m[1])))].filter((id) => !covered.has(id));
+if (uncovered.length > 0) {
+  const { rows } = await client.query(`select id from records where id = any($1::bigint[]) and valid_until is null`, [uncovered]);
+  if (rows.length > 0) {
+    console.error(`(aviso: el claim menciona ${rows.map((r) => `#${r.id}`).join(', ')} -- si es solo una cita/referencia, ignora esto; ` +
+      'si trajiste contenido de ese registro hacia este texto, revisa si de verdad pertenece aquí, memory-status.mjs ya sintetiza juntos los registros del mismo recuerdo, no hace falta repetirlo. ' +
+      'Si es una relación real, --complements <id> lo deja trazable en vez de fundido en la prosa.)');
   }
 }
 
-const { rows } = await client.query(
-  `insert into records (claim, kind, date, source, confidence, embedding, complements, source_at)
-   values ($1, $2, $3, $4, $5, $6, $7, $8)
-   returning id, date, claim`,
-  [
-    args.claim,
-    args.kind ?? 'fact',
-    args.date,
-    args.source,
-    args.confidence ? Number(args.confidence) : 1.0,
-    vectorLiteral,
-    complementsId,
-    sourceAt,
-  ],
-);
-
-const newId = rows[0].id;
-
-for (const memoryName of resolvedNodes) {
-  await client.query(`insert into record_memories (record_id, memory_name) values ($1, $2) on conflict do nothing`, [
-    newId,
-    memoryName,
-  ]);
+// --- 4. Escritura atómica ------------------------------------------------------------------
+// Registro, recuerdos y reemplazo van juntos: antes un fallo entre inserts dejaba un registro
+// sin recuerdos, o el nuevo y el reemplazado vigentes a la vez.
+let inserted;
+try {
+  await client.query('begin');
+  ({ rows: [inserted] } = await client.query(
+    `insert into records (claim, kind, date, source, confidence, embedding, complements, source_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8) returning id, date, claim`,
+    [args.claim, kind, args.date, source, confidence, vectorLiteral, complementsId, sourceAt],
+  ));
+  await client.query(
+    `insert into record_memories (record_id, memory_name) select $1::bigint, unnest($2::text[]) on conflict do nothing`,
+    [inserted.id, resolvedNodes],
+  );
+  if (supersedesIds.length > 0) {
+    await client.query(`update records set valid_until = now(), superseded_by = $1 where id = any($2::bigint[])`, [inserted.id, supersedesIds]);
+  }
+  await client.query('commit');
+} catch (err) {
+  await client.query('rollback').catch(() => {});
+  await stop(`No se guardó, la base rechazó la escritura: ${err.message}`);
 }
-if (resolvedNodes.length > 0) {
-  console.log(`recuerdo(s): ${resolvedNodes.join(', ')}`);
-}
-if (proposals.length > 0) {
-  const queued = await queueProposals(client, newId, proposals, NODE_CLASSIFIER_MODEL);
-  console.log(proposalQueuedText(queued, proposals));
-}
+const newId = inserted.id;
 
-// Auto-enlace entre recuerdos co-etiquetados (portado desde D:\MyBrain,
-// 2026-09-19, pedido explícito del usuario tras notar que un registro con
-// --memory nodo1,nodo2 no generaba ninguna arista en el grafo). Distinto del
-// bloque de "mentions" de abajo: eso detecta menciones INCIDENTALES de un
-// recuerdo ajeno dentro del texto del claim, y por eso se filtra por
-// confianza (puede ser ruido). Esto es al revés -- el propio llamador ya
-// decidió, vía --memory, que este registro pertenece a más de un recuerdo a
-// la vez, así que la relación entre ellos ya está confirmada por
-// construcción; el único trabajo que falta es ponerle una etiqueta
-// razonable, nunca condicionar si se crea. Por eso NO se filtra por
-// verdict/confidence del clasificador (esa es la diferencia real respecto al
-// bloque de mentions): solo se usa para nombrar la relación, con un fallback
-// genérico si el clasificador no está disponible o no da nada útil. No
-// duplica un enlace ya existente entre el mismo par (en cualquier
-// dirección).
+console.log(`Recuerdo(s): ${resolvedNodes.join(', ')}`);
+if (proposals.length > 0) console.log(proposalQueuedText(await queueProposals(client, newId, proposals, NODE_CLASSIFIER_MODEL), proposals));
+
+// --- 5. Después del registro, a mejor esfuerzo ---------------------------------------------
+// Las llamadas al modelo van en paralelo; las escrituras, en orden.
+const timelineCache = new Map();
+const factsOf = (memory) => {
+  if (!timelineCache.has(memory)) {
+    timelineCache.set(memory, client.query(`select * from records_timeline($1, $2, false)`, [memory, 1000]).then((r) => formatFactsBlock(r.rows)));
+  }
+  return timelineCache.get(memory);
+};
+
+// Enlaces entre recuerdos co-etiquetados: la relación ya la decidió quien llamó con
+// varios --memory; el clasificador solo le pone nombre, con respaldo genérico.
 if (resolvedNodes.length > 1) {
+  const { rows: links } = await client.query(
+    `select from_memory, to_memory from memory_links where from_memory = any($1::text[]) and to_memory = any($1::text[])`,
+    [resolvedNodes],
+  );
+  const linked = new Set(links.map((l) => [l.from_memory, l.to_memory].sort().join('\u0001')));
+  const pairs = [];
   for (let i = 0; i < resolvedNodes.length; i++) {
     for (let j = i + 1; j < resolvedNodes.length; j++) {
-      const from = resolvedNodes[i];
-      const to = resolvedNodes[j];
-      const { rows: existingLink } = await client.query(
-        `select 1 from memory_links where (from_memory, to_memory) in (($1, $2), ($2, $1)) limit 1`,
-        [from, to],
-      );
-      if (existingLink.length > 0) continue;
-
-      const { rows: bFactRows } = await client.query(`select * from records_timeline($1, $2, false)`, [to, 1000]);
-      const judged = await classifyMentionRelationHybrid(args.claim, from, to, formatFactsBlock(bFactRows));
-      const relation = judged?.relation || 'co-registrado_en';
-      const reasonTag = judged?.relation
-        ? `[auto-creado por co-etiquetado explícito (${judged.via}), confianza ${judged.confidence.toFixed(2)}]: ${judged.reasoning} (registro #${newId})`
-        : `[auto-creado por co-etiquetado explícito, sin clasificar -- clasificador no disponible o sin relación específica] (registro #${newId})`;
-
-      const edgeResult = await createLink(client, from, to, relation, reasonTag, args.date);
-      if (edgeResult.ok) {
-        console.log(`(enlace auto-creado: ${edgeResult.fromMemory} -> ${edgeResult.toMemory} (${edgeResult.relation}))`);
-      }
+      if (!linked.has([resolvedNodes[i], resolvedNodes[j]].sort().join('\u0001'))) pairs.push([resolvedNodes[i], resolvedNodes[j]]);
     }
+  }
+  const judgedPairs = await Promise.all(pairs.map(async ([from, to]) => classifyMentionRelationHybrid(args.claim, from, to, await factsOf(to))));
+  for (const [k, [from, to]] of pairs.entries()) {
+    const judged = judgedPairs[k];
+    const reason = judged?.relation
+      ? `[auto-creado por co-etiquetado explícito (${judged.via}), confianza ${judged.confidence.toFixed(2)}]: ${judged.reasoning} (registro #${newId})`
+      : `[auto-creado por co-etiquetado explícito, sin clasificar -- clasificador no disponible o sin relación específica] (registro #${newId})`;
+    const edge = await createLink(client, from, to, judged?.relation || 'co-registrado_en', reason, args.date);
+    if (edge.ok) console.log(`(enlace auto-creado: ${edge.fromMemory} -> ${edge.toMemory} (${edge.relation}))`);
   }
 }
 
-if (supersedesIds.length > 0) {
+if (supersedesIds.length > 0) console.log(`Reemplazó a #${supersedesIds.join(', #')}.`);
+else if (complementsId !== null) console.log(`Complementa a #${complementsId} (ambos quedan vigentes, se anexan juntos en la búsqueda).`);
+else if (similar.length > 0 && distinct) console.log(`Confirmado como distinto pese al parecido con #${similar.map((c) => c.id).join(', #')}.`);
+
+// Cierre de compromisos abiertos de los mismos recuerdos. Lo ya relacionado de forma
+// explícita (complementado o reemplazado) no entra al juicio del clasificador.
+const { rows: openCommitments } = await client.query(
+  `select distinct r.id, r.claim from records r join record_memories rm on rm.record_id = r.id
+   where r.kind = 'commitment' and r.valid_until is null and rm.memory_name = any($1::text[])
+     and r.id <> $2 and r.id <> all($3::bigint[])`,
+  [resolvedNodes, newId, [...covered]],
+);
+const verdicts = await Promise.all(openCommitments.map((c) => classifyCommitmentResolution(args.claim, c.claim)));
+for (const [k, commitment] of openCommitments.entries()) {
+  const v = verdicts[k];
+  if (!v || v.verdict === 'none' || v.confidence < COMMITMENT_CONFIDENCE_THRESHOLD) continue;
   await client.query(
-    `update records set valid_until = now(), superseded_by = $1 where id = any($2::bigint[])`,
-    [newId, supersedesIds],
+    `update records set valid_until = now(), superseded_by = $2::bigint,
+       source = source || ' [SUPERSEDIDO ' || to_char(now(), 'YYYY-MM-DD') || ' por #' || $3 || ': cierre automático de compromiso, confianza ' || $4 || ']'
+     where id = $1 and valid_until is null`,
+    [commitment.id, newId, String(newId), v.confidence.toFixed(2)],
   );
-  console.log(`Reemplazó a #${supersedesIds.join(', #')}.`);
-} else if (complementsId !== null) {
-  console.log(`Complementa a #${complementsId} (ambos quedan vigentes, se anexan juntos en la búsqueda).`);
-} else if (similar.length > 0 && args.distinct) {
-  console.log(`Confirmado como distinto pese al parecido con #${similar.map((c) => c.id).join(', #')}.`);
-}
-
-// Cierre automático de compromisos (2026-09-08, caso real): revisa si este
-// registro resuelve algún compromiso abierto (kind='commitment') de los
-// mismos recuerdos. A propósito NO usa el umbral de similitud de embedding
-// como filtro (ver lib/classify-commitment-resolution.mjs) -- consulta
-// TODOS los compromisos abiertos de esos recuerdos, rara vez hay más de 1-2.
-// "full": se marca como reemplazado por este registro (superseded_by),
-// misma trazabilidad que cualquier otro supersede, sin tocar su kind (sigue
-// diciendo que fue un compromiso, ahora cerrado). "partial": mismo cierre,
-// más un aviso explícito para crear el compromiso que sigue pendiente --
-// nunca se redacta solo, eso requiere criterio de quien captura.
-// Un compromiso al que el registro nuevo declara complementar, o que ya
-// reemplazó vía --supersedes, no entra al juicio del clasificador: la relación
-// explícita manda sobre una lectura automática (antes, un registro marcado
-// "complementa a #N" cerraba además #N por completo).
-if (resolvedNodes.length > 0) {
-  const alreadyRelatedIds = [...supersedesIds, ...(complementsId !== null ? [complementsId] : [])];
-  const { rows: openCommitments } = await client.query(
-    `select distinct r.id, r.claim
-     from records r
-     join record_memories rm on rm.record_id = r.id
-     where r.kind = 'commitment' and r.valid_until is null
-       and rm.memory_name = any($1::text[])
-       and r.id <> $2
-       and r.id <> all($3::bigint[])`,
-    [resolvedNodes, newId, alreadyRelatedIds],
-  );
-
-  for (const commitment of openCommitments) {
-    const verdict = await classifyCommitmentResolution(args.claim, commitment.claim);
-    if (!verdict || verdict.verdict === 'none' || verdict.confidence < COMMITMENT_CONFIDENCE_THRESHOLD) continue;
-
-    await client.query(
-      `update records set valid_until = now(), superseded_by = $2::bigint,
-         source = source || ' [SUPERSEDIDO ' || to_char(now(), 'YYYY-MM-DD') || ' por #' || $3 || ': cierre automático de compromiso, confianza ' || $4 || ']'
-       where id = $1`,
-      [commitment.id, newId, String(newId), verdict.confidence.toFixed(2)],
-    );
-
-    if (verdict.verdict === 'full') {
-      console.log(`(compromiso #${commitment.id} cerrado por completo por este registro, confianza ${verdict.confidence.toFixed(2)}: ${verdict.reasoning})`);
-    } else {
-      console.log(`(compromiso #${commitment.id} cerrado PARCIALMENTE por este registro, confianza ${verdict.confidence.toFixed(2)}: ${verdict.reasoning})`);
-      console.log(`  Queda pendiente crear un nuevo --kind commitment con lo que sigue sin resolver de: "${truncateClaim(commitment.claim)}"`);
-    }
+  if (v.verdict === 'full') {
+    console.log(`(compromiso #${commitment.id} cerrado por completo por este registro, confianza ${v.confidence.toFixed(2)}: ${v.reasoning})`);
+  } else {
+    console.log(`(compromiso #${commitment.id} cerrado PARCIALMENTE por este registro, confianza ${v.confidence.toFixed(2)}: ${v.reasoning})`);
+    console.log(`  Queda pendiente crear un nuevo --kind commitment con lo que sigue sin resolver de: "${truncateClaim(commitment.claim)}"`);
   }
 }
 
-// Etapa 6 (PLAN-recuerdos.md, 2026-09-02, registro #487): co-ocurrencia textual en
-// vez del barrido O(n²) por embeddings que no funcionó -- si el claim
-// menciona por nombre a otro recuerdo vigente, es señal barata de una posible
-// relación. Solo avisa (mismo criterio "revisión humana obligatoria" que
-// list-link-candidates-deep.mjs/merge-memories.mjs) -- nunca crea nada solo.
-// Se salta por completo si el registro es de un recuerdo is_meta (segundo-cerebro,
-// segundo-cerebro-dashboard-log): esos registros documentan la construcción
-// del propio sistema y mencionan otros recuerdos como ejemplos dentro de su
-// narración -- autorreferencia, no relación real (hallazgo real probando
-// list-memory-mentions.mjs contra el histórico, 2026-09-02).
-const { rows: ownIsMeta } = resolvedNodes.length > 0
-  ? await client.query(`select count(*)::int as n from memories where name = any($1::text[]) and is_meta`, [resolvedNodes])
-  : { rows: [{ n: 0 }] };
-const { rows: allNodeRows } = ownIsMeta[0].n > 0
-  ? { rows: [] }
-  : await client.query(`select name, aliases from memories where merged_into is null and not is_meta`);
-const mentions = detectNodeMentions(args.claim, resolvedNodes, allNodeRows);
-
-// Auto-creación de enlaces (2026-09-02, decisión del usuario: "lo haremos
-// automático"). classify-mention-relation.mjs juzga cada candidato puntual
-// (costo lineal con registros nuevos, no el barrido O(n²)) -- confianza alta
-// crea el enlace solo (anotado en source, igual que un registro auto-resuelto);
-// confianza baja o el clasificador no disponible cae al candidato de
-// revisión manual de siempre; "no_relation" se descarta sin mostrar nada,
-// es la reducción de ruido que pidió el usuario. Nunca trata un fallo del
-// clasificador como "no hay relación" -- eso perdería la señal gratis de
-// detectNodeMentions.
-for (const m of mentions) {
-  const { rows: bFactRows } = await client.query(`select * from records_timeline($1, $2, false)`, [m.node, 1000]);
-  const judged = await classifyMentionRelationHybrid(args.claim, resolvedNodes[0], m.node, formatFactsBlock(bFactRows));
-
+// Menciones literales de otro recuerdo (Etapa 6). Se salta si el registro es de un recuerdo
+// is_meta: esos registros nombran otros recuerdos como ejemplos, no como relación.
+const ownIsMeta = resolvedNodes.some((n) => memByName.get(n)?.is_meta);
+const mentions = ownIsMeta ? [] : detectNodeMentions(args.claim, resolvedNodes, liveNonMeta);
+const judgedMentions = await Promise.all(
+  mentions.map(async (m) => classifyMentionRelationHybrid(args.claim, resolvedNodes[0], m.node, await factsOf(m.node))),
+);
+for (const [k, m] of mentions.entries()) {
+  const judged = judgedMentions[k];
   if (judged?.verdict === 'no_relation') continue;
-
   if (judged?.verdict === 'relation' && judged.confidence >= MENTION_CONFIDENCE_THRESHOLD) {
     let allCreated = true;
     for (const from of resolvedNodes) {
-      const edgeResult = await createLink(
-        client, from, m.node, judged.relation,
-        `[auto-creado por clasificador de menciones (${judged.via}), confianza ${judged.confidence.toFixed(2)}]: ${judged.reasoning} (registro #${newId})`,
-        args.date,
-      );
-      if (edgeResult.ok) {
-        console.log(`(enlace auto-creado: ${edgeResult.fromMemory} -> ${edgeResult.toMemory} (${edgeResult.relation}), confianza ${judged.confidence.toFixed(2)})`);
-      } else {
-        allCreated = false;
-      }
+      const edge = await createLink(client, from, m.node, judged.relation,
+        `[auto-creado por clasificador de menciones (${judged.via}), confianza ${judged.confidence.toFixed(2)}]: ${judged.reasoning} (registro #${newId})`, args.date);
+      if (edge.ok) console.log(`(enlace auto-creado: ${edge.fromMemory} -> ${edge.toMemory} (${edge.relation}), confianza ${judged.confidence.toFixed(2)})`);
+      else allCreated = false;
     }
     if (allCreated) continue;
   }
-
   console.log(`\n(el claim menciona a "${m.node}" (coincide con "${m.matchedOn}") -- posible relación, revisión manual):`);
   for (const from of resolvedNodes) {
     console.log(`  memory-link.mjs --from ${from} --to ${m.node} --relation "${judged?.relation || '...'}" --date ${args.date} --reason "registro #${newId}"`);
   }
 }
 
-console.log(`Registrado #${newId}: [${rows[0].date.toISOString().slice(0, 10)}] ${rows[0].claim}`);
+console.log(`Registrado #${newId}: [${inserted.date.toISOString().slice(0, 10)}] ${inserted.claim}`);
 await client.end();

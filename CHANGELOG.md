@@ -5,6 +5,66 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.12.0 (2026-10-09)
+
+Hay dos pasos para actualizar, en este orden:
+
+1. `node scripts/db/apply-schema.mjs` (crea las tablas `parent_proposals` y
+   `blind_name_sightings`, ambas con RLS activo, y la columna
+   `memories.description`; es idempotente).
+2. Reinicia el servidor del dashboard.
+
+No hay cambios incompatibles: `remember.mjs` conserva las mismas opciones. No
+hace falta redesplegar la Edge Function `mcp-server`.
+
+- **`remember.mjs` reescrito.** Mismo comportamiento de cara al usuario, un
+  archivo mucho más corto (409 líneas contra 688). El registro, sus recuerdos y el
+  cierre de lo que reemplaza se guardan en **una sola transacción**, así que un
+  fallo a medias ya no deja un registro sin sus recuerdos. Si la consulta de
+  recuerdos parecidos (`memories_similar`) falla, el script avisa y sigue sin
+  sugerencias, en vez de caer sin tratar o afirmar que no hay embeddings. La fecha
+  de hoy se calcula con `formatToParts`, que funciona también con Node con ICU
+  reducido (`en-CA` devolvía otro formato y la fecha de hoy nunca coincidía con
+  `--date`). `remember-batch.mjs` recibe el mismo ajuste de fecha.
+- **Propuestas de padre (nuevo).** Un recuerdo sin lugar en la jerarquía
+  `pertenece_a`, o uno nuevo que nace de un cúmulo de registros, recibe tres
+  padres candidatos, del más al menos probable. Nada se aplica solo, igual que las
+  propuestas de etiqueta.
+  - `propose-parents.mjs` propone padre para recuerdos que existen y están fuera
+    de toda jerarquía. Por defecto solo muestra; con `--queue` deja las propuestas
+    pendientes en la tabla nueva `parent_proposals`. El recuerdo `usuario` queda
+    excluido por defecto.
+  - `propose-categories.mjs` propone recuerdos **nuevos**: el modelo da un nombre
+    sin ver los recuerdos existentes (3 corridas, deben coincidir 2), un juez de
+    cobertura (`lib/judge-coverage.mjs`) descarta los que un recuerdo existente ya
+    cubre, y se exige un apoyo mínimo (`--min-support`, 7) y que converjan al menos 2 registros (`--min-records`). Con `--queue` guarda
+    en `blind_name_sightings` los nombres de un solo registro, para que la
+    convergencia cuente también corridas de días anteriores (`--memory-days`).
+    Los umbrales no están calibrados contra un criterio externo: tómalos como
+    punto de partida.
+  - `set-memory-description.mjs` escribe la ficha de definición de un recuerdo
+    (`memories.description`), que `propose-parent.mjs` usa para ubicarlo.
+  - **Dónde se deciden:** con `garden.mjs --parent-proposals` (lista) y
+    `--parent-proposal <id> accept [1|2|3|nombre] | reject | undo`. Aceptar crea el
+    enlace `pertenece_a` y, si el recuerdo es nuevo, lo crea y etiqueta los
+    registros que lo originaron; rechaza ciclos. **El dashboard todavía no tiene
+    la pantalla "Propuestas de padre"**: por ahora se decide solo por consola.
+- **`lib/llm-call.mjs`.** Una sola función, `getTaskLlm(grupo)`, para llamar al
+  modelo de un grupo de "Modelos por tarea" (Ollama Cloud, OpenRouter o Gemini).
+  Hoy la usan las propuestas de padre; los clasificadores existentes siguen con su
+  llamada propia. La rama de Gemini solo se activa cuando un grupo tenga Gemini
+  elegido; en esta versión `task-models.mjs` todavía no lo ofrece.
+- **Recuerdos marcados `is_meta` en el clasificador.** El clasificador de recuerdos
+  recibe la marca y, para un recuerdo sobre el propio sistema, no se deja llevar
+  por la mención literal ni por el parecido de ejemplos. `remember-batch.mjs` la
+  pasa igual que `remember.mjs`.
+- **Revisión de etiquetas:** el contador de propuestas pendientes de `garden.mjs`
+  ignora las de registros ya reemplazados, que inflaban el total sin aparecer
+  nunca en la lista.
+- **Claude Code:** `.claude/settings.json` suma reglas `ask` para
+  `garden.mjs --parent-proposal`, y `CLAUDE.md` lo nombra junto a
+  `--proposal` en el protocolo del hook Stop.
+
 ## v0.11.0 (2026-10-04)
 
 **Cambio incompatible:** `remember.mjs` ya no crea recuerdos ni acepta
