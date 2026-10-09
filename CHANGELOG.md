@@ -5,7 +5,35 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.12.1 (2026-10-09)
+
+**Retira de v0.12.0 todo lo relacionado con la jardinería de etiquetas.** Esa
+parte entró por error: sigue en pruebas y calibración y no estaba lista para
+publicarse. v0.12.1 conserva solo la reescritura de `remember.mjs`, el ajuste de
+fecha de `remember-batch.mjs` y la marca `is_meta` del clasificador.
+
+No hay pasos obligatorios. Si ya actualizaste a v0.12.0:
+
+- `apply-schema.mjs` no se vuelve a correr: v0.12.1 no cambia el esquema. Las
+  tablas `parent_proposals` y `blind_name_sightings` y la columna
+  `memories.description` que v0.12.0 creó siguen en tu base, vacías y sin uso;
+  no estorban y no hace falta borrarlas.
+- Los archivos retirados desaparecen al actualizar el repositorio:
+  `propose-categories.mjs`, `propose-parents.mjs`, `set-memory-description.mjs`,
+  `lib/propose-parent.mjs`, `lib/judge-coverage.mjs` y `lib/llm-call.mjs`.
+- `garden.mjs` vuelve a la versión de v0.11.0: sin `--parent-proposals` ni
+  `--parent-proposal`, y el contador de propuestas pendientes vuelve a contar
+  también las de registros ya reemplazados.
+- `.claude/settings.json` y `CLAUDE.md` vuelven a lo de v0.11.0.
+
+Se quedan de v0.12.0: `remember.mjs` reescrito (registro, recuerdos y cierre en
+una sola transacción; avisa si falla `memories_similar`; fecha de hoy con
+`formatToParts`), el mismo ajuste de fecha en `remember-batch.mjs`, y la marca
+`is_meta` en el clasificador de recuerdos.
+
 ## v0.12.0 (2026-10-09)
+
+**Nota:** todo lo relacionado con la jardinería de etiquetas (propuestas de padre y de categoría nueva, y los cambios de `garden.mjs`) se retiró en v0.12.1. Lo que sigue lo describe tal como se publicó.
 
 Hay dos pasos para actualizar, en este orden:
 
