@@ -985,6 +985,9 @@ mcp.tool('remember', {
     const similar = (candidates ?? []).filter((c: any) => c.similarity >= SIMILARITY_THRESHOLD);
     let supersedesIds = args.supersedes ?? [];
     let complementsId: number | null = Number.isInteger(args.complements) ? (args.complements as number) : null;
+    // Solo lo que quien llama pasó a mano queda fuera del aviso de compromisos abiertos; un
+    // complements que decide classifyDuplicate más abajo no lo oculta.
+    const explicitSkip = new Set<number>([...supersedesIds, ...(complementsId !== null ? [complementsId] : [])]);
     let redundantId: number | null = null;
     let distinct = args.distinct ?? false;
     let autoResolved: Awaited<ReturnType<typeof classifyDuplicate>> = null;
@@ -1393,7 +1396,7 @@ mcp.tool('remember', {
         .in('memory_name', resolvedNodes)
         .eq('records.kind', 'commitment')
         .is('records.valid_until', null);
-      const skip = new Set<number>([...supersedesIds, ...(complementsId !== null ? [complementsId] : [])]);
+      const skip = explicitSkip;
       const seenOpen = new Set<number>();
       const openCommitments: { id: number; claim: string; date: string }[] = [];
       for (const row of openRows ?? []) {

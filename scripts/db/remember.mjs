@@ -94,6 +94,11 @@ let supersedesIds = splitList(args.supersedes).map(Number);
 if (supersedesIds.some((n) => !Number.isInteger(n))) die(`--supersedes inválido: "${args.supersedes}". Debe ser una lista de ids.`);
 let complementsId = args.complements && args.complements !== true ? Number(args.complements) : null;
 if (complementsId !== null && !Number.isInteger(complementsId)) die(`--complements inválido: "${args.complements}". Debe ser un id.`);
+// Solo lo que quien llama pasó a mano queda fuera del juicio de cierre de compromisos: un
+// --complements explícito reabre un pendiente sin cerrarlo. Lo que decide classifyDuplicate más
+// abajo NO cuenta: un complements automático sobre un compromiso lo dejaba vigente sin juicio,
+// aunque el registro nuevo lo resolviera.
+const explicitCovered = new Set([...supersedesIds, ...(complementsId !== null ? [complementsId] : [])]);
 
 const requestedInput = splitList(args.memory);
 const queueMode = Boolean(args['queue-proposals']);
@@ -353,13 +358,14 @@ if (supersedesIds.length > 0) console.log(`Reemplazó a #${supersedesIds.join(',
 else if (complementsId !== null) console.log(`Complementa a #${complementsId} (ambos quedan vigentes, se anexan juntos en la búsqueda).`);
 else if (similar.length > 0 && distinct) console.log(`Confirmado como distinto pese al parecido con #${similar.map((c) => c.id).join(', #')}.`);
 
-// Cierre de compromisos abiertos de los mismos recuerdos. Lo ya relacionado de forma
-// explícita (complementado o reemplazado) no entra al juicio del clasificador.
+// Cierre de compromisos abiertos de los mismos recuerdos. Lo relacionado de forma explícita por
+// quien llama (--complements/--supersedes) no entra al juicio del clasificador; lo que resolvió
+// classifyDuplicate sí entra.
 const { rows: openCommitments } = await client.query(
   `select distinct r.id, r.claim from records r join record_memories rm on rm.record_id = r.id
    where r.kind = 'commitment' and r.valid_until is null and rm.memory_name = any($1::text[])
      and r.id <> $2 and r.id <> all($3::bigint[])`,
-  [resolvedNodes, newId, [...covered]],
+  [resolvedNodes, newId, [...explicitCovered]],
 );
 const verdicts = await Promise.all(openCommitments.map((c) => classifyCommitmentResolution(args.claim, c.claim)));
 for (const [k, commitment] of openCommitments.entries()) {

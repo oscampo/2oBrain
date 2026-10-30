@@ -35,6 +35,7 @@ import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { embed, toVectorLiteral } from './lib/embed.mjs';
 import { classifyDuplicate, CLASSIFIER_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL } from './lib/classify-duplicate.mjs';
+import { classifyCommitmentResolution, CLASSIFIER_CONFIDENCE_THRESHOLD as COMMITMENT_CONFIDENCE_THRESHOLD } from './lib/classify-commitment-resolution.mjs';
 import { classifyNode, classifyAdditionalMemories, CLASSIFIER_CONFIDENCE_THRESHOLD as NODE_CONFIDENCE_THRESHOLD, CLASSIFIER_MODEL as NODE_CLASSIFIER_MODEL } from './lib/classify-memory.mjs';
 import { literalMentionCandidates } from './lib/literal-mention-candidates.mjs';
 import { detectNodeMentions } from './lib/detect-memory-mentions.mjs';
@@ -144,7 +145,7 @@ const client = new pg.Client({
 });
 await client.connect();
 
-const results = { inserted: [], autoResolved: [], redundant: [], blocked: [], invalid: [], nodeMissing: [], nodeAmbiguous: [], mentions: [], proposals: [] };
+const results = { inserted: [], autoResolved: [], redundant: [], blocked: [], invalid: [], nodeMissing: [], nodeAmbiguous: [], mentions: [], proposals: [], commitmentsClosed: [] };
 
 // Etapa 6 (PLAN-recuerdos.md, 2026-09-02, registro #487): mismo detector de
 // co-ocurrencia que remember.mjs -- una sola carga por lote, no cambia
@@ -456,6 +457,34 @@ for (let i = 0; i < records.length; i++) {
     console.error(`  Complementa a #${complementsId} (ambos quedan vigentes, se anexan juntos en la búsqueda).`);
   }
 
+  // Cierre de compromisos abiertos de los mismos recuerdos, mismo criterio que remember.mjs.
+  // Antes este camino (el de la extracción automática) nunca cerraba compromisos. Aquí no hay
+  // --complements por registro, así que solo lo reemplazado queda fuera: un complements que
+  // decidió classifyDuplicate sí entra al juicio. Si el clasificador falla no se cierra nada, y
+  // el cierre es reversible con unsupersede-record.mjs.
+  const { rows: openCommitments } = await client.query(
+    `select distinct r.id, r.claim from records r join record_memories rm on rm.record_id = r.id
+     where r.kind = 'commitment' and r.valid_until is null and rm.memory_name = any($1::text[])
+       and r.id <> $2 and r.id <> all($3::bigint[])`,
+    [resolvedNodes, newId, supersedesIds],
+  );
+  const commitmentVerdicts = await Promise.all(openCommitments.map((c) => classifyCommitmentResolution(f.claim, c.claim)));
+  for (const [k, commitment] of openCommitments.entries()) {
+    const v = commitmentVerdicts[k];
+    if (!v || v.verdict === 'none' || v.confidence < COMMITMENT_CONFIDENCE_THRESHOLD) continue;
+    await client.query(
+      `update records set valid_until = now(), superseded_by = $2::bigint,
+         source = source || ' [SUPERSEDIDO ' || to_char(now(), 'YYYY-MM-DD') || ' por #' || $3 || ': cierre automático de compromiso, confianza ' || $4 || ']'
+       where id = $1 and valid_until is null`,
+      [commitment.id, newId, String(newId), v.confidence.toFixed(2)],
+    );
+    console.error(`  (compromiso #${commitment.id} cerrado ${v.verdict === 'full' ? 'por completo' : 'PARCIALMENTE'} por este registro, confianza ${v.confidence.toFixed(2)}: ${v.reasoning})`);
+    if (v.verdict === 'partial') {
+      console.error(`    Queda pendiente crear un nuevo kind=commitment con lo que sigue sin resolver de #${commitment.id}.`);
+    }
+    results.commitmentsClosed.push({ id: commitment.id, by: newId, verdict: v.verdict });
+  }
+
   console.error(`  Registrado #${newId}.`);
   results.inserted.push({ id: newId, claim: f.claim });
   if (autoResolved) results.autoResolved.push({ id: newId, claim: f.claim });
@@ -505,6 +534,9 @@ await client.end();
 console.log('\n--- Resumen ---');
 console.log(`Insertados: ${results.inserted.length}`);
 console.log(`  de los cuales auto-resueltos (duplicado/contradicción): ${results.autoResolved.length}`);
+if (results.commitmentsClosed.length > 0) {
+  console.log(`Compromisos cerrados por estos registros (reversibles con unsupersede-record.mjs): ${results.commitmentsClosed.map((c) => `#${c.id} por #${c.by} (${c.verdict})`).join(', ')}`);
+}
 console.log(`Redundantes (ya cubiertos por un registro vigente, no se insertaron): ${results.redundant.length}`);
 console.log(`Bloqueados (requieren remember.mjs manual con --supersedes o --distinct): ${results.blocked.length}`);
 console.log(`sin ningún recuerdo existente (corrige el nombre o agrega uno existente): ${results.nodeMissing.length}`);

@@ -5,6 +5,33 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.12.4 (2026-10-30)
+
+**Corrige un error de cierre de compromisos.** Un registro que resolvía un
+compromiso abierto no lo cerraba cuando el clasificador de duplicados lo marcaba
+antes como "complementa" a ese compromiso: `remember.mjs` trataba esa decisión
+automática igual que un `--complements` escrito a mano y lo dejaba fuera del juicio
+de cierre. El compromiso seguía en `list-commitments.mjs` aunque ya estuviera
+resuelto. Un clasificador con confianza 1.0 sí lo habría cerrado; nunca llegó a
+verlo.
+
+- **`remember.mjs`**: solo lo que pasas con `--complements` o `--supersedes`
+  queda fuera del juicio de cierre. Lo que decide el clasificador de duplicados
+  entra al juicio.
+- **`remember-batch.mjs`** (el camino de la extracción automática y del hook
+  Stop): ahora también cierra compromisos resueltos, con el mismo clasificador y
+  umbral de confianza (0.85). Antes nunca lo hacía. El cierre es reversible con
+  `unsupersede-record.mjs`, y si el clasificador falla no se cierra nada.
+- **Servidor MCP**: el aviso de compromisos abiertos que devuelve `remember`
+  ya no oculta el que el clasificador marcó como "complementa". El servidor sigue
+  sin cerrar compromisos por sí solo.
+
+Para actualizar: redespliega la Edge Function `mcp-server` con el `index.ts`
+nuevo. No hace falta `apply-schema.mjs` ni reiniciar el dashboard. Los
+compromisos que ya quedaron abiertos por este error no se cierran solos: revisa
+`list-commitments.mjs` y cierra a mano con `supersede-record.mjs` los que ya
+estén resueltos.
+
 ## v0.12.3 (2026-10-09)
 
 **Corrige un error de v0.12.2:** `extract-page-records.mjs` fallaba con
