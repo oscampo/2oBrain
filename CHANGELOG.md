@@ -5,6 +5,22 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.12.6 (2026-11-09)
+
+**Completa v0.12.5: también deja rastro cuando falta la key.** v0.12.5 registró
+en los logs los fallos de las llamadas a Ollama, pero las cuatro funciones que
+llaman a Ollama (duplicados, etiqueta de relación, desambiguación de recuerdo y
+recuerdos adicionales) seguían saliendo en silencio, sin llamar siquiera, cuando el
+secreto `OLLAMA_API_KEY` no existía o estaba vacío. Era el mismo fallo silencioso
+por otra vía.
+
+- **Servidor MCP**: si el secreto falta o está vacío, cada una escribe
+  `[ollama-fail] <función> error=OLLAMA_API_KEY ausente o vacio en los secretos de la
+  Edge Function`. El valor de respaldo que devuelve no cambia.
+
+Para actualizar: redespliega la Edge Function `mcp-server` con el `index.ts`
+nuevo. No hace falta `apply-schema.mjs` ni reiniciar el dashboard.
+
 ## v0.12.5 (2026-11-09)
 
 La Edge Function `mcp-server` ya registra los fallos de Ollama en sus logs

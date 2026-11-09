@@ -37,6 +37,12 @@ async function ollamaFail(where: string, cause: unknown): Promise<void> {
   }
 }
 
+// Mismo criterio para el secreto ausente o vacio: antes `if (!OLLAMA_API_KEY) return null`
+// no dejaba rastro, y los clasificadores se apagaban en silencio.
+function ollamaNoKey(where: string): void {
+  console.error(`[ollama-fail] ${where} error=OLLAMA_API_KEY ausente o vacio en los secretos de la Edge Function`);
+}
+
 // Zona horaria configurable (secreto TIMEZONE, registro #691) -- estaba fija
 // en America/Bogota, default preservado para no romper despliegues existentes
 // que no la hayan puesto.
@@ -250,7 +256,7 @@ async function classifyDuplicate(
   newSource?: string,
   newSourceAt?: string | null,
 ): Promise<{ verdict: 'distinct' | 'supersedes' | 'complements' | 'redundant'; supersedesIds: number[]; complementsId: number | null; redundantId: number | null; confidence: number; reasoning: string } | null> {
-  if (!OLLAMA_API_KEY) return null;
+  if (!OLLAMA_API_KEY) { ollamaNoKey('classifyDuplicate'); return null; }
 
   const candidateList = candidates
     .map((c) => `  #${c.id} (similitud ${c.similarity.toFixed(2)}, fuente: "${c.source}"${c.source_at ? `, instante: ${new Date(c.source_at).toISOString()}` : ''}): "${c.claim}"`)
@@ -419,7 +425,7 @@ confidence en vez de adivinar.`;
 // genérico 'co-registrado_en' en vez de a un candidato de revisión manual.
 async function suggestRelationLabel(claim: string, memoryA: string, memoryB: string): Promise<string> {
   const FALLBACK = 'co-registrado_en';
-  if (!OLLAMA_API_KEY) return FALLBACK;
+  if (!OLLAMA_API_KEY) { ollamaNoKey('suggestRelationLabel'); return FALLBACK; }
 
   const prompt = `Un registro nuevo de un segundo cerebro personal quedó etiquetado a la vez a dos \
 recuerdos (entidad: persona, proyecto, curso o colaboración). Propón una etiqueta breve en \
@@ -473,7 +479,7 @@ async function classifyNode(
   newClaim: string,
   candidates: { memory_name: string; examples: string[]; similarity: number; aliases?: string[]; is_meta?: boolean }[],
 ): Promise<{ verdict: 'existing' | 'new'; node: string; confidence: number; reasoning: string } | null> {
-  if (!OLLAMA_API_KEY) return null;
+  if (!OLLAMA_API_KEY) { ollamaNoKey('classifyNode'); return null; }
   if (candidates.length === 0) return null;
 
   const candidateList = candidates
@@ -603,7 +609,7 @@ async function classifyAdditionalMemories(
   primaryNodes: string,
   candidates: { memory_name: string; examples: string[]; similarity: number | null; aliases?: string[]; matchedOn?: string }[],
 ): Promise<{ node: string; confidence: number; reasoning: string }[]> {
-  if (!OLLAMA_API_KEY) return [];
+  if (!OLLAMA_API_KEY) { ollamaNoKey('classifyAdditionalMemories'); return []; }
   if (candidates.length === 0) return [];
 
   const candidateList = candidates
