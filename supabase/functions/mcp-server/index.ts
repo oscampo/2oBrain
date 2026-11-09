@@ -20,6 +20,23 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
 const OLLAMA_API_KEY = Deno.env.get('OLLAMA_API_KEY');
 
+// Visibilidad de fallos de Ollama (2026-11-09): antes cada llamada devolvia
+// null/FALLBACK/[] sin dejar rastro, y una cuota agotada (429/402) paso
+// semanas sin que nadie lo supiera. Solo se registra el estado HTTP y un
+// trozo del cuerpo, nunca la key. Se ve en Edge Functions -> mcp-server -> Logs.
+async function ollamaFail(where: string, cause: unknown): Promise<void> {
+  try {
+    if (cause instanceof Response) {
+      const body = (await cause.text().catch(() => '')).slice(0, 200).replace(/\s+/g, ' ');
+      console.error(`[ollama-fail] ${where} status=${cause.status} body=${body}`);
+    } else {
+      console.error(`[ollama-fail] ${where} error=${cause instanceof Error ? cause.name + ': ' + cause.message : String(cause)}`);
+    }
+  } catch {
+    // el logging nunca debe romper la llamada
+  }
+}
+
 // Zona horaria configurable (secreto TIMEZONE, registro #691) -- estaba fija
 // en America/Bogota, default preservado para no romper despliegues existentes
 // que no la hayan puesto.
@@ -314,11 +331,15 @@ confidence en vez de adivinar.`;
       body: JSON.stringify({ model: CLASSIFIER_MODEL, prompt, format: 'json', stream: false }),
       signal: AbortSignal.timeout(20_000),
     });
-  } catch {
+  } catch (e) {
+    await ollamaFail('classifyDuplicate', e);
     return null; // red caída o timeout: cae a bloqueo manual
   }
 
-  if (!res.ok) return null;
+  if (!res.ok) {
+    await ollamaFail('classifyDuplicate', res);
+    return null;
+  }
 
   let parsed: any;
   try {
@@ -420,10 +441,15 @@ responde {"relation": "${FALLBACK}"}.`;
       body: JSON.stringify({ model: CLASSIFIER_MODEL, prompt, format: 'json', stream: false }),
       signal: AbortSignal.timeout(20_000),
     });
-  } catch {
+  } catch (e) {
+    await ollamaFail('suggestRelationLabel', e);
     return FALLBACK;
   }
-  if (!res.ok) return FALLBACK;
+
+  if (!res.ok) {
+    await ollamaFail('suggestRelationLabel', res);
+    return FALLBACK;
+  }
 
   try {
     const { response } = await res.json();
@@ -495,11 +521,15 @@ Si no estás seguro, baja la confidence en vez de adivinar.`;
       body: JSON.stringify({ model: CLASSIFIER_MODEL, prompt, format: 'json', stream: false }),
       signal: AbortSignal.timeout(20_000),
     });
-  } catch {
+  } catch (e) {
+    await ollamaFail('classifyNode', e);
     return null;
   }
 
-  if (!res.ok) return null;
+  if (!res.ok) {
+    await ollamaFail('classifyNode', res);
+    return null;
+  }
 
   let parsed: any;
   try {
@@ -622,11 +652,15 @@ registro trata de forma directa. Si no estás seguro, baja la confidence en vez 
       body: JSON.stringify({ model: CLASSIFIER_MODEL, prompt, format: 'json', stream: false }),
       signal: AbortSignal.timeout(20_000),
     });
-  } catch {
+  } catch (e) {
+    await ollamaFail('classifyAdditionalMemories', e);
     return [];
   }
 
-  if (!res.ok) return [];
+  if (!res.ok) {
+    await ollamaFail('classifyAdditionalMemories', res);
+    return [];
+  }
 
   let parsed: any;
   try {

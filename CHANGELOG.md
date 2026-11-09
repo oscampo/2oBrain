@@ -5,6 +5,19 @@ compara el `VERSION` local contra el último tag de `oscampo/2oBrain` --
 lee esto antes de aplicar una actualización para saber qué esperar, no
 asumas que es solo un número.
 
+## v0.12.5 (2026-11-09)
+
+La Edge Function `mcp-server` ya registra los fallos de Ollama en sus logs
+(`[ollama-fail] <funcion> status=... body=...`, solo estado HTTP y un trozo del
+cuerpo, nunca la key). Antes, una cuota agotada (402/429) o una key invalida
+hacia que los clasificadores devolvieran su valor de respaldo sin dejar rastro,
+y el problema podia pasar semanas sin notarse. El comportamiento de retorno no
+cambia.
+
+Para activarlo, redespliega la Edge Function `mcp-server` con el `index.ts`
+nuevo. Se ve en Supabase, Edge Functions, mcp-server, Logs. No hay cambios de
+esquema ni de scripts.
+
 ## v0.12.4 (2026-10-30)
 
 **Corrige un error de cierre de compromisos.** Un registro que resolvía un
